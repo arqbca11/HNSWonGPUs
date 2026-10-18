@@ -237,7 +237,8 @@ func koTestSchedulerDeleted(t *testing.T, c *koCollector, scaleStr string, scale
 		}
 		return false
 	})
-	t.Logf("[k8s] replacement scheduler pod Ready %.1fs after the delete: %v", time.Since(deleteAt).Seconds(), newPod)
+	readyAt := time.Now()
+	t.Logf("[k8s] replacement scheduler pod Ready %.1fs after the delete: %v", readyAt.Sub(deleteAt).Seconds(), newPod)
 
 	code := p.wait(t, 5*time.Minute)
 	close(stop)
@@ -251,8 +252,32 @@ func koTestSchedulerDeleted(t *testing.T, c *koCollector, scaleStr string, scale
 	}
 	mu.Unlock()
 	t.Logf("[shards] simulator exited %d after %.1fs", code, p.exitAt.Sub(p.start).Seconds())
+	warnRE := regexp.MustCompile(`^time=(\S+) level=(ERROR|WARN)`)
+	kinds := map[string]int{}
+	var lastWarn time.Time
 	for _, l := range koLines(p, regexp.MustCompile(`level=(ERROR|WARN)`)) {
 		t.Logf("[shards observation] %s", l)
+		kind := "other"
+		switch {
+		case strings.Contains(l, "level=ERROR"):
+			kind = "ERROR"
+		case strings.Contains(l, "Client.Timeout"):
+			kind = "client timeout"
+		case strings.Contains(l, "EOF"):
+			kind = "EOF"
+		case strings.Contains(l, "connection refused"):
+			kind = "refused"
+		}
+		kinds[kind]++
+		if m := warnRE.FindStringSubmatch(l); m != nil {
+			if ts, err := time.Parse("2006-01-02T15:04:05.000-07:00", m[1]); err == nil && ts.After(lastWarn) {
+				lastWarn = ts
+			}
+		}
+	}
+	if !lastWarn.IsZero() {
+		t.Logf("[shards] retry lines by kind %v; the last one %+.2fs after the delete (the replacement pod was Ready at %+.2fs)",
+			kinds, lastWarn.Sub(deleteAt).Seconds(), readyAt.Sub(deleteAt).Seconds())
 	}
 	for _, l := range c.schedulerLines("ERROR") {
 		if l.Pod == oldName || l.Pod == newPod.Metadata.Name {

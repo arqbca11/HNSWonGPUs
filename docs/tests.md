@@ -31,6 +31,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, step 3b: GPU cards as a countable resource (`scripts/k8s-check-gpu-cards.sh`). Log: `phase2/step3b-gpu-cards.log`](#phase-2-step-3b-gpu-cards-as-a-countable-resource-scriptsk8s-check-gpu-cardssh-log-phase2step3b-gpu-cardslog)
 - [Phase 2, step 3b, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindCards` subtests; need `KGPU_KIND=1`). Log: `phase2/step3b-crosscheck-kind-cards.log`](#phase-2-step-3b-cross-check-on-kind-go-schedulercrosscheck-testkindcards-subtests-need-kgpukind1-log-phase2step3b-crosscheck-kind-cardslog)
 - [Phase 2, step 4: shards outside the cluster (`scripts/k8s-check-step4.sh`, via `scripts/k8s-round.sh`). Log: `phase2/step4-shards-outside.log`](#phase-2-step-4-shards-outside-the-cluster-scriptsk8s-check-step4sh-via-scriptsk8s-roundsh-log-phase2step4-shards-outsidelog)
+- [Phase 2, step 4, cross-check from the laptop (Go, `scheduler/crosscheck`, `TestKindOutside` subtests; need `KGPU_KIND=1`). Log: `phase2/step4-crosscheck-kind-outside.log`](#phase-2-step-4-cross-check-from-the-laptop-go-schedulercrosscheck-testkindoutside-subtests-need-kgpukind1-log-phase2step4-crosscheck-kind-outsidelog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -209,6 +210,7 @@ These run the real `shardsim` binary against an in-process scheduler, a reaper l
 | GivesUpAfterRetryFor | A fake scheduler always answers 502. | The call fails with a clear error once the retry budget is spent. |
 | NonTransientErrorsAreNotRetried | A fake scheduler answers 404. | One request, immediate error: 4xx is not retried. |
 | JobStartTreats409AsRecorded | Start and done answer 409. | Both count as recorded, the lost-reply case. |
+| `TestBlackHoleDialFailsFastAndIsRetried` | Dial a reserved, unroutable address (a pod IP nobody owns) with a short dial timeout and a small retry budget. | One connection attempt is bounded by the dial timeout, not the 10 s request timeout, so the retry can re-dial (bug 10, decision 29). |
 
 ## Step 6: failure tests under simulator load (`scripts/compose-failures-load.sh`). Log: `step6-compose-failures-load.log`
 
@@ -349,3 +351,16 @@ The agent scales the implementer's workers to zero for the run, since cards are 
 | 1 | The simulator on the laptop runs a 6-shard round against 2 workers. | The default configuration completes end to end on Kubernetes from outside: all builds done at attempt 1, every query recorded and finished. |
 | 2 | A 50-shard round against 2 workers; the leaseholder of the largest leased build is deleted mid-round. | The round completes, nothing completes twice, the replacement pod joins the round in flight and claims builds; the deleted pod finishes its short build inside its budget (the release path under a real round is in the step 3 cross-check). |
 | 3 | A 50-shard round against 4 workers, every card in use. | The pool scales to the card total and the round completes. |
+| 4 | A 50-shard round against 2 workers; the scheduler pod is deleted a second into the round. | The replacement serves the round from Postgres and the shards see no retries at all: the shutdown delay and the dial timeout close the 10 s stall (bug 10, decision 29). The deleted pod's last log line shows it serving the delay. |
+
+## Phase 2, step 4, cross-check from the laptop (Go, `scheduler/crosscheck`, `TestKindOutside` subtests; need `KGPU_KIND=1`). Log: `phase2/step4-crosscheck-kind-outside.log`
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| KindOutside/NodePortIsTheOnlyDoor | Probe the scheduler from the laptop at every address it has, then from inside a pod. | From the laptop only `127.0.0.1:30080` answers; inside the cluster `scheduler:8080` and every node's 30080 do (decision 27). |
+| KindOutside/BimodalRoundFromLaptop | A bimodal 6-shard round on 2 workers from the laptop. | Every build done once; every query matches the seeded workload; no shard pods in the cluster (decision 26). |
+| KindOutside/SchedulerPodDeletedMidRound | Delete the scheduler pod half a second into a 30-shard round. | The replacement serves the round from Postgres and both rounds complete correctly; the shards' retry stall is measured (found bug 10). |
+| KindOutside/TwoSimulatorsAtOnce | Two simulators with different seeds run overlapping rounds. | Neither round's builds or queries leak into the other's. |
+| KindOutside/NoWorkersThenScaleUp | Workers at zero: a `MIN_WORKERS=1` and a `MIN_WORKERS=0` simulator; then scale to 2. | The first starts no round, the second leaves its builds queued; both complete after the scale-up. |
+| KindOutside/FiftyShardsFourWorkers | A 50-shard `downstream_heavy` round on 4 workers from the laptop. | Every worker completes builds; every query matches the workload. |
+| KindOutside/SimulatorOnlyReachesNodePort | Point a simulator at the ClusterIP and at a pod IP. | It cannot connect, creates no round, and retries without limit (decision 30). |
