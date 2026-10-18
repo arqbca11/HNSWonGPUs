@@ -375,7 +375,8 @@ Add a real GPU build path, run it on a small cloud GPU node pool for a few hours
 
 - [ ] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. Expect CPU fallback to win more often while the pool is cold.
 - [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it.
-- [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model. One measurement of time-slicing (two workers per card) to see whether overlapping transfer with compute helps.
+- [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model.
+- [ ] **Builds per card:** one build per card against two with memory-aware admission in the worker, at 128 and 1536 dimensions, reporting throughput and the largest build's finish time. Expected to win for small builds (transfer overlaps compute, a small build does not fill the card) and lose for two large ones (Phase 5 design doc, 2026-10-17).
 - [ ] Rerun the Phase 3 sweeps in the simulator with the measured GPU model, then validate a few rounds live
 
 ### Cost control
