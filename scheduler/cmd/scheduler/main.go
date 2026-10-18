@@ -8,6 +8,8 @@
 //	MAX_ATTEMPTS         default 5; a build whose lease expires on this attempt is marked failed
 //	                     instead of requeued (decision 42). 0 disables.
 //	WORKER_STALE_AFTER   default 30s; a worker unseen for longer is not in the pool
+//	SHUTDOWN_DELAY       default 3s; after SIGTERM keep serving this long before closing, so a
+//	                     deleted pod is out of every node's forwarding rules before its IP vanishes (bug 10)
 //	LOG_FORMAT           json (default) or text
 //	COST_A, COST_SPEEDUP, COST_GPU_OVERHEAD, COST_BANDWIDTH, COST_MEM_FACTOR
 //	                     override cost model v0 constants (see scheduler/costmodel)
@@ -57,6 +59,7 @@ func main() {
 	maxAttempts := envInt(log, "MAX_ATTEMPTS", 5)
 	staleAfter := envDuration(log, "WORKER_STALE_AFTER", 30*time.Second)
 	addr := env("LISTEN_ADDR", ":8080")
+	shutdownDelay := envDuration(log, "SHUTDOWN_DELAY", 3*time.Second)
 
 	// SIGTERM (Kubernetes, docker stop) or Ctrl-C cancels ctx.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -93,6 +96,17 @@ func main() {
 	}()
 
 	<-ctx.Done()
+	// Kubernetes removes the pod from its Service and sends SIGTERM at the same
+	// moment; the forwarding rules on every node lag by up to a second or so.
+	// Exiting at once makes the pod's IP vanish while connections are still
+	// being sent to it, and those connections hang until the client's timeout
+	// (bug 10). So keep serving for SHUTDOWN_DELAY first, the in-process form of
+	// the usual "preStop: sleep" (the image has no shell). The readiness probe
+	// is unaffected: the endpoint is already gone.
+	if shutdownDelay > 0 {
+		log.Info("shutdown requested; serving for the shutdown delay while endpoints update", "delay", shutdownDelay)
+		time.Sleep(shutdownDelay)
+	}
 	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -7,13 +7,14 @@
 #   scripts/k8s-round.sh                                 # 6 shards, 2 workers, skewed, 1 round
 #   N_SHARDS=50 WORKERS=4 ROUNDS=2 scripts/k8s-round.sh
 #   KILL_WORKER=1 scripts/k8s-round.sh                   # delete the leaseholder of the largest leased build mid-round
+#   KILL_SCHEDULER=1 scripts/k8s-round.sh                # delete the scheduler pod 1 s into the round; report the shards' stall
 #
 # Not a saved step log by itself; scripts/k8s-check-step4.sh calls it and saves.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:30080}" SCENARIO="${SCENARIO:-skewed}" N_SHARDS="${N_SHARDS:-6}" SEED="${SEED:-1}" \
        ROUNDS="${ROUNDS:-1}" TIME_SCALE="${TIME_SCALE:-10}" LOG_FORMAT=text MIN_WORKERS="${WORKERS:-2}" ROUND_TIMEOUT="${ROUND_TIMEOUT:-10m}"
-WORKERS="${WORKERS:-2}"; KILL_WORKER="${KILL_WORKER:-0}"
+WORKERS="${WORKERS:-2}"; KILL_WORKER="${KILL_WORKER:-0}"; KILL_SCHEDULER="${KILL_SCHEDULER:-0}"
 K="kubectl -n kgpu"
 note() { printf '   %s\n' "$*"; }
 jget() { python3 scripts/jget.py "$1"; }
@@ -53,9 +54,52 @@ if [ "$KILL_WORKER" = 1 ]; then
     note "no leased build appeared to strike"
   fi
 fi
+SCHED_KILLED_AT=""
+if [ "$KILL_SCHEDULER" = 1 ]; then
+  for _ in $(seq 1 240); do grep -q 'round started' "$SCRATCH/sim.log" 2>/dev/null && break; sleep 0.25; done
+  sleep 1
+  SP=$($K get pods -l app=scheduler -o jsonpath='{.items[0].metadata.name}')
+  SCHED_KILLED_AT=$(date +%s.%N)
+  $K delete pod "$SP" --wait=false >/dev/null
+  note "+$(( $(date +%s) - T0 )) s: deleted scheduler pod $SP mid-round"
+  for _ in $(seq 1 120); do NP=$($K get pods -l app=scheduler --field-selector=status.phase=Running -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)].metadata.name}' 2>/dev/null | tr ' ' '\n' | grep -v "^$SP$" | head -1 || true); [ -n "$NP" ] && break; sleep 0.1; done
+  note "replacement $NP ready $(python3 -c "import time;print(round(time.time()-$SCHED_KILLED_AT,1))") s after the deletion"
+  sleep 1; note "the deleted pod's last lines while terminating: $($K logs "$SP" --tail=3 2>/dev/null | python3 -c 'import sys,json
+out=[]
+for l in sys.stdin:
+    try: d=json.loads(l); out.append(d["msg"]+(" delay="+str(d["delay"]) if "delay" in d else ""))
+    except Exception: pass
+print(" | ".join(out) or "(gone)")')"
+fi
 wait "$SIM" && SIM_EXIT=0 || SIM_EXIT=$?
 note "simulator exited $SIM_EXIT after $(( $(date +%s) - T0 )) s"
 
+if [ -n "$SCHED_KILLED_AT" ]; then
+  echo; echo "== the shards' view of the scheduler deletion (retry warnings in the simulator log)"
+  python3 - "$SCRATCH/sim.log" "$SCHED_KILLED_AT" <<'PY'
+import sys, re, datetime
+lines = [l for l in open(sys.argv[1]) if "scheduler call failed, retrying" in l or "succeeded after retries" in l]
+killed = float(sys.argv[2])
+def ts(l):
+    m = re.match(r'time=(\S+)', l); t = m.group(1)
+    t = re.sub(r'(\.\d{6})\d*', r'\1', t)
+    return datetime.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
+fails = [l for l in lines if "failed" in l]
+kinds = {}
+for l in fails:
+    k = ("EOF" if "EOF" in l else "timeout" if ("Timeout" in l or "deadline" in l or "timeout" in l) else
+         "refused" if "refused" in l else "reset" if "reset" in l else "other")
+    kinds[k] = kinds.get(k, 0) + 1
+print("   %d retry warnings: %s" % (len(fails), ", ".join("%s x%d" % kv for kv in kinds.items())))
+if fails:
+    rel = [ts(l) - killed for l in fails]
+    print("   first %.1f s, last %.1f s after the deletion; the shards were stalled for about %.1f s" % (min(rel), max(rel), max(rel)))
+    try:
+        from statistics import median
+        print("   (the Service dropped the pod and the replacement was ready within ~1.5 s; anything beyond that is the stall this measures)")
+    except Exception: pass
+PY
+fi
 echo; echo "== timeline (simulator output)"
 grep -vE '^time=' "$SCRATCH/sim.log" | sed 's/^/   /'
 echo; echo "== round events (simulator log)"

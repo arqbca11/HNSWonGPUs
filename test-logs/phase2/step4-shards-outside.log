@@ -1,39 +1,39 @@
-== Phase 2 step 4: shards outside the cluster  (2026-10-18 00:21:21 PDT, commit fb62f24)
+== Phase 2 step 4: shards outside the cluster  (2026-10-18 00:44:11 PDT, commit 4c10d14)
    Only the scheduler's NodePort (127.0.0.1:30080) is reachable from here: NodePort nodePort=30080
    No shard pods exist in the cluster: 0 found
 
 #### 1. 6 shards, 2 workers
 == k8s round from outside the cluster: scenario=skewed shards=6 workers=2 seed=1 rounds=1 time_scale=10 kill_worker=0
    scheduler: http://127.0.0.1:30080 (NodePort); the simulator runs on this machine, not in a pod
-   pool: 2 live: worker-55789b76c-f45tk, worker-55789b76c-v8n7l
+   pool: 2 live: worker-55789b76c-5fkxn, worker-55789b76c-ppllk
    simulator exited 0 after 4 s
 
 == timeline (simulator output)
-   round 10  scenario=skewed seed=1  time_scale=10
+   round 32  scenario=skewed seed=1  time_scale=10
    duration 3.0s real (30.1s modeled)   straggler lag 0.0s   builds: 6 gpu, 0 local   queries: 3412
    query latency (slowest piece): fan-out p50 0.1s p99 1.7s (n=532)   single-shard p50 0.0s p99 1.6s (n=1260)
    shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
-   0      200000    gpu    1    0.0s     0.1s     0.8s     3.0s     557     1.0s     ##############################
-   1      66667     gpu    1    0.0s     0.7s     1.1s     3.0s     568     1.6s     #############################
-   2      40000     gpu    1    0.0s     1.1s     1.4s     3.0s     578     1.6s     #############################
-   3      50000     gpu    1    0.0s     0.4s     0.7s     3.0s     552     1.2s     #############################
-   4      33333     gpu    1    0.0s     1.3s     1.6s     3.0s     585     1.7s     #############################
-   5      100000    gpu    1    0.0s     0.8s     1.3s     3.0s     572     1.8s     #############################
+   0      200000    gpu    1    0.0s     0.3s     1.0s     3.0s     557     1.5s     ##############################
+   1      66667     gpu    1    0.0s     1.2s     1.6s     3.0s     568     1.6s     #############################
+   2      40000     gpu    1    0.0s     0.4s     0.7s     3.0s     578     1.1s     #############################
+   3      50000     gpu    1    0.0s     1.3s     1.6s     3.0s     552     1.7s     #############################
+   4      33333     gpu    1    0.0s     1.0s     1.3s     3.0s     585     1.7s     #############################
+   5      100000    gpu    1    0.0s     0.7s     1.2s     3.0s     572     1.3s     #############################
    
 
 == round events (simulator log)
-   level=INFO msg="round started" round_id=10 scenario=skewed seed=1 n_shards=6 time_scale=10
-   level=INFO msg="round finished" round_id=10 duration=3.011s duration_modeled=30.11s straggler_lag=4ms builds_gpu=6 builds_local=0 queries=3412
+   level=INFO msg="round started" round_id=32 scenario=skewed seed=1 n_shards=6 time_scale=10
+   level=INFO msg="round finished" round_id=32 duration=3.011s duration_modeled=30.107s straggler_lag=2ms builds_gpu=6 builds_local=0 queries=3412
 
 == round rows (from the scheduler API)
-   round 10: n_shards=6 finished=2026-10-18T07:21:25.552669Z
-   builds: 0:10=gpu/done@1, 1:10=gpu/done@1, 2:10=gpu/done@1, 3:10=gpu/done@1, 4:10=gpu/done@1, 5:10=gpu/done@1
+   round 32: n_shards=6 finished=2026-10-18T07:44:15.060685Z
+   builds: 0:32=gpu/done@1, 1:32=gpu/done@1, 2:32=gpu/done@1, 3:32=gpu/done@1, 4:32=gpu/done@1, 5:32=gpu/done@1
    states: done=6 other=0; attempts>1: 0
    queries recorded: 3412, finished: 3412
 
 == scheduler log since the run started (counts, then everything that is not a placement)
    build placed x6, round started x1, rounds finished x1
-   INFO round started round_id=10 scenario=skewed seed=1 n_shards=6
+   INFO round started round_id=32 scenario=skewed seed=1 n_shards=6
    INFO rounds finished count=1
 
 == Result: PASS
@@ -41,167 +41,255 @@
 #### 2. 50 shards, 2 workers, a worker pod deleted mid-round (50 shards so the round is long enough to strike)
 == k8s round from outside the cluster: scenario=skewed shards=50 workers=2 seed=2 rounds=1 time_scale=10 kill_worker=1
    scheduler: http://127.0.0.1:30080 (NodePort); the simulator runs on this machine, not in a pod
-   pool: 2 live: worker-55789b76c-f45tk, worker-55789b76c-v8n7l
-   +3 s: deleting worker pod worker-55789b76c-v8n7l while it builds 14:11
-   simulator exited 0 after 10 s
+   pool: 2 live: worker-55789b76c-5fkxn, worker-55789b76c-ppllk
+   +4 s: deleting worker pod worker-55789b76c-ppllk while it builds 10:33
+   simulator exited 0 after 9 s
 
 == timeline (simulator output)
-   round 11  scenario=skewed seed=2  time_scale=10
-   duration 8.0s real (80.3s modeled)   straggler lag 3.2s   builds: 50 gpu, 0 local   queries: 30388
-   query latency (slowest piece): fan-out p50 4.3s p99 7.3s (n=1089)   single-shard p50 0.0s p99 6.3s (n=2444)
+   round 33  scenario=skewed seed=2  time_scale=10
+   duration 8.4s real (83.6s modeled)   straggler lag 3.8s   builds: 50 gpu, 0 local   queries: 30388
+   query latency (slowest piece): fan-out p50 4.1s p99 7.6s (n=1089)   single-shard p50 0.0s p99 6.4s (n=2444)
    shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
-   0      10000     gpu    1    0.0s     1.4s     1.6s     3.0s     631     2.0s     ###########
-   1      25000     gpu    1    0.0s     0.9s     1.1s     3.0s     595     1.6s     ###########
-   2      10000     gpu    1    0.0s     0.6s     0.9s     3.0s     597     1.1s     ###########
-   3      10000     gpu    1    0.0s     0.2s     0.4s     3.0s     611     0.7s     ###########
-   4      10526     gpu    1    0.0s     0.5s     0.7s     3.0s     576     1.2s     ###########
-   5      10000     gpu    1    0.0s     2.2s     2.4s     3.4s     609     2.8s     ############
-   6      10000     gpu    1    0.0s     1.2s     1.4s     3.0s     616     1.8s     ###########
-   7      10000     gpu    1    0.0s     6.7s     6.9s     8.0s     600     7.4s     ##############################
-   8      13333     gpu    1    0.0s     4.1s     4.3s     5.0s     609     4.4s     ##################
-   9      28571     gpu    1    0.0s     3.6s     3.9s     4.6s     599     4.0s     #################
-   10     100000    gpu    1    0.0s     5.8s     6.2s     7.1s     610     6.5s     ##########################
-   11     10000     gpu    1    0.0s     0.4s     0.6s     3.0s     596     1.1s     ###########
-   12     10000     gpu    1    0.0s     6.2s     6.5s     7.3s     599     6.6s     ###########################
-   13     10000     gpu    1    0.0s     2.3s     2.5s     3.3s     587     2.7s     ############
-   14     200000    gpu    1    0.0s     2.6s     3.4s     4.3s     611     3.7s     ################
-   15     66667     gpu    1    0.0s     2.9s     3.3s     4.4s     614     3.8s     ################
-   16     10000     gpu    1    0.0s     1.1s     1.4s     3.0s     616     1.8s     ###########
-   17     40000     gpu    1    0.0s     3.3s     3.6s     4.5s     604     3.9s     ################
-   18     20000     gpu    1    0.0s     5.1s     5.3s     6.1s     591     5.4s     ######################
-   19     33333     gpu    1    0.0s     4.3s     4.6s     5.7s     600     5.0s     #####################
-   20     10000     gpu    1    0.0s     4.6s     4.8s     5.6s     609     5.0s     #####################
-   21     15385     gpu    1    0.0s     0.7s     1.0s     3.0s     601     1.0s     ###########
-   22     10000     gpu    1    0.0s     4.6s     4.8s     5.7s     625     5.1s     #####################
-   23     10000     gpu    1    0.0s     6.2s     6.5s     7.3s     619     6.7s     ###########################
-   24     12500     gpu    1    0.0s     5.1s     5.3s     6.4s     606     5.7s     #######################
-   25     10000     gpu    1    0.0s     2.0s     2.2s     3.0s     627     2.3s     ###########
-   26     10000     gpu    1    0.0s     2.0s     2.2s     3.1s     612     2.3s     ###########
-   27     10000     gpu    1    0.0s     2.7s     2.9s     4.0s     582     3.4s     ###############
-   28     11111     gpu    1    0.0s     1.0s     1.2s     3.0s     601     1.4s     ###########
-   29     10000     gpu    1    0.0s     5.3s     5.5s     6.7s     612     6.0s     #########################
-   30     10000     gpu    1    0.0s     3.9s     4.1s     5.2s     605     4.5s     ###################
-   31     10000     gpu    1    0.0s     4.1s     4.4s     5.2s     618     4.6s     ###################
-   32     10000     gpu    1    0.0s     3.7s     3.9s     4.8s     587     4.1s     #################
-   33     10000     gpu    1    0.0s     6.0s     6.2s     7.3s     592     6.7s     ###########################
-   34     10000     gpu    1    0.0s     6.5s     6.7s     7.4s     625     6.7s     ###########################
-   35     10000     gpu    1    0.0s     6.5s     6.7s     7.5s     619     6.8s     ###########################
-   36     10000     gpu    1    0.0s     1.7s     2.0s     3.1s     634     2.3s     ###########
-   37     50000     gpu    1    0.0s     1.4s     1.7s     3.0s     607     1.9s     ###########
-   38     10000     gpu    1    0.0s     1.6s     1.8s     3.0s     614     1.9s     ###########
-   39     10000     gpu    1    0.0s     2.4s     2.6s     3.6s     635     3.0s     #############
-   40     18182     gpu    1    0.0s     5.5s     5.8s     6.7s     613     6.0s     #########################
-   41     10000     gpu    1    0.0s     5.8s     6.0s     6.8s     596     6.1s     #########################
-   42     11765     gpu    1    0.0s     4.8s     5.1s     5.8s     600     5.1s     #####################
-   43     22222     gpu    1    0.0s     4.4s     4.6s     5.4s     610     4.7s     ###################
-   44     14286     gpu    1    0.0s     3.9s     4.1s     4.8s     595     4.2s     #################
-   45     10000     gpu    1    0.0s     5.3s     5.5s     6.5s     619     5.8s     ########################
-   46     10000     gpu    1    0.0s     2.5s     2.7s     3.5s     606     2.8s     #############
-   47     10000     gpu    1    0.0s     4.8s     5.1s     6.0s     617     5.4s     ######################
-   48     16667     gpu    1    0.0s     5.5s     5.8s     6.6s     601     5.9s     ########################
-   49     10000     gpu    1    0.0s     1.8s     2.0s     3.3s     630     2.5s     ############
+   0      10000     gpu    1    0.0s     1.5s     1.7s     3.0s     631     2.0s     ##########
+   1      25000     gpu    1    0.0s     1.5s     1.8s     3.0s     595     2.1s     ##########
+   2      10000     gpu    1    0.0s     0.8s     1.1s     3.0s     597     1.1s     ##########
+   3      10000     gpu    1    0.0s     1.3s     1.5s     3.0s     611     1.7s     ##########
+   4      10526     gpu    1    0.0s     0.4s     0.6s     3.0s     576     0.7s     ##########
+   5      10000     gpu    1    0.0s     4.7s     4.9s     5.9s     609     5.3s     #####################
+   6      10000     gpu    1    0.0s     3.5s     3.7s     4.5s     616     3.8s     ################
+   7      10000     gpu    1    0.0s     5.0s     5.2s     6.0s     600     5.4s     #####################
+   8      13333     gpu    1    0.0s     4.7s     5.0s     6.0s     609     5.4s     #####################
+   9      28571     gpu    1    0.0s     2.8s     3.0s     4.1s     599     3.5s     ##############
+   10     100000    gpu    1    0.0s     3.8s     4.3s     5.1s     610     4.5s     ##################
+   11     10000     gpu    1    0.0s     2.5s     2.7s     3.7s     596     3.1s     #############
+   12     10000     gpu    1    0.0s     4.9s     5.1s     5.8s     599     5.1s     ####################
+   13     10000     gpu    1    0.0s     5.6s     5.8s     6.8s     587     6.2s     ########################
+   14     200000    gpu    1    0.0s     6.5s     7.2s     8.4s     611     7.7s     ##############################
+   15     66667     gpu    1    0.0s     0.5s     0.8s     3.0s     614     1.3s     ##########
+   16     10000     gpu    1    0.0s     1.1s     1.3s     3.0s     616     1.3s     ##########
+   17     40000     gpu    1    0.0s     5.4s     5.7s     6.5s     604     5.9s     #######################
+   18     20000     gpu    1    0.0s     6.4s     6.7s     7.6s     591     6.9s     ###########################
+   19     33333     gpu    1    0.0s     3.7s     4.0s     5.2s     600     4.5s     ##################
+   20     10000     gpu    1    0.0s     5.1s     5.4s     6.1s     609     5.5s     ######################
+   21     15385     gpu    1    0.0s     5.4s     5.6s     6.7s     601     6.1s     #######################
+   22     10000     gpu    1    0.0s     1.3s     1.5s     3.0s     625     1.6s     ##########
+   23     10000     gpu    1    0.0s     2.0s     2.2s     3.4s     619     2.7s     ############
+   24     12500     gpu    1    0.0s     1.7s     2.0s     3.0s     606     2.2s     ##########
+   25     10000     gpu    1    0.0s     2.9s     3.1s     3.9s     627     3.3s     ##############
+   26     10000     gpu    1    0.0s     3.0s     3.3s     4.0s     612     3.3s     ##############
+   27     10000     gpu    1    0.0s     5.7s     5.9s     7.0s     582     6.4s     #########################
+   28     11111     gpu    1    0.0s     6.2s     6.4s     7.1s     601     6.4s     #########################
+   29     10000     gpu    1    0.0s     6.0s     6.3s     7.2s     612     6.5s     #########################
+   30     10000     gpu    1    0.0s     3.6s     3.8s     4.7s     605     4.0s     ################
+   31     10000     gpu    1    0.0s     2.7s     2.9s     3.7s     618     3.1s     #############
+   32     10000     gpu    1    0.0s     4.5s     4.7s     5.8s     587     5.1s     ####################
+   33     10000     gpu    1    0.0s     2.0s     2.2s     3.3s     592     2.7s     ###########
+   34     10000     gpu    1    0.0s     5.9s     6.2s     6.9s     625     6.2s     ########################
+   35     10000     gpu    1    0.0s     5.2s     5.4s     6.5s     619     5.8s     #######################
+   36     10000     gpu    1    0.0s     5.8s     6.0s     7.0s     634     6.3s     #########################
+   37     50000     gpu    1    0.0s     2.4s     2.8s     3.5s     607     2.9s     ############
+   38     10000     gpu    1    0.0s     3.3s     3.5s     4.5s     614     3.9s     ################
+   39     10000     gpu    1    0.0s     6.3s     6.5s     7.6s     635     7.0s     ###########################
+   40     18182     gpu    1    0.0s     1.8s     2.0s     3.0s     613     2.0s     ##########
+   41     10000     gpu    1    0.0s     3.4s     3.6s     4.8s     596     4.1s     #################
+   42     11765     gpu    1    0.0s     2.2s     2.5s     3.4s     600     2.6s     ############
+   43     22222     gpu    1    0.0s     0.8s     1.1s     3.0s     610     1.2s     ##########
+   44     14286     gpu    1    0.0s     2.2s     2.4s     3.3s     595     2.7s     ###########
+   45     10000     gpu    1    0.0s     3.1s     3.4s     4.4s     619     3.8s     ###############
+   46     10000     gpu    1    0.0s     1.1s     1.3s     3.0s     606     1.3s     ##########
+   47     10000     gpu    1    0.0s     4.0s     4.2s     5.0s     617     4.4s     #################
+   48     16667     gpu    1    0.0s     4.2s     4.5s     5.6s     601     4.9s     ###################
+   49     10000     gpu    1    0.0s     0.6s     0.8s     3.0s     630     1.0s     ##########
    
 
 == round events (simulator log)
-   level=INFO msg="round started" round_id=11 scenario=skewed seed=2 n_shards=50 time_scale=10
-   level=INFO msg="round finished" round_id=11 duration=8.032s duration_modeled=1m20.322s straggler_lag=3.247s builds_gpu=50 builds_local=0 queries=30388
+   level=INFO msg="round started" round_id=33 scenario=skewed seed=2 n_shards=50 time_scale=10
+   level=INFO msg="round finished" round_id=33 duration=8.36s duration_modeled=1m23.596s straggler_lag=3.83s builds_gpu=50 builds_local=0 queries=30388
 
 == round rows (from the scheduler API)
-   round 11: n_shards=50 finished=2026-10-18T07:21:34.986534Z
-   builds: 0:11=gpu/done@1, 1:11=gpu/done@1, 2:11=gpu/done@1, 3:11=gpu/done@1, 4:11=gpu/done@1, 5:11=gpu/done@1, 6:11=gpu/done@1, 7:11=gpu/done@1, 8:11=gpu/done@1, 9:11=gpu/done@1, 10:11=gpu/done@1, 11:11=gpu/done@1 ...
+   round 33: n_shards=50 finished=2026-10-18T07:44:24.599692Z
+   builds: 0:33=gpu/done@1, 1:33=gpu/done@1, 2:33=gpu/done@1, 3:33=gpu/done@1, 4:33=gpu/done@1, 5:33=gpu/done@1, 6:33=gpu/done@1, 7:33=gpu/done@1, 8:33=gpu/done@1, 9:33=gpu/done@1, 10:33=gpu/done@1, 11:33=gpu/done@1 ...
    states: done=50 other=0; attempts>1: 0
    queries recorded: 30388, finished: 30388
 
-== the deleted worker worker-55789b76c-v8n7l (its last lines) and the build it held
+== the deleted worker worker-55789b76c-ppllk (its last lines) and the build it held
    (pod log gone)
-   14:11: done at attempt 1 (owner now None)
-   workers now: worker-55789b76c-4r6mc@kgpu-worker4 worker-55789b76c-f45tk@kgpu-worker3 
-   worker-55789b76c-4r6mc: 14 claims, 14 completions in its lifetime (a replacement that claimed joined the round in flight)
-   worker-55789b76c-f45tk: 109 claims, 109 completions in its lifetime (a replacement that claimed joined the round in flight)
+   10:33: done at attempt 1 (owner now None)
+   workers now: worker-55789b76c-5fkxn@kgpu-worker4 worker-55789b76c-74pcb@kgpu-worker3 
+   worker-55789b76c-5fkxn: 90 claims, 90 completions in its lifetime (a replacement that claimed joined the round in flight)
+   worker-55789b76c-74pcb: 8 claims, 8 completions in its lifetime (a replacement that claimed joined the round in flight)
 
 == scheduler log since the run started (counts, then everything that is not a placement)
-   build placed x50, rounds finished x1, round started x1
+   build placed x50, round started x1, rounds finished x1
+   INFO round started round_id=33 scenario=skewed seed=2 n_shards=50
    INFO rounds finished count=1
-   INFO round started round_id=11 scenario=skewed seed=2 n_shards=50
 
 == Result: PASS
 
 #### 3. 50 shards, 4 workers (every card)
 == k8s round from outside the cluster: scenario=skewed shards=50 workers=4 seed=3 rounds=1 time_scale=10 kill_worker=0
    scheduler: http://127.0.0.1:30080 (NodePort); the simulator runs on this machine, not in a pod
-   pool: 4 live: worker-55789b76c-4r6mc, worker-55789b76c-f45tk, worker-55789b76c-v4gwz, worker-55789b76c-whrnz
+   pool: 4 live: worker-55789b76c-5fkxn, worker-55789b76c-74pcb, worker-55789b76c-bf2jj, worker-55789b76c-j6zpp
    simulator exited 0 after 6 s
 
 == timeline (simulator output)
-   round 12  scenario=skewed seed=3  time_scale=10
-   duration 4.4s real (43.8s modeled)   straggler lag 1.3s   builds: 50 gpu, 0 local   queries: 28865
-   query latency (slowest piece): fan-out p50 0.5s p99 3.7s (n=1015)   single-shard p50 0.0s p99 3.3s (n=2534)
+   round 34  scenario=skewed seed=3  time_scale=10
+   duration 4.5s real (45.1s modeled)   straggler lag 1.5s   builds: 50 gpu, 0 local   queries: 28865
+   query latency (slowest piece): fan-out p50 0.6s p99 3.7s (n=1015)   single-shard p50 0.0s p99 3.3s (n=2534)
    shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
-   0      10000     gpu    1    0.0s     0.8s     1.0s     3.0s     590     1.5s     ####################
-   1      10000     gpu    1    0.0s     0.3s     0.5s     3.0s     591     0.6s     ####################
-   2      33333     gpu    1    0.0s     0.6s     0.9s     3.0s     566     1.1s     ####################
-   3      10000     gpu    1    0.0s     0.1s     0.3s     3.0s     584     0.7s     ####################
-   4      10000     gpu    1    0.0s     0.3s     0.5s     3.0s     550     0.7s     ####################
-   5      66667     gpu    1    0.0s     0.5s     0.9s     3.0s     606     1.3s     ####################
-   6      10000     gpu    1    0.0s     2.3s     2.6s     3.4s     555     2.8s     #######################
-   7      10000     gpu    1    0.0s     1.7s     1.9s     3.1s     571     2.4s     #####################
-   8      10000     gpu    1    0.0s     3.0s     3.2s     4.0s     581     3.4s     ###########################
-   9      10000     gpu    1    0.0s     3.2s     3.5s     4.1s     577     3.5s     ###########################
-   10     10000     gpu    1    0.0s     1.3s     1.5s     3.0s     580     2.0s     ####################
-   11     18182     gpu    1    0.0s     1.3s     1.6s     3.0s     564     2.1s     ####################
-   12     16667     gpu    1    0.0s     2.2s     2.4s     3.2s     542     2.6s     #####################
-   13     10000     gpu    1    0.0s     2.1s     2.3s     3.3s     557     2.7s     ######################
-   14     14286     gpu    1    0.0s     1.8s     2.0s     3.0s     601     2.2s     ####################
-   15     13333     gpu    1    0.0s     2.2s     2.5s     3.4s     582     2.8s     #######################
-   16     10000     gpu    1    0.0s     0.3s     0.6s     3.0s     563     0.8s     ####################
-   17     100000    gpu    1    0.0s     2.1s     2.5s     3.5s     588     2.9s     ########################
-   18     10000     gpu    1    0.0s     2.6s     2.8s     3.5s     580     2.9s     ########################
-   19     10000     gpu    1    0.0s     3.1s     3.4s     4.0s     582     3.5s     ###########################
-   20     10000     gpu    1    0.0s     1.9s     2.1s     3.2s     552     2.5s     ######################
-   21     40000     gpu    1    0.0s     1.8s     2.1s     3.0s     591     2.1s     ####################
-   22     10000     gpu    1    0.0s     2.9s     3.1s     4.2s     559     3.6s     ############################
-   23     200000    gpu    1    0.0s     0.3s     1.1s     3.0s     569     1.2s     ####################
-   24     10000     gpu    1    0.0s     1.3s     1.5s     3.0s     568     1.7s     ####################
-   25     10000     gpu    1    0.0s     0.9s     1.1s     3.0s     560     1.3s     ####################
-   26     10000     gpu    1    0.0s     1.3s     1.5s     3.0s     586     1.8s     ####################
-   27     11111     gpu    1    0.0s     2.7s     2.9s     4.0s     595     3.4s     ###########################
-   28     12500     gpu    1    0.0s     1.5s     1.7s     3.0s     584     1.9s     ####################
-   29     10000     gpu    1    0.0s     2.9s     3.1s     4.1s     581     3.5s     ############################
-   30     10000     gpu    1    0.0s     3.0s     3.2s     4.1s     588     3.5s     ############################
-   31     10000     gpu    1    0.0s     2.8s     3.0s     3.7s     580     3.1s     #########################
-   32     28571     gpu    1    0.0s     2.6s     2.9s     3.8s     581     3.1s     #########################
-   33     10000     gpu    1    0.0s     2.5s     2.7s     3.7s     576     3.2s     #########################
-   34     10000     gpu    1    0.0s     1.1s     1.3s     3.0s     602     1.7s     ####################
-   35     25000     gpu    1    0.0s     0.5s     0.8s     3.0s     597     1.4s     ####################
-   36     10000     gpu    1    0.0s     1.1s     1.3s     3.0s     588     1.3s     ####################
-   37     10000     gpu    1    0.0s     0.9s     1.1s     3.0s     575     1.4s     ####################
-   38     10000     gpu    1    0.0s     1.5s     1.8s     3.0s     571     1.9s     ####################
-   39     15385     gpu    1    0.0s     1.9s     2.2s     3.1s     584     2.5s     #####################
-   40     22222     gpu    1    0.0s     3.2s     3.4s     4.1s     570     3.5s     ############################
-   41     11765     gpu    1    0.0s     2.4s     2.6s     3.7s     583     3.1s     #########################
-   42     10526     gpu    1    0.0s     1.5s     1.7s     3.0s     579     2.1s     ####################
-   43     10000     gpu    1    0.0s     1.0s     1.3s     3.0s     593     1.7s     ####################
-   44     10000     gpu    1    0.0s     2.5s     2.7s     3.4s     580     2.7s     #######################
-   45     10000     gpu    1    0.0s     3.1s     3.4s     4.4s     591     3.8s     ##############################
-   46     50000     gpu    1    0.0s     1.6s     1.9s     3.0s     545     2.3s     ####################
-   47     20000     gpu    1    0.0s     2.0s     2.2s     3.1s     578     2.4s     #####################
-   48     10000     gpu    1    0.0s     2.7s     3.0s     4.0s     577     3.4s     ###########################
-   49     10000     gpu    1    0.0s     1.1s     1.3s     3.0s     572     1.5s     ####################
+   0      10000     gpu    1    0.0s     0.7s     1.0s     3.0s     590     1.0s     ####################
+   1      10000     gpu    1    0.0s     0.0s     0.3s     3.0s     591     0.6s     ####################
+   2      33333     gpu    1    0.0s     0.4s     0.7s     3.0s     566     1.1s     ###################
+   3      10000     gpu    1    0.0s     1.2s     1.4s     3.0s     584     1.7s     ####################
+   4      10000     gpu    1    0.0s     0.5s     0.7s     3.0s     550     0.7s     ####################
+   5      66667     gpu    1    0.0s     1.6s     2.0s     3.1s     606     2.3s     ####################
+   6      10000     gpu    1    0.0s     1.6s     1.9s     3.4s     555     2.6s     ######################
+   7      10000     gpu    1    0.0s     1.6s     1.8s     3.0s     571     1.9s     ####################
+   8      10000     gpu    1    0.0s     2.5s     2.7s     3.5s     581     2.9s     #######################
+   9      10000     gpu    1    0.0s     2.4s     2.6s     3.6s     577     3.0s     #######################
+   10     10000     gpu    1    0.0s     0.3s     0.5s     3.0s     580     0.5s     ###################
+   11     18182     gpu    1    0.0s     0.7s     0.9s     3.0s     564     1.1s     ###################
+   12     16667     gpu    1    0.0s     1.6s     1.8s     3.0s     542     2.1s     ###################
+   13     10000     gpu    1    0.0s     1.8s     2.1s     3.0s     557     2.2s     ####################
+   14     14286     gpu    1    0.0s     1.1s     1.4s     3.0s     601     1.7s     ####################
+   15     13333     gpu    1    0.0s     1.0s     1.2s     3.0s     582     1.3s     ####################
+   16     10000     gpu    1    0.0s     2.6s     2.9s     3.9s     563     3.3s     ##########################
+   17     100000    gpu    1    0.0s     3.1s     3.6s     4.5s     588     3.9s     ##############################
+   18     10000     gpu    1    0.0s     3.0s     3.2s     4.1s     580     3.4s     ##########################
+   19     10000     gpu    1    0.0s     2.2s     2.4s     3.1s     582     2.5s     ####################
+   20     10000     gpu    1    0.0s     1.4s     1.6s     3.0s     552     2.0s     ###################
+   21     40000     gpu    1    0.0s     1.8s     2.1s     3.3s     591     2.6s     ######################
+   22     10000     gpu    1    0.0s     1.2s     1.4s     3.0s     559     1.6s     ####################
+   23     200000    gpu    1    0.0s     2.1s     2.9s     3.8s     569     3.2s     #########################
+   24     10000     gpu    1    0.0s     1.4s     1.6s     3.0s     568     1.7s     ####################
+   25     10000     gpu    1    0.0s     0.4s     0.7s     3.0s     560     0.8s     ###################
+   26     10000     gpu    1    0.0s     0.2s     0.4s     3.0s     586     0.8s     ###################
+   27     11111     gpu    1    0.0s     0.7s     0.9s     3.0s     595     1.4s     ###################
+   28     12500     gpu    1    0.0s     2.0s     2.3s     3.1s     584     2.4s     ####################
+   29     10000     gpu    1    0.0s     2.9s     3.1s     4.1s     581     3.5s     ###########################
+   30     10000     gpu    1    0.0s     0.3s     0.5s     3.0s     588     0.5s     ####################
+   31     10000     gpu    1    0.0s     0.5s     0.7s     3.0s     580     1.1s     ###################
+   32     28571     gpu    1    0.0s     2.9s     3.1s     3.8s     581     3.1s     #########################
+   33     10000     gpu    1    0.0s     2.5s     2.7s     3.7s     576     3.2s     ########################
+   34     10000     gpu    1    0.0s     2.3s     2.5s     3.4s     602     2.7s     ######################
+   35     25000     gpu    1    0.0s     3.0s     3.2s     3.9s     597     3.3s     #########################
+   36     10000     gpu    1    0.0s     0.9s     1.1s     3.0s     588     1.3s     ####################
+   37     10000     gpu    1    0.0s     2.3s     2.5s     3.4s     575     2.9s     ######################
+   38     10000     gpu    1    0.0s     2.7s     3.0s     4.0s     571     3.4s     ##########################
+   39     15385     gpu    1    0.0s     1.4s     1.6s     3.0s     584     2.0s     ###################
+   40     22222     gpu    1    0.0s     2.7s     3.0s     3.6s     570     3.0s     #######################
+   41     11765     gpu    1    0.0s     1.4s     1.6s     3.0s     583     2.1s     ###################
+   42     10526     gpu    1    0.0s     2.1s     2.3s     3.2s     579     2.6s     #####################
+   43     10000     gpu    1    0.0s     3.1s     3.3s     4.3s     593     3.7s     ############################
+   44     10000     gpu    1    0.0s     1.2s     1.4s     3.0s     580     1.7s     ####################
+   45     10000     gpu    1    0.0s     3.2s     3.4s     4.4s     591     3.8s     #############################
+   46     50000     gpu    1    0.0s     1.9s     2.2s     3.0s     545     2.3s     ###################
+   47     20000     gpu    1    0.0s     0.9s     1.2s     3.0s     578     1.4s     ###################
+   48     10000     gpu    1    0.0s     0.9s     1.2s     3.0s     577     1.4s     ###################
+   49     10000     gpu    1    0.0s     0.7s     0.9s     3.0s     572     1.0s     ####################
    
 
 == round events (simulator log)
-   level=INFO msg="round started" round_id=12 scenario=skewed seed=3 n_shards=50 time_scale=10
-   level=INFO msg="round finished" round_id=12 duration=4.377s duration_modeled=43.772s straggler_lag=1.292s builds_gpu=50 builds_local=0 queries=28865
+   level=INFO msg="round started" round_id=34 scenario=skewed seed=3 n_shards=50 time_scale=10
+   level=INFO msg="round finished" round_id=34 duration=4.511s duration_modeled=45.113s straggler_lag=1.499s builds_gpu=50 builds_local=0 queries=28865
 
 == round rows (from the scheduler API)
-   round 12: n_shards=50 finished=2026-10-18T07:21:42.181983Z
-   builds: 0:12=gpu/done@1, 1:12=gpu/done@1, 2:12=gpu/done@1, 3:12=gpu/done@1, 4:12=gpu/done@1, 5:12=gpu/done@1, 6:12=gpu/done@1, 7:12=gpu/done@1, 8:12=gpu/done@1, 9:12=gpu/done@1, 10:12=gpu/done@1, 11:12=gpu/done@1 ...
+   round 34: n_shards=50 finished=2026-10-18T07:44:34.485922Z
+   builds: 0:34=gpu/done@1, 1:34=gpu/done@1, 2:34=gpu/done@1, 3:34=gpu/done@1, 4:34=gpu/done@1, 5:34=gpu/done@1, 6:34=gpu/done@1, 7:34=gpu/done@1, 8:34=gpu/done@1, 9:34=gpu/done@1, 10:34=gpu/done@1, 11:34=gpu/done@1 ...
    states: done=50 other=0; attempts>1: 0
    queries recorded: 28865, finished: 28865
 
 == scheduler log since the run started (counts, then everything that is not a placement)
-   build placed x50, round started x1
-   INFO round started round_id=12 scenario=skewed seed=3 n_shards=50
+   build placed x50, round started x1, rounds finished x1
+   INFO round started round_id=34 scenario=skewed seed=3 n_shards=50
+   INFO rounds finished count=1
+
+== Result: PASS
+
+#### 4. 50 shards, 2 workers, the scheduler pod deleted mid-round (bug 10: the stall must be a second or so, not the client's 10 s timeout)
+== k8s round from outside the cluster: scenario=skewed shards=50 workers=2 seed=4 rounds=1 time_scale=10 kill_worker=0
+   scheduler: http://127.0.0.1:30080 (NodePort); the simulator runs on this machine, not in a pod
+   pool: 2 live: worker-55789b76c-5fkxn, worker-55789b76c-74pcb
+   +2 s: deleted scheduler pod scheduler-7c7968dcbb-vwt26 mid-round
+   replacement scheduler-7c7968dcbb-66td4 ready 0.8 s after the deletion
+   the deleted pod's last lines while terminating: build placed | build placed | shutdown requested; serving for the shutdown delay while endpoints update delay=3000000000
+   simulator exited 0 after 9 s
+
+== the shards' view of the scheduler deletion (retry warnings in the simulator log)
+   0 retry warnings: 
+
+== timeline (simulator output)
+   round 35  scenario=skewed seed=4  time_scale=10
+   duration 7.4s real (74.0s modeled)   straggler lag 2.8s   builds: 50 gpu, 0 local   queries: 31150
+   query latency (slowest piece): fan-out p50 4.0s p99 6.6s (n=1090)   single-shard p50 0.0s p99 6.2s (n=2480)
+   shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+   0      10000     gpu    1    0.0s     0.1s     0.3s     3.0s     580     0.5s     ############
+   1      10000     gpu    1    0.0s     4.8s     5.0s     5.7s     614     5.1s     #######################
+   2      10000     gpu    1    0.0s     1.2s     1.5s     3.0s     619     1.6s     ############
+   3      10000     gpu    1    0.0s     1.3s     1.5s     3.0s     618     1.7s     ############
+   4      15385     gpu    1    0.0s     2.2s     2.5s     3.5s     634     2.7s     ##############
+   5      11111     gpu    1    0.0s     2.0s     2.2s     3.1s     609     2.3s     ############
+   6      66667     gpu    1    0.0s     4.4s     4.7s     5.6s     647     4.8s     ######################
+   7      40000     gpu    1    0.0s     2.5s     2.8s     3.6s     640     2.9s     ##############
+   8      10000     gpu    1    0.0s     4.7s     5.0s     6.2s     622     5.4s     ########################
+   9      10000     gpu    1    0.0s     4.3s     4.6s     5.7s     634     5.0s     ######################
+   10     10000     gpu    1    0.0s     3.4s     3.7s     4.6s     578     4.0s     ##################
+   11     10000     gpu    1    0.0s     2.5s     2.7s     3.8s     633     3.1s     ###############
+   12     10000     gpu    1    0.0s     2.0s     2.2s     3.7s     636     2.6s     ###############
+   13     28571     gpu    1    0.0s     2.7s     3.0s     3.9s     610     3.2s     ###############
+   14     12500     gpu    1    0.0s     3.0s     3.2s     4.0s     619     3.2s     ################
+   15     10000     gpu    1    0.0s     3.2s     3.4s     4.4s     608     3.8s     #################
+   16     10000     gpu    1    0.0s     5.5s     5.7s     6.5s     618     5.8s     ##########################
+   17     10000     gpu    1    0.0s     5.7s     5.9s     7.0s     639     6.4s     ############################
+   18     10000     gpu    1    0.0s     6.1s     6.4s     7.2s     627     6.4s     #############################
+   19     10000     gpu    1    0.0s     1.5s     1.7s     3.0s     613     2.0s     ############
+   20     10000     gpu    1    0.0s     1.0s     1.2s     3.0s     602     1.5s     ############
+   21     10526     gpu    1    0.0s     3.6s     3.9s     4.8s     638     4.1s     ###################
+   22     10000     gpu    1    0.0s     3.9s     4.1s     4.8s     629     4.1s     ###################
+   23     14286     gpu    1    0.0s     0.8s     1.0s     3.0s     660     1.2s     ############
+   24     13333     gpu    1    0.0s     0.5s     0.8s     3.0s     610     1.2s     ############
+   25     10000     gpu    1    0.0s     3.4s     3.6s     4.6s     644     3.8s     ##################
+   26     20000     gpu    1    0.0s     5.4s     5.7s     6.5s     585     5.8s     ##########################
+   27     50000     gpu    1    0.0s     1.7s     2.0s     3.1s     622     2.4s     ############
+   28     10000     gpu    1    0.0s     3.9s     4.1s     5.0s     618     4.4s     ####################
+   29     200000    gpu    1    0.0s     0.3s     1.0s     3.0s     615     1.5s     ############
+   30     11765     gpu    1    0.0s     5.0s     5.2s     6.2s     615     5.5s     #########################
+   31     10000     gpu    1    0.0s     4.6s     4.8s     5.8s     621     5.1s     #######################
+   32     10000     gpu    1    0.0s     2.2s     2.5s     3.3s     622     2.6s     #############
+   33     10000     gpu    1    0.0s     2.8s     3.0s     3.8s     628     3.2s     ###############
+   34     10000     gpu    1    0.0s     3.0s     3.2s     3.9s     634     3.2s     ###############
+   35     16667     gpu    1    0.0s     3.2s     3.4s     4.4s     623     3.8s     #################
+   36     33333     gpu    1    0.0s     4.1s     4.4s     5.6s     642     4.8s     ######################
+   37     18182     gpu    1    0.0s     5.2s     5.4s     6.6s     618     5.9s     ##########################
+   38     10000     gpu    1    0.0s     5.7s     5.9s     6.6s     628     5.9s     ##########################
+   39     10000     gpu    1    0.0s     5.9s     6.1s     7.1s     628     6.5s     ############################
+   40     100000    gpu    1    0.0s     1.5s     2.0s     3.0s     626     2.0s     ############
+   41     10000     gpu    1    0.0s     0.3s     0.5s     3.0s     633     0.6s     ############
+   42     10000     gpu    1    0.0s     3.7s     3.9s     4.8s     605     4.1s     ###################
+   43     10000     gpu    1    0.0s     6.4s     6.6s     7.4s     644     6.7s     ##############################
+   44     10000     gpu    1    0.0s     4.1s     4.3s     5.4s     600     4.7s     #####################
+   45     10000     gpu    1    0.0s     5.9s     6.2s     6.9s     632     6.3s     ############################
+   46     10000     gpu    1    0.0s     5.0s     5.2s     6.1s     643     5.3s     ########################
+   47     22222     gpu    1    0.0s     5.2s     5.5s     6.6s     643     5.9s     ##########################
+   48     10000     gpu    1    0.0s     6.2s     6.4s     7.1s     618     6.4s     ############################
+   49     25000     gpu    1    0.0s     1.0s     1.3s     3.0s     626     1.5s     ############
+   
+
+== round events (simulator log)
+   level=INFO msg="round started" round_id=35 scenario=skewed seed=4 n_shards=50 time_scale=10
+   level=INFO msg="round finished" round_id=35 duration=7.405s duration_modeled=1m14.049s straggler_lag=2.799s builds_gpu=50 builds_local=0 queries=31150
+
+== round rows (from the scheduler API)
+   round 35: n_shards=50 finished=2026-10-18T07:44:43.410454Z
+   builds: 0:35=gpu/done@1, 1:35=gpu/done@1, 2:35=gpu/done@1, 3:35=gpu/done@1, 4:35=gpu/done@1, 5:35=gpu/done@1, 6:35=gpu/done@1, 7:35=gpu/done@1, 8:35=gpu/done@1, 9:35=gpu/done@1, 10:35=gpu/done@1, 11:35=gpu/done@1 ...
+   states: done=50 other=0; attempts>1: 0
+   queries recorded: 31150, finished: 31150
+
+== scheduler log since the run started (counts, then everything that is not a placement)
+   connected to postgres x1, migrations checked x1, scheduler listening x1
+   INFO connected to postgres 
+   INFO migrations checked applied_now=None already_applied=4 waited_for_lock=0
+   INFO scheduler listening addr=:8080 policy=always_gpu reap_interval=2000000000 max_attempts=5 worker_stale_after=15000000000
 
 == Result: PASS
 

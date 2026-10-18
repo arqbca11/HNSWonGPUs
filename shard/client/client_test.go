@@ -84,3 +84,29 @@ func TestJobStartTreats409AsRecorded(t *testing.T) {
 	}
 	t.Log("409 on start and done accepted as 'already recorded'")
 }
+
+// Bug 10: a connection attempt that gets no answer at all (the address of a
+// pod that no longer exists, before the Service's forwarding rules have
+// dropped it) must fail within DialTimeout, not the 10 s request timeout, so
+// the retry re-dials and lands on the replacement. 192.0.2.1 is TEST-NET-1:
+// reserved, never routed, a reliable black hole.
+func TestBlackHoleDialFailsFastAndIsRetried(t *testing.T) {
+	old := DialTimeout
+	DialTimeout = 300 * time.Millisecond
+	defer func() { DialTimeout = old }()
+	c := New("http://192.0.2.1:9")
+	c.RetryFor = 1200 * time.Millisecond
+	start := time.Now()
+	_, err := c.do(context.Background(), "GET", "/healthz", nil, nil, 200)
+	el := time.Since(start)
+	t.Logf("black-holed address, dial timeout %s, retry budget %s: err=%v after %s", DialTimeout, c.RetryFor, err, el.Round(time.Millisecond))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	// Each attempt is bounded by the dial timeout, so several attempts fit in the
+	// budget; without the dial timeout the first attempt alone would take 10 s.
+	if el > 3*time.Second {
+		t.Fatalf("took %s: the dial timeout did not bound the attempt", el)
+	}
+	t.Logf("the attempt was bounded by the dial timeout and retried inside the budget (decision 29)")
+}

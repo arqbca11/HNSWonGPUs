@@ -4,6 +4,7 @@
 #   1. 6 shards, 2 workers (the default configuration)
 #   2. 50 shards, 2 workers, the leaseholder of the largest build deleted mid-round
 #   3. 50 shards, 4 workers (every card)
+#   4. 50 shards, 2 workers, the scheduler pod deleted mid-round: the shards' stall is measured (bug 10)
 # Saves test-logs/phase2/step4-shards-outside.log.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,5 +18,6 @@ echo "   No shard pods exist in the cluster: $(kubectl -n kgpu get pods -l app=s
 run "1. 6 shards, 2 workers" env N_SHARDS=6 WORKERS=2 scripts/k8s-round.sh
 run "2. 50 shards, 2 workers, a worker pod deleted mid-round (50 shards so the round is long enough to strike)" env N_SHARDS=50 WORKERS=2 SEED=2 KILL_WORKER=1 scripts/k8s-round.sh
 run "3. 50 shards, 4 workers (every card)" env N_SHARDS=50 WORKERS=4 SEED=3 scripts/k8s-round.sh
+run "4. 50 shards, 2 workers, the scheduler pod deleted mid-round (bug 10: the stall must be a second or so, not the client's 10 s timeout)" env N_SHARDS=50 WORKERS=2 SEED=4 KILL_SCHEDULER=1 scripts/k8s-round.sh
 kubectl -n kgpu scale deployment/worker --replicas=2 >/dev/null
 echo; echo "== Result: $result"; echo "log: $log"; [ "$result" = PASS ]

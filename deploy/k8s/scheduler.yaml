@@ -46,6 +46,8 @@ spec:
       labels:
         app: scheduler
     spec:
+      # SIGTERM, then the scheduler serves SHUTDOWN_DELAY (3 s) while the Service
+      # update reaches every node, then drains in-flight requests (up to 10 s).
       terminationGracePeriodSeconds: 15
       containers:
         - name: scheduler

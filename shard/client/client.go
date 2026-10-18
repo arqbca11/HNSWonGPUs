@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 )
@@ -28,7 +29,7 @@ type Client struct {
 }
 
 func New(base string) *Client {
-	return &Client{base: base, http: &http.Client{Timeout: 10 * time.Second}, RetryFor: 60 * time.Second}
+	return &Client{base: base, http: &http.Client{Timeout: 10 * time.Second, Transport: transport()}, RetryFor: 60 * time.Second}
 }
 
 // transientError marks a failure worth retrying.
@@ -230,6 +231,21 @@ func (c *Client) Healthy(ctx context.Context) bool {
 	_, err := c.do(ctx, "GET", "/healthz", nil, nil, 200)
 	return err == nil
 }
+
+// transport is the default transport with a short dial timeout. A connection
+// attempt that gets no answer at all (a SYN to an address nobody owns, which
+// is what a just-deleted pod's IP looks like until every node's forwarding
+// rules have dropped it) must fail fast so the retry re-dials and lands on
+// the replacement; the 10 s request timeout is for slow replies, not for
+// black holes (bug 10).
+func transport() *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: DialTimeout, KeepAlive: 30 * time.Second}).DialContext
+	return tr
+}
+
+// DialTimeout bounds one connection attempt. Package-level so tests can shorten it.
+var DialTimeout = 2 * time.Second
 
 // do sends one request, retrying transient failures with backoff for up to
 // RetryFor, and decodes the JSON reply. A status outside ok is an error

@@ -1,0 +1,205 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-18 00:33:13 PDT
+commit:    4c10d14 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-34560, port 29479)
+go:        go test -p 1 -count=1 -v -run KindOutside -timeout 40m ./scheduler/crosscheck/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestKindOutside
+    kindoutside_test.go:44: [k8s] worker ConfigMap FAKE_TIME_SCALE=10; every simulator here runs with TIME_SCALE=10 (shardsim header: must be the same number)
+    kindoutside_test.go:46: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-55789b76c-cbhf6(uid=5e5e7b95 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.10) worker-55789b76c-dnt4s(uid=bf4e1d76 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.9)]
+    kindoutside_test.go:46: [api] GET /workers: pool live_workers=2 after 0.0s
+=== RUN   TestKindOutside/NodePortIsTheOnlyDoor
+    kindoutside_test.go:78: [k8s] svc/scheduler: type=NodePort clusterIP=10.96.32.154 ports=[{Port:8080 NodePort:30080}]
+    kindoutside_test.go:83: [docker] port kgpu-control-plane 30080/tcp -> "127.0.0.1:30080" (err=<nil>)
+    kindoutside_test.go:90: [laptop] GET http://127.0.0.1:30080/livez -> 200 {"status":"alive"} (err=<nil>)
+    kindoutside_test.go:90: [laptop] GET http://127.0.0.1:30080/healthz -> 200 {"status":"ok"} (err=<nil>)
+    kindoutside_test.go:90: [laptop] GET http://127.0.0.1:30080/workers -> 200 {"pool":{"live_workers":2,"largest_mem_bytes":8589934592},"workers":[{"worker_id":"worker-55789b76c-cbhf6","mem_bytes":8 (err=<nil>)
+    kindoutside_test.go:104: [laptop] TCP connect 10.96.32.154:8080 -> err=dial tcp 10.96.32.154:8080: i/o timeout
+    kindoutside_test.go:104: [laptop] TCP connect 10.244.5.3:8080 -> err=dial tcp 10.244.5.3:8080: i/o timeout
+    kindoutside_test.go:111: [laptop] TCP connect node 172.18.0.4:30080 -> err=dial tcp 172.18.0.4:30080: i/o timeout (observation: Docker Desktop does not route the kind network to the host)
+    kindoutside_test.go:111: [laptop] TCP connect node 172.18.0.5:30080 -> err=dial tcp 172.18.0.5:30080: i/o timeout (observation: Docker Desktop does not route the kind network to the host)
+    kindoutside_test.go:111: [laptop] TCP connect node 172.18.0.2:30080 -> err=dial tcp 172.18.0.2:30080: i/o timeout (observation: Docker Desktop does not route the kind network to the host)
+    kindoutside_test.go:111: [laptop] TCP connect node 172.18.0.3:30080 -> err=dial tcp 172.18.0.3:30080: i/o timeout (observation: Docker Desktop does not route the kind network to the host)
+    kindoutside_test.go:111: [laptop] TCP connect node 172.18.0.6:30080 -> err=dial tcp 172.18.0.6:30080: i/o timeout (observation: Docker Desktop does not route the kind network to the host)
+    kindoutside_test.go:116: [laptop] TCP connect LAN address 192.168.1.90:30080 -> err=dial tcp 192.168.1.90:30080: connect: connection refused
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://scheduler:8080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://scheduler.kgpu.svc.cluster.local:8080/healthz -> 200 b'{"status":"ok"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://172.18.0.4:30080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://172.18.0.5:30080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://172.18.0.2:30080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://172.18.0.3:30080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+    kindoutside_test.go:137: [in-cluster worker-55789b76c-cbhf6] GET http://172.18.0.6:30080/livez -> 200 b'{"status":"alive"}\n'  (err=<nil>)
+=== RUN   TestKindOutside/BimodalRoundFromLaptop
+    kindoutside_test.go:150: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-55789b76c-cbhf6(uid=5e5e7b95 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.10) worker-55789b76c-dnt4s(uid=bf4e1d76 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.9)]
+    kindoutside_test.go:150: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindoutside_test.go:153: started shardsim pid 34683 with [LOG_FORMAT=text MIN_WORKERS=1 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=bimodal SCHEDULER_URL=http://127.0.0.1:30080 SEED=4201 TIME_SCALE=10]
+    kindoutside_test.go:155: [k8s] pod watch: 6 samples of `kubectl get pods -A` during the run; apps seen in kgpu: [postgres scheduler worker]; unexpected pods: map[]
+    kindoutside_test.go:156: [shards] simulator exited 0 after 4.5s
+    kindoutside_test.go:164: [api http://127.0.0.1:30080] GET /rounds/22: scenario=bimodal seed=4201 n_shards=6 finished_at-started_at=3.41s, 6 builds, 3669 queries
+    kindoutside_test.go:164: [check] round 22 builds by attempt: map[1:6]; completions by worker pod: map[worker-55789b76c-cbhf6:5 worker-55789b76c-dnt4s:1]
+    kindoutside_test.go:164: [workload] round 22 (bimodal seed 4201, 6 shards): 3669 recorded queries vs 3669 in the workload, 0 field mismatches; arrivals worst late +0.002s, worst early +0.000s
+    kindoutside_test.go:164: [shards] time=2026-10-18T00:33:38.466-07:00 level=INFO msg="round finished" round_id=22 duration=3.41s duration_modeled=34.103s straggler_lag=402ms builds_gpu=6 builds_local=0 queries=3669
+    kindoutside_test.go:164: [shards] round 22  scenario=bimodal seed=4201  time_scale=10 | duration 3.4s real (34.1s modeled)   straggler lag 0.4s   builds: 6 gpu, 0 local   queries: 3669
+    kindoutside_test.go:164: [verify] round 22 complete and correct from outside: 6 builds done once each, 3669 queries finished, matching the seeded workload
+=== RUN   TestKindOutside/SchedulerPodDeletedMidRound
+    kindoutside_test.go:184: [k8s] 2 worker pod(s) Ready in kgpu after 0.1s: [worker-55789b76c-cbhf6(uid=5e5e7b95 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.10) worker-55789b76c-dnt4s(uid=bf4e1d76 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.9)]
+    kindoutside_test.go:184: [api] GET /workers: pool live_workers=2 after 0.1s
+    kindoutside_test.go:190: [k8s] scheduler pod before: scheduler-dbc976bcf-xtz7q(uid=fb7d7f86 node=kgpu-worker2 phase=Running ready=true restarts=0 ip=10.244.5.3)
+    kindoutside_test.go:192: started shardsim pid 34701 with [LOG_FORMAT=text MIN_WORKERS=1 N_SHARDS=30 ROUNDS=2 ROUND_TIMEOUT=5m SCENARIO=uniform SCHEDULER_URL=http://127.0.0.1:30080 SEED=4301 TIME_SCALE=10]
+    kindoutside_test.go:228: [kubectl] delete pod scheduler-dbc976bcf-xtz7q (graceful) while round 23 runs
+    kindoutside_test.go:241: [k8s] replacement scheduler pod Ready 1.3s after the delete: scheduler-dbc976bcf-w96cb(uid=0090568f node=kgpu-worker2 phase=Running ready=true restarts=0 ip=10.244.5.4)
+    kindoutside_test.go:248: [laptop] NodePort /healthz probe: 209 ok, 2 failed, failures from +0.10s to +1.21s after the delete
+    kindoutside_test.go:254: [shards] simulator exited 0 after 23.0s
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.685-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/21/report" attempt=1 in=200ms err="POST /shards/23/21/report: Post \"http://127.0.0.1:30080/shards/23/21/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.704-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/1/report" attempt=1 in=200ms err="POST /shards/23/1/report: Post \"http://127.0.0.1:30080/shards/23/1/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.705-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/11/report" attempt=1 in=200ms err="POST /shards/23/11/report: Post \"http://127.0.0.1:30080/shards/23/11/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.733-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/12/report" attempt=1 in=200ms err="POST /shards/23/12/report: Post \"http://127.0.0.1:30080/shards/23/12/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.733-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/22/report" attempt=1 in=200ms err="POST /shards/23/22/report: Post \"http://127.0.0.1:30080/shards/23/22/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:39.736-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/2/report" attempt=1 in=200ms err="POST /shards/23/2/report: Post \"http://127.0.0.1:30080/shards/23/2/report\": EOF"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.794-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/3/report" attempt=1 in=200ms err="POST /shards/23/3/report: Post \"http://127.0.0.1:30080/shards/23/3/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.802-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/13/report" attempt=1 in=200ms err="POST /shards/23/13/report: Post \"http://127.0.0.1:30080/shards/23/13/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.804-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/23/report" attempt=1 in=200ms err="POST /shards/23/23/report: Post \"http://127.0.0.1:30080/shards/23/23/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.837-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/14/report" attempt=1 in=200ms err="POST /shards/23/14/report: Post \"http://127.0.0.1:30080/shards/23/14/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.843-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/24/report" attempt=1 in=200ms err="POST /shards/23/24/report: Post \"http://127.0.0.1:30080/shards/23/24/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.845-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/4/report" attempt=1 in=200ms err="POST /shards/23/4/report: Post \"http://127.0.0.1:30080/shards/23/4/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.885-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/25/report" attempt=1 in=200ms err="POST /shards/23/25/report: Post \"http://127.0.0.1:30080/shards/23/25/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.886-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/21/report" attempt=2 in=400ms err="POST /shards/23/21/report: Post \"http://127.0.0.1:30080/shards/23/21/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.889-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/5/report" attempt=1 in=200ms err="POST /shards/23/5/report: Post \"http://127.0.0.1:30080/shards/23/5/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.889-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/15/report" attempt=1 in=200ms err="POST /shards/23/15/report: Post \"http://127.0.0.1:30080/shards/23/15/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.904-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/1/report" attempt=2 in=400ms err="POST /shards/23/1/report: Post \"http://127.0.0.1:30080/shards/23/1/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.905-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/11/report" attempt=2 in=400ms err="POST /shards/23/11/report: Post \"http://127.0.0.1:30080/shards/23/11/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.929-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/26/report" attempt=1 in=200ms err="POST /shards/23/26/report: Post \"http://127.0.0.1:30080/shards/23/26/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.933-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/12/report" attempt=2 in=400ms err="POST /shards/23/12/report: Post \"http://127.0.0.1:30080/shards/23/12/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.933-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/22/report" attempt=2 in=400ms err="POST /shards/23/22/report: Post \"http://127.0.0.1:30080/shards/23/22/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.937-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/2/report" attempt=2 in=400ms err="POST /shards/23/2/report: Post \"http://127.0.0.1:30080/shards/23/2/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.942-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/6/report" attempt=1 in=200ms err="POST /shards/23/6/report: Post \"http://127.0.0.1:30080/shards/23/6/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.949-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/16/report" attempt=1 in=200ms err="POST /shards/23/16/report: Post \"http://127.0.0.1:30080/shards/23/16/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.996-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/17/report" attempt=1 in=200ms err="POST /shards/23/17/report: Post \"http://127.0.0.1:30080/shards/23/17/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.996-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/7/report" attempt=1 in=200ms err="POST /shards/23/7/report: Post \"http://127.0.0.1:30080/shards/23/7/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:49.997-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/27/report" attempt=1 in=200ms err="POST /shards/23/27/report: Post \"http://127.0.0.1:30080/shards/23/27/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.038-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/18/report" attempt=1 in=200ms err="POST /shards/23/18/report: Post \"http://127.0.0.1:30080/shards/23/18/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.041-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/28/report" attempt=1 in=200ms err="POST /shards/23/28/report: Post \"http://127.0.0.1:30080/shards/23/28/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.043-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/8/report" attempt=1 in=200ms err="POST /shards/23/8/report: Post \"http://127.0.0.1:30080/shards/23/8/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.077-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/29/report" attempt=1 in=200ms err="POST /shards/23/29/report: Post \"http://127.0.0.1:30080/shards/23/29/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.079-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/19/report" attempt=1 in=200ms err="POST /shards/23/19/report: Post \"http://127.0.0.1:30080/shards/23/19/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.099-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/9/report" attempt=1 in=200ms err="POST /shards/23/9/report: Post \"http://127.0.0.1:30080/shards/23/9/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.131-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/20/report" attempt=1 in=200ms err="POST /shards/23/20/report: Post \"http://127.0.0.1:30080/shards/23/20/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.150-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/10/report" attempt=1 in=200ms err="POST /shards/23/10/report: Post \"http://127.0.0.1:30080/shards/23/10/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:259: [shards observation] time=2026-10-18T00:33:50.151-07:00 level=WARN msg="scheduler call failed, retrying" round_id=23 call="POST /shards/23/0/report" attempt=1 in=200ms err="POST /shards/23/0/report: Post \"http://127.0.0.1:30080/shards/23/0/report\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+    kindoutside_test.go:279: [shards] retry lines by kind map[EOF:6 client timeout:30]; the last one +10.54s after the delete (the replacement pod was Ready at +1.32s)
+    kindoutside_test.go:295: [api http://127.0.0.1:30080] GET /rounds/23: scenario=uniform seed=4301 n_shards=30 finished_at-started_at=11.44s, 30 builds, 6309 queries
+    kindoutside_test.go:295: [check] round 23 builds by attempt: map[1:30]; completions by worker pod: map[worker-55789b76c-cbhf6:15 worker-55789b76c-dnt4s:15]
+    kindoutside_test.go:295: [workload] round 23 (uniform seed 4301, 30 shards): 6309 recorded queries vs 6309 in the workload, 0 field mismatches; arrivals worst late +0.004s, worst early +0.000s
+    kindoutside_test.go:295: [shards] time=2026-10-18T00:33:51.334-07:00 level=INFO msg="round finished" round_id=23 duration=11.436s duration_modeled=1m54.364s straggler_lag=125ms builds_gpu=30 builds_local=0 queries=6309
+    kindoutside_test.go:295: [shards] round 23  scenario=uniform seed=4301  time_scale=10 | duration 11.4s real (114.4s modeled)   straggler lag 0.1s   builds: 30 gpu, 0 local   queries: 6309
+    kindoutside_test.go:295: [verify] round 23 complete and correct from outside: 30 builds done once each, 6309 queries finished, matching the seeded workload
+    kindoutside_test.go:297: [check] round 23: started 07:33:39.120, scheduler deleted 07:33:39.615, finished 07:33:50.557
+    kindoutside_test.go:295: [api http://127.0.0.1:30080] GET /rounds/24: scenario=uniform seed=4302 n_shards=30 finished_at-started_at=8.05s, 30 builds, 6380 queries
+    kindoutside_test.go:295: [check] round 24 builds by attempt: map[1:30]; completions by worker pod: map[worker-55789b76c-cbhf6:16 worker-55789b76c-dnt4s:14]
+    kindoutside_test.go:295: [workload] round 24 (uniform seed 4302, 30 shards): 6380 recorded queries vs 6380 in the workload, 0 field mismatches; arrivals worst late +0.006s, worst early +0.000s
+    kindoutside_test.go:295: [shards] time=2026-10-18T00:34:02.120-07:00 level=INFO msg="round finished" round_id=24 duration=8.049s duration_modeled=1m20.488s straggler_lag=3.494s builds_gpu=30 builds_local=0 queries=6380
+    kindoutside_test.go:295: [shards] round 24  scenario=uniform seed=4302  time_scale=10 | duration 8.0s real (80.5s modeled)   straggler lag 3.5s   builds: 30 gpu, 0 local   queries: 6380
+    kindoutside_test.go:295: [verify] round 24 complete and correct from outside: 30 builds done once each, 6380 queries finished, matching the seeded workload
+    kindoutside_test.go:308: [check] GET /rounds/23 after the run was answered by scheduler-dbc976bcf-w96cb, the only scheduler pod (the round's data lives in Postgres, invariant 1)
+=== RUN   TestKindOutside/TwoSimulatorsAtOnce
+    kindoutside_test.go:318: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-55789b76c-cbhf6(uid=5e5e7b95 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.10) worker-55789b76c-dnt4s(uid=bf4e1d76 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.9)]
+    kindoutside_test.go:318: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindoutside_test.go:320: started shardsim pid 34762 with [LOG_FORMAT=text MIN_WORKERS=1 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=staggered SCHEDULER_URL=http://127.0.0.1:30080 SEED=4401 TIME_SCALE=10]
+    kindoutside_test.go:321: started shardsim pid 34764 with [LOG_FORMAT=text MIN_WORKERS=1 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=staggered SCHEDULER_URL=http://127.0.0.1:30080 SEED=4402 TIME_SCALE=10]
+    kindoutside_test.go:324: [shards] simulator A started round 25 (seed 4401), B round 26 (seed 4402)
+    kindoutside_test.go:326: [k8s] pod watch: 6 samples of `kubectl get pods -A` during the run; apps seen in kgpu: [postgres scheduler worker]; unexpected pods: map[]
+    kindoutside_test.go:327: [shards] A exited 0 after 5.0s, B exited 0 after 5.4s
+    kindoutside_test.go:335: [api http://127.0.0.1:30080] GET /rounds/25: scenario=staggered seed=4401 n_shards=6 finished_at-started_at=4.02s, 6 builds, 4742 queries
+    kindoutside_test.go:335: [check] round 25 builds by attempt: map[1:6]; completions by worker pod: map[worker-55789b76c-cbhf6:2 worker-55789b76c-dnt4s:4]
+    kindoutside_test.go:335: [workload] round 25 (staggered seed 4401, 6 shards): 4742 recorded queries vs 4742 in the workload, 0 field mismatches; arrivals worst late +0.004s, worst early +0.000s
+    kindoutside_test.go:335: [shards] time=2026-10-18T00:34:08.344-07:00 level=INFO msg="round finished" round_id=25 duration=4.019s duration_modeled=40.188s straggler_lag=18ms builds_gpu=6 builds_local=0 queries=4742
+    kindoutside_test.go:335: [shards] round 25  scenario=staggered seed=4401  time_scale=10 | duration 4.0s real (40.2s modeled)   straggler lag 0.0s   builds: 6 gpu, 0 local   queries: 4742
+    kindoutside_test.go:335: [verify] round 25 complete and correct from outside: 6 builds done once each, 4742 queries finished, matching the seeded workload
+    kindoutside_test.go:336: [api http://127.0.0.1:30080] GET /rounds/26: scenario=staggered seed=4402 n_shards=6 finished_at-started_at=4.38s, 6 builds, 4801 queries
+    kindoutside_test.go:336: [check] round 26 builds by attempt: map[1:6]; completions by worker pod: map[worker-55789b76c-cbhf6:4 worker-55789b76c-dnt4s:2]
+    kindoutside_test.go:336: [workload] round 26 (staggered seed 4402, 6 shards): 4801 recorded queries vs 4801 in the workload, 0 field mismatches; arrivals worst late +0.003s, worst early +0.000s
+    kindoutside_test.go:336: [shards] time=2026-10-18T00:34:08.771-07:00 level=INFO msg="round finished" round_id=26 duration=4.378s duration_modeled=43.775s straggler_lag=368ms builds_gpu=6 builds_local=0 queries=4801
+    kindoutside_test.go:336: [shards] round 26  scenario=staggered seed=4402  time_scale=10 | duration 4.4s real (43.8s modeled)   straggler lag 0.4s   builds: 6 gpu, 0 local   queries: 4801
+    kindoutside_test.go:336: [verify] round 26 complete and correct from outside: 6 builds done once each, 4801 queries finished, matching the seeded workload
+    kindoutside_test.go:341: [check] round 25 07:34:03.386..07:34:07.405, round 26 07:34:03.387..07:34:07.764, overlap=true
+=== RUN   TestKindOutside/NoWorkersThenScaleUp
+    kindoutside_test.go:374: [kubectl] scale deployment/worker -n kgpu --replicas=0
+    kindoutside_test.go:375: [api] GET /workers: pool live_workers=0 after 1.1s
+    kindoutside_test.go:378: started shardsim pid 34790 with [LOG_FORMAT=text MIN_WORKERS=1 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=bimodal SCHEDULER_URL=http://127.0.0.1:30080 SEED=4501 TIME_SCALE=10]
+    kindoutside_test.go:379: started shardsim pid 34791 with [LOG_FORMAT=text MIN_WORKERS=0 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=bimodal SCHEDULER_URL=http://127.0.0.1:30080 SEED=4502 TIME_SCALE=10]
+    kindoutside_test.go:381: [shards] MIN_WORKERS=0 simulator started round 27 with an empty pool
+    kindoutside_test.go:398: [api] round 27 after 20 s with zero workers: 6 builds map[gpu/queued/attempt0:6], finished_at=<nil>
+    kindoutside_test.go:410: [kubectl] scale deployment/worker -n kgpu --replicas=2
+    kindoutside_test.go:411: [k8s] 2 worker pod(s) Ready in kgpu after 1.1s: [worker-55789b76c-lw6x6(uid=9a62929e node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.11) worker-55789b76c-zkw4v(uid=4b4bf444 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.10)]
+    kindoutside_test.go:411: [api] GET /workers: pool live_workers=2 after 1.1s
+    kindoutside_test.go:413: [shards] after scaling up: MIN_WORKERS=1 exited 0, MIN_WORKERS=0 exited 0
+    kindoutside_test.go:421: [api http://127.0.0.1:30080] GET /rounds/28: scenario=bimodal seed=4501 n_shards=6 finished_at-started_at=4.43s, 6 builds, 3704 queries
+    kindoutside_test.go:421: [check] round 28 builds by attempt: map[1:6]; completions by worker pod: map[worker-55789b76c-lw6x6:3 worker-55789b76c-zkw4v:3]
+    kindoutside_test.go:421: [workload] round 28 (bimodal seed 4501, 6 shards): 3704 recorded queries vs 3704 in the workload, 0 field mismatches; arrivals worst late +0.003s, worst early +0.000s
+    kindoutside_test.go:421: [shards] time=2026-10-18T00:34:38.508-07:00 level=INFO msg="round finished" round_id=28 duration=4.435s duration_modeled=44.348s straggler_lag=1.068s builds_gpu=6 builds_local=0 queries=3704
+    kindoutside_test.go:421: [shards] round 28  scenario=bimodal seed=4501  time_scale=10 | duration 4.4s real (44.3s modeled)   straggler lag 1.1s   builds: 6 gpu, 0 local   queries: 3704
+    kindoutside_test.go:421: [verify] round 28 complete and correct from outside: 6 builds done once each, 3704 queries finished, matching the seeded workload
+    kindoutside_test.go:425: [api http://127.0.0.1:30080] GET /rounds/27: scenario=bimodal seed=4502 n_shards=6 finished_at-started_at=24.20s, 6 builds, 3606 queries
+    kindoutside_test.go:425: [check] round 27 builds by attempt: map[1:6]; completions by worker pod: map[worker-55789b76c-lw6x6:4 worker-55789b76c-zkw4v:2]
+    kindoutside_test.go:425: [workload] round 27 (bimodal seed 4502, 6 shards): 3606 recorded queries vs 3606 in the workload, 0 field mismatches; arrivals worst late +0.005s, worst early +0.000s
+    kindoutside_test.go:425: [shards] time=2026-10-18T00:34:36.783-07:00 level=INFO msg="round finished" round_id=27 duration=24.205s duration_modeled=4m2.047s straggler_lag=393ms builds_gpu=6 builds_local=0 queries=3606
+    kindoutside_test.go:425: [shards] round 27  scenario=bimodal seed=4502  time_scale=10 | duration 24.2s real (242.0s modeled)   straggler lag 0.4s   builds: 6 gpu, 0 local   queries: 3606
+    kindoutside_test.go:425: [verify] round 27 complete and correct from outside: 6 builds done once each, 3606 queries finished, matching the seeded workload
+=== RUN   TestKindOutside/FiftyShardsFourWorkers
+    kindoutside_test.go:438: [kubectl] scale deployment/worker -n kgpu --replicas=4
+    kindoutside_test.go:440: [k8s] 4 worker pod(s) Ready in kgpu after 1.1s: [worker-55789b76c-5fkxn(uid=55c0c6ce node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.12) worker-55789b76c-lw6x6(uid=9a62929e node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.11) worker-55789b76c-ppllk(uid=f6750e1e node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.11) worker-55789b76c-zkw4v(uid=4b4bf444 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.10)]
+    kindoutside_test.go:440: [api] GET /workers: pool live_workers=4 after 1.1s
+    kindoutside_test.go:446: [k8s] 4 workers by node: map[kgpu-worker3:2 kgpu-worker4:2]
+    kindoutside_test.go:448: started shardsim pid 34867 with [LOG_FORMAT=text MIN_WORKERS=4 N_SHARDS=50 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=downstream_heavy SCHEDULER_URL=http://127.0.0.1:30080 SEED=4601 TIME_SCALE=10]
+    kindoutside_test.go:450: [k8s] pod watch: 8 samples of `kubectl get pods -A` during the run; apps seen in kgpu: [postgres scheduler worker]; unexpected pods: map[]
+    kindoutside_test.go:451: [shards] simulator exited 0 after 7.7s
+    kindoutside_test.go:459: [api http://127.0.0.1:30080] GET /rounds/29: scenario=downstream_heavy seed=4601 n_shards=50 finished_at-started_at=7.04s, 50 builds, 13013 queries
+    kindoutside_test.go:459: [check] round 29 builds by attempt: map[1:50]; completions by worker pod: map[worker-55789b76c-5fkxn:12 worker-55789b76c-lw6x6:13 worker-55789b76c-ppllk:13 worker-55789b76c-zkw4v:12]
+    kindoutside_test.go:459: [workload] round 29 (downstream_heavy seed 4601, 50 shards): 13013 recorded queries vs 13013 in the workload, 0 field mismatches; arrivals worst late +0.004s, worst early +0.000s
+    kindoutside_test.go:459: [shards] time=2026-10-18T00:34:48.446-07:00 level=INFO msg="round finished" round_id=29 duration=7.038s duration_modeled=1m10.375s straggler_lag=2.97s builds_gpu=50 builds_local=0 queries=13013
+    kindoutside_test.go:459: [shards] round 29  scenario=downstream_heavy seed=4601  time_scale=10 | duration 7.0s real (70.4s modeled)   straggler lag 3.0s   builds: 50 gpu, 0 local   queries: 13013
+    kindoutside_test.go:459: [verify] round 29 complete and correct from outside: 50 builds done once each, 13013 queries finished, matching the seeded workload
+    kindoutside_test.go:467: [check] completions by worker pod: map[worker-55789b76c-5fkxn:12 worker-55789b76c-lw6x6:13 worker-55789b76c-ppllk:13 worker-55789b76c-zkw4v:12]
+    kindoutside_test.go:439: [kubectl] scale deployment/worker -n kgpu --replicas=2
+    kindoutside_test.go:439: [k8s] 2 worker pod(s) Ready in kgpu after 1.2s: [worker-55789b76c-5fkxn(uid=55c0c6ce node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.12) worker-55789b76c-ppllk(uid=f6750e1e node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.11)]
+    kindoutside_test.go:439: [api] GET /workers: pool live_workers=2 after 1.2s
+=== RUN   TestKindOutside/SimulatorOnlyReachesNodePort
+    kindoutside_test.go:481: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-55789b76c-5fkxn(uid=55c0c6ce node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.12) worker-55789b76c-ppllk(uid=f6750e1e node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.11)]
+    kindoutside_test.go:481: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindoutside_test.go:493: started shardsim pid 34909 with [LOG_FORMAT=text MIN_WORKERS=0 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=bimodal SCHEDULER_URL=http://10.96.32.154:8080 SEED=4701 TIME_SCALE=10]
+    kindoutside_test.go:493: started shardsim pid 34910 with [LOG_FORMAT=text MIN_WORKERS=0 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=bimodal SCHEDULER_URL=http://10.244.5.4:8080 SEED=4702 TIME_SCALE=10]
+    kindoutside_test.go:507: [shards http://10.96.32.154:8080] still running after 150 s (2 lines); last lines:
+        time=2026-10-18T00:35:57.283-07:00 level=WARN msg="scheduler not ready, retrying"
+        time=2026-10-18T00:37:04.529-07:00 level=WARN msg="scheduler not ready, retrying"
+    kindoutside_test.go:507: [shards http://10.244.5.4:8080] still running after 150 s (2 lines); last lines:
+        time=2026-10-18T00:35:57.283-07:00 level=WARN msg="scheduler not ready, retrying"
+        time=2026-10-18T00:37:04.504-07:00 level=WARN msg="scheduler not ready, retrying"
+=== NAME  TestKindOutside
+    kindoutside_helpers_test.go:146: [cleanup] scale deployment/worker --replicas=2: err=<nil> deployment.apps/worker scaled
+    kindoutside_helpers_test.go:148: [cleanup] rollout status worker: err=<nil> deployment "worker" successfully rolled out
+    kindoutside_helpers_test.go:150: [cleanup] rollout status scheduler: err=<nil> deployment "scheduler" successfully rolled out
+--- PASS: TestKindOutside (246.67s)
+    --- PASS: TestKindOutside/NodePortIsTheOnlyDoor (16.98s)
+    --- PASS: TestKindOutside/BimodalRoundFromLaptop (6.41s)
+    --- PASS: TestKindOutside/SchedulerPodDeletedMidRound (24.34s)
+    --- PASS: TestKindOutside/TwoSimulatorsAtOnce (6.53s)
+    --- PASS: TestKindOutside/NoWorkersThenScaleUp (29.70s)
+    --- PASS: TestKindOutside/FiftyShardsFourWorkers (10.72s)
+    --- PASS: TestKindOutside/SimulatorOnlyReachesNodePort (151.67s)
+PASS
+ok  	github.com/arqbca11/KubernetesGPU/scheduler/crosscheck	247.042s
+
+== Docker events for container kgpu-test-pg-34560
+  00:33:12  create
+  00:33:13  start
+  00:37:22  kill
+  00:37:22  die
+  00:37:22  destroy
+
+== Result: PASS

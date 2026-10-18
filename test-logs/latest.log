@@ -1,200 +1,24 @@
 == Go tests against a throwaway Postgres
-date:      2026-10-17 23:52:44 PDT
-commit:    7f1e09a (uncommitted changes)
+date:      2026-10-18 00:44:46 PDT
+commit:    4c10d14 (uncommitted changes)
 go:        go1.27.1
-postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-30824, port 33506)
-go:        go test -p 1 -count=1 -v -run KindCards -timeout 40m ./scheduler/crosscheck/
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-36158, port 21264)
+go:        go test -p 1 -count=1 ./shard/...
 python:    skipped
 
 Lines starting with 'store_test.go:N:' are the test narrating what it did.
 Lines tagged [db] are the build row as Postgres had it at that moment.
 
 == go test
-=== RUN   TestKindCards
-    kindcards_test.go:43: [setup] GPU nodes [kgpu-worker3 kgpu-worker4]
-    kindcards_test.go:50: [setup] kgpu worker Deployment has replicas=2; pods [worker-86c9dcf67d-8fqzt(uid=2337a718 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-86c9dcf67d-nn6rb(uid=3b5c4ce3 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]
-[cleanup] kubectl delete namespace kgpu-xcheck --wait
-[cleanup] err=<nil>     kindcards_test.go:87: [kubectl] scale deployment/worker -n kgpu --replicas=0
-    kindcards_test.go:91: [setup] kgpu workers scaled to 0; cards allocated per node now map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:0 kgpu-worker4:0]
-=== RUN   TestKindCards/ReverseOrderStartWaitsForSchema
-    kindcards_test.go:117: [render] kustomize deploy/k8s, perl rewrote 8 namespace lines and the Namespace name to kgpu-xcheck; no kgpu namespace reference remains
-    kindcards_test.go:125: [kubectl] apply:
-        namespace/kgpu-xcheck created
-        secret/postgres created
-        configmap/worker created
-        deployment.apps/worker created
-    kindcards_test.go:126: [stage A] only the worker Deployment (+ its Secret and ConfigMap) exists in kgpu-xcheck: no Postgres, no scheduler
-    kindcards_test.go:162: [stage A t=1s] [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=false restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=false restarts=0 cards=1)]
-    kindcards_test.go:162: [stage A t=17s] [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=false restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=false restarts=0 cards=1)]
-    kindcards_test.go:162: [stage A t=32s] [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=false restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=false restarts=0 cards=1)]
-    kindcards_test.go:173: [stage A] worker-55789b76c-4pd6m wrote 13 log line(s) in ~45 s with no Postgres Service at all (observation: the spec promises no log here)
-    kindcards_test.go:178: [stage A] worker-55789b76c-4pd6m last log lines (no database at all):
-          {"time": "2026-10-18T06:53:20.920Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-          {"time": "2026-10-18T06:53:25.931Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-          {"time": "2026-10-18T06:53:30.943Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-    kindcards_test.go:173: [stage A] worker-55789b76c-jxh78 wrote 13 log line(s) in ~45 s with no Postgres Service at all (observation: the spec promises no log here)
-    kindcards_test.go:178: [stage A] worker-55789b76c-jxh78 last log lines (no database at all):
-          {"time": "2026-10-18T06:53:20.919Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-          {"time": "2026-10-18T06:53:25.931Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-          {"time": "2026-10-18T06:53:30.943Z", "level": "WARNING", "msg": "postgres not ready, retrying", "err": "failed to resolve host 'postgres': [Errno -2] Name or service not known", "in_s": 5.0}
-    kindcards_test.go:182: [kubectl] apply:
-        service/postgres created
-        statefulset.apps/postgres created
-    kindcards_test.go:183: [k8s] 1 pod(s) app=postgres ready after 5.4s: [postgres-0(uid=40651591 node=kgpu-worker phase=Running ready=true restarts=0 ip=10.244.3.12)]
-    kindcards_test.go:184: [stage B] Postgres Ready at t=53s; tables in public: "0"
-    kindcards_test.go:186: [port-forward] pod/worker-55789b76c-4pd6m:8081 on 127.0.0.1:28092
-    kindcards_test.go:202: [stage B] worker-55789b76c-4pd6m probes over 10 samples (50 s, past the liveness budget): /healthz 503 on 10, /livez 200 on 10
-    kindcards_test.go:210: [stage B] worker-55789b76c-4pd6m: 13 log line(s) matching "schema not ready"; first: {"time": "2026-10-18T06:53:40.985Z", "level": "WARNING", "msg": "schema not ready, waiting for the scheduler to migrate", "err": "relation \"workers\" does not exist", "in_s": 0.5}
-    kindcards_test.go:210: [stage B] worker-55789b76c-jxh78: 13 log line(s) matching "schema not ready"; first: {"time": "2026-10-18T06:53:40.986Z", "level": "WARNING", "msg": "schema not ready, waiting for the scheduler to migrate", "err": "relation \"workers\" does not exist", "in_s": 0.5}
-    kindcards_test.go:217: [kubectl] apply:
-        service/scheduler created
-        configmap/scheduler created
-        deployment.apps/scheduler created
-    kindcards_test.go:218: [k8s] 1 pod(s) app=scheduler ready after 1.1s: [scheduler-dbc976bcf-gzt2w(uid=5fa40168 node=kgpu-worker2 phase=Running ready=true restarts=0 ip=10.244.1.8)]
-    kindcards_test.go:220: [k8s] after 2.2s: bound [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-4pd6m] kgpu-worker4:[worker-55789b76c-jxh78]]
-    kindcards_test.go:221: [stage C] both workers Ready 2.2s after the scheduler became Ready
-    kindcards_test.go:227: [port-forward] svc/scheduler on 127.0.0.1:28090
-    kindcards_test.go:228: [api] GET /workers after 0.0s: live_workers=2 live ids=[worker-55789b76c-4pd6m worker-55789b76c-jxh78]
-    kindcards_test.go:230: [check] reverse-order start: restarts 0 on [worker-55789b76c-4pd6m worker-55789b76c-jxh78] throughout; not Ready until migrated; registered under their pod names
-=== NAME  TestKindCards
-    kindcards_test.go:99: [port-forward] svc/scheduler on 127.0.0.1:28090
-=== RUN   TestKindCards/NodeAndPodCardFacts
-    kindcards_test.go:254: [node] kgpu-control-plane gpu-label=false taints=[node-role.kubernetes.io/control-plane=:NoSchedule] capacity kgpu.io/gpu-card="" allocatable=""
-    kindcards_test.go:254: [node] kgpu-worker gpu-label=false taints=[] capacity kgpu.io/gpu-card="" allocatable=""
-    kindcards_test.go:254: [node] kgpu-worker2 gpu-label=false taints=[] capacity kgpu.io/gpu-card="" allocatable=""
-    kindcards_test.go:254: [node] kgpu-worker3 gpu-label=true taints=[kgpu.io/gpu=true:NoSchedule] capacity kgpu.io/gpu-card="2" allocatable="2"
-    kindcards_test.go:254: [node] kgpu-worker4 gpu-label=true taints=[kgpu.io/gpu=true:NoSchedule] capacity kgpu.io/gpu-card="2" allocatable="2"
-    kindcards_test.go:267: [spec] worker-55789b76c-4pd6m container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:267: [spec] worker-55789b76c-jxh78 container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:276: [cards] kgpu-worker3: allocated 1, my workers there [worker-55789b76c-4pd6m]
-    kindcards_test.go:276: [cards] kgpu-worker4: allocated 1, my workers there [worker-55789b76c-jxh78]
-    kindcards_test.go:281: [observe] default 2 replicas placed map[kgpu-worker3:[worker-55789b76c-4pd6m] kgpu-worker4:[worker-55789b76c-jxh78]] (spec: one per node is a spreading preference, not a guarantee)
-=== RUN   TestKindCards/FourWorkersFillCardsFifthPending
-    kindcards_test.go:290: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=4
-    kindcards_test.go:291: [k8s] after 4.3s: bound [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qj28d(uid=5178abfa node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-4pd6m worker-55789b76c-qj28d] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jxh78]]
-    kindcards_test.go:292: [spec] worker-55789b76c-4pd6m container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:292: [spec] worker-55789b76c-9fm8n container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:292: [spec] worker-55789b76c-jxh78 container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:292: [spec] worker-55789b76c-qj28d container worker: requests kgpu.io/gpu-card="1" limits kgpu.io/gpu-card="1"
-    kindcards_test.go:296: [cards] kgpu-worker3: allocated 2/2, workers [worker-55789b76c-4pd6m worker-55789b76c-qj28d]
-    kindcards_test.go:296: [cards] kgpu-worker4: allocated 2/2, workers [worker-55789b76c-9fm8n worker-55789b76c-jxh78]
-    kindcards_test.go:301: [api] GET /workers after 0.0s: live_workers=4 live ids=[worker-55789b76c-4pd6m worker-55789b76c-9fm8n worker-55789b76c-jxh78 worker-55789b76c-qj28d]
-    kindcards_test.go:303: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=5
-    kindcards_test.go:314: [k8s] fifth worker worker-55789b76c-lsxzk PodScheduled=False: "0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for incoming pod, 3 Preemption is not helpful for scheduling."
-    kindcards_test.go:323: [api] pool with 5 replicas: live_workers=4 ids=[worker-55789b76c-4pd6m worker-55789b76c-9fm8n worker-55789b76c-jxh78 worker-55789b76c-qj28d]
-=== RUN   TestKindCards/NoCardPodIgnoresCap
-    kindcards_test.go:338: [kubectl] apply:
-        pod/xc-nocard created
-    kindcards_test.go:346: [k8s] xc-nocard (toleration + selector, no card) xc-nocard(uid=8b44681d node=kgpu-worker4 phase=Running ready=true restarts=0 cards=0) while all 4 cards are allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:2 kgpu-worker4:2]
-    kindcards_test.go:361: [kubectl] apply:
-        pod/xc-onecard created
-    kindcards_test.go:364: [k8s] xc-onecard (a non-worker pod requesting 1 card) Pending: "0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for incoming pod, 3 Preemption is not helpful for scheduling.". Nothing but the card count stops a non-worker pod from taking a card when one is free.
-    kindcards_test.go:365: [kubectl] delete pod xc-onecard: err=<nil> pod "xc-onecard" deleted from kgpu-xcheck namespace
-    kindcards_test.go:365: [kubectl] delete pod xc-nocard: err=<nil> pod "xc-nocard" deleted from kgpu-xcheck namespace
-=== RUN   TestKindCards/KilledWorkerKeepsItsCard
-    kindcards_test.go:383: [setup] victim worker-55789b76c-4pd6m on kgpu-worker3 (restarts 0); Pending worker-55789b76c-lsxzk; allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:2 kgpu-worker4:2]
-    kindcards_test.go:384: [exec worker-55789b76c-4pd6m] kill -KILL 11 (python)
-    kindcards_test.go:406: [k8s] t=2.4s victim restarted in place and Ready: worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=true restarts=1 cards=1) lastState=&{ExitCode:137 Reason:Error}
-    kindcards_test.go:414: [check] 27 samples on kgpu-worker3 over 12.5s: minimum allocated cards 2 (want 2 throughout)
-    kindcards_test.go:421: [api] GET /workers after 0.0s: live_workers=4 live ids=[worker-55789b76c-4pd6m worker-55789b76c-9fm8n worker-55789b76c-jxh78 worker-55789b76c-qj28d]
-    kindcards_test.go:423: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=4
-    kindcards_test.go:424: [k8s] after 0.0s: bound [worker-55789b76c-4pd6m(uid=547d7818 node=kgpu-worker3 phase=Running ready=true restarts=1 cards=1) worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qj28d(uid=5178abfa node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-4pd6m worker-55789b76c-qj28d] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jxh78]]
-    kindcards_test.go:428: [check] scale 5->4 removed the Pending worker-55789b76c-lsxzk; the 4 card holders are unchanged
-=== RUN   TestKindCards/TwoCardPodFragmentation
-    kindcards_test.go:439: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=3
-    kindcards_test.go:440: [k8s] after 1.2s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jxh78(uid=3b004e3b node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qj28d(uid=5178abfa node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-qj28d] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jxh78]]
-    kindcards_test.go:441: [cards] 3 workers: allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:1 kgpu-worker4:2]
-    kindcards_test.go:442: [kubectl] apply:
-        pod/xc-twocards created
-    kindcards_test.go:445: [k8s] 3 workers (1 card free on one node): xc-twocards Pending: "0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for incoming pod, 3 Preemption is not helpful for scheduling."
-    kindcards_test.go:448: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=2
-    kindcards_test.go:449: [k8s] after 1.1s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qj28d(uid=5178abfa node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-qj28d] kgpu-worker4:[worker-55789b76c-9fm8n]]
-    kindcards_test.go:453: [cards] 2 workers map[kgpu-worker3:[worker-55789b76c-qj28d] kgpu-worker4:[worker-55789b76c-9fm8n]]: allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:1 kgpu-worker4:1]; xc-twocards xc-twocards(uid=45cda142 node=<unbound> phase=Pending ready=false restarts=0 cards=2)
-    kindcards_test.go:459: [check] 2 cards free in total, 1 per node: the 2-card pod stays Pending ("0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for incoming pod, 3 Preemption is not helpful for scheduling."); cards do not pool across nodes
-    kindcards_test.go:465: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=1
-    kindcards_test.go:466: [k8s] after 1.1s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker4:[worker-55789b76c-9fm8n]]
-    kindcards_test.go:478: [k8s] 1 worker on kgpu-worker4: xc-twocards xc-twocards(uid=45cda142 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=2); allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:2 kgpu-worker4:1]
-    kindcards_test.go:482: [kubectl] delete pod xc-twocards: err=<nil> pod "xc-twocards" deleted from kgpu-xcheck namespace
-    kindcards_test.go:483: [kubectl] scale deployment/worker -n kgpu-xcheck --replicas=4
-    kindcards_test.go:484: [k8s] after 1.1s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jcj2t(uid=237aeb9c node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-pl982(uid=91fa6b0c node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-zszgs(uid=1ede9ad8 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-pl982 worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jcj2t]]
-    kindcards_test.go:485: [api] GET /workers after 0.0s: live_workers=4 live ids=[worker-55789b76c-9fm8n worker-55789b76c-jcj2t worker-55789b76c-pl982 worker-55789b76c-zszgs]
-    kindcards_test.go:486: [kubectl] delete pod xc-twocards: err=<nil> 
-=== RUN   TestKindCards/CapacityPatchedDownUnderLoad
-    kindcards_test.go:496: [k8s] after 0.0s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jcj2t(uid=237aeb9c node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-pl982(uid=91fa6b0c node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-zszgs(uid=1ede9ad8 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-pl982 worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jcj2t]]
-    kindcards_test.go:506: [kubectl] patch node kgpu-worker3 status capacity kgpu.io/gpu-card=1: node/kgpu-worker3 patched
-    kindcards_test.go:529: [observe] 20 s after the patch: kgpu-worker3 capacity=1 allocatable=1 allocated=2; workers unchanged [worker-55789b76c-pl982 worker-55789b76c-zszgs]; pool 4
-    kindcards_test.go:534: [kubectl] delete pod worker-55789b76c-pl982 (graceful) on the over-allocated node
-    kindcards_test.go:545: [k8s] replacement worker-55789b76c-qdkcn Pending: "0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for incoming pod, 3 Preemption is not helpful for scheduling."; allocated map[kgpu-control-plane:0 kgpu-worker:0 kgpu-worker2:0 kgpu-worker3:1 kgpu-worker4:2]
-    kindcards_test.go:551: [kubectl] restore kgpu-worker3 capacity kgpu.io/gpu-card=2
-    kindcards_test.go:552: [k8s] after 10.8s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jcj2t(uid=237aeb9c node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qdkcn(uid=28be1c06 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-zszgs(uid=1ede9ad8 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-qdkcn worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jcj2t]]
-    kindcards_test.go:554: [k8s] replacement after restore: worker-55789b76c-qdkcn(uid=28be1c06 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)
-    kindcards_test.go:563: [api] GET /workers after 0.0s: live_workers=4 live ids=[worker-55789b76c-9fm8n worker-55789b76c-jcj2t worker-55789b76c-qdkcn worker-55789b76c-zszgs]
-=== RUN   TestKindCards/DrainOneGPUNodeHalvesPool
-    kindcards_test.go:574: [k8s] after 0.0s: bound [worker-55789b76c-9fm8n(uid=e1edae56 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-jcj2t(uid=237aeb9c node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qdkcn(uid=28be1c06 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-zszgs(uid=1ede9ad8 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-qdkcn worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-9fm8n worker-55789b76c-jcj2t]]
-    kindcards_test.go:586: [api] POST /rounds {scenario:xcheck-cards-drain n_shards:4} -> 201 round_id=1
-    kindcards_test.go:589: [api] POST /builds {round:1 shard:0 n:8000000} -> 201 build_id=0:1 placement=gpu gpu_total_ms=275950 (~27.6s at 10x)
-    kindcards_test.go:589: [api] POST /builds {round:1 shard:1 n:8000000} -> 201 build_id=1:1 placement=gpu gpu_total_ms=275950 (~27.6s at 10x)
-    kindcards_test.go:589: [api] POST /builds {round:1 shard:2 n:8000000} -> 201 build_id=2:1 placement=gpu gpu_total_ms=275950 (~27.6s at 10x)
-    kindcards_test.go:589: [api] POST /builds {round:1 shard:3 n:8000000} -> 201 build_id=3:1 placement=gpu gpu_total_ms=275950 (~27.6s at 10x)
-    kindcards_test.go:604: [api] leases: map[0:1:worker-55789b76c-jcj2t 1:1:worker-55789b76c-zszgs 2:1:worker-55789b76c-9fm8n 3:1:worker-55789b76c-qdkcn]
-    kindcards_test.go:612: [kubectl] drain kgpu-worker4 took 1.1s: err=<nil>
-        node/kgpu-worker4 cordoned
-        evicting pod kgpu-xcheck/worker-55789b76c-jcj2t
-        evicting pod kgpu-xcheck/worker-55789b76c-9fm8n
-        pod/worker-55789b76c-9fm8n evicted
-        pod/worker-55789b76c-jcj2t evicted
-        node/kgpu-worker4 drained
-        Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-rv9sd, kube-system/kube-proxy-wxw9h
-    kindcards_test.go:621: [k8s] evicted workers: [worker-55789b76c-9fm8n worker-55789b76c-jcj2t] (on kgpu-worker4: [worker-55789b76c-9fm8n worker-55789b76c-jcj2t])
-    kindcards_test.go:636: [api] GET /workers after 0.0s: live_workers=2 live ids=[worker-55789b76c-qdkcn worker-55789b76c-zszgs]
-    kindcards_test.go:644: [k8s] replacement worker-55789b76c-62v8j Pending: "0/5 nodes are available: 1 Insufficient kgpu.io/gpu-card, 1 node(s) had untolerated taint(s), 1 node(s) were unschedulable, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 1 No preemption victims found for incoming pod, 4 Preemption is not helpful for scheduling."
-    kindcards_test.go:644: [k8s] replacement worker-55789b76c-wkjsz Pending: "0/5 nodes are available: 1 Insufficient kgpu.io/gpu-card, 1 node(s) had untolerated taint(s), 1 node(s) were unschedulable, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 1 No preemption victims found for incoming pod, 4 Preemption is not helpful for scheduling."
-    kindcards_test.go:652: [api] t=1.2s after drain: build_id=0:1 placement=gpu state=queued attempt=1 lease_owner=<nil> finished_at=<nil> (was leased by worker-55789b76c-jcj2t)
-    kindcards_test.go:652: [api] t=1.2s after drain: build_id=1:1 placement=gpu state=leased attempt=1 lease_owner=worker-55789b76c-zszgs finished_at=<nil> (was leased by worker-55789b76c-zszgs)
-    kindcards_test.go:652: [api] t=1.2s after drain: build_id=2:1 placement=gpu state=queued attempt=1 lease_owner=<nil> finished_at=<nil> (was leased by worker-55789b76c-9fm8n)
-    kindcards_test.go:652: [api] t=1.2s after drain: build_id=3:1 placement=gpu state=leased attempt=1 lease_owner=worker-55789b76c-qdkcn finished_at=<nil> (was leased by worker-55789b76c-qdkcn)
-    kindcards_test.go:677: [kubectl] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 uncordoned
-    kindcards_test.go:678: [k8s] after 2.2s: bound [worker-55789b76c-62v8j(uid=5c11bbf1 node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-qdkcn(uid=28be1c06 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-wkjsz(uid=a79dbcad node=kgpu-worker4 phase=Running ready=true restarts=0 cards=1) worker-55789b76c-zszgs(uid=1ede9ad8 node=kgpu-worker3 phase=Running ready=true restarts=0 cards=1)]; unbound []; by node map[kgpu-worker3:[worker-55789b76c-qdkcn worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-62v8j worker-55789b76c-wkjsz]]
-    kindcards_test.go:679: [k8s] after uncordon: map[kgpu-worker3:[worker-55789b76c-qdkcn worker-55789b76c-zszgs] kgpu-worker4:[worker-55789b76c-62v8j worker-55789b76c-wkjsz]]
-    kindcards_test.go:680: [api] GET /workers after 0.0s: live_workers=4 live ids=[worker-55789b76c-62v8j worker-55789b76c-qdkcn worker-55789b76c-wkjsz worker-55789b76c-zszgs]
-    kindworkers_helpers_test.go:128: [build t=0.0s] build_id=0:1 placement=gpu state=leased attempt=2 lease_owner=worker-55789b76c-62v8j finished_at=<nil>
-    kindworkers_helpers_test.go:128: [build t=26.1s] build_id=0:1 placement=gpu state=done attempt=2 lease_owner=<nil> finished_at=06:56:40.514
-    kindcards_test.go:688: [check] 0:1 done at attempt 2 (first leased by worker-55789b76c-jcj2t, evicted=true)
-    kindworkers_helpers_test.go:128: [build t=0.0s] build_id=1:1 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=06:56:27.660
-    kindcards_test.go:688: [check] 1:1 done at attempt 1 (first leased by worker-55789b76c-zszgs, evicted=false)
-    kindworkers_helpers_test.go:128: [build t=0.0s] build_id=2:1 placement=gpu state=done attempt=2 lease_owner=<nil> finished_at=06:56:40.514
-    kindcards_test.go:688: [check] 2:1 done at attempt 2 (first leased by worker-55789b76c-9fm8n, evicted=true)
-    kindworkers_helpers_test.go:128: [build t=0.0s] build_id=3:1 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=06:56:27.895
-    kindcards_test.go:688: [check] 3:1 done at attempt 1 (first leased by worker-55789b76c-qdkcn, evicted=false)
-=== NAME  TestKindCards
-    kindcards_test.go:70: [cleanup] uncordon kgpu-worker3: err=<nil> node/kgpu-worker3 already uncordoned
-    kindcards_test.go:72: [cleanup] capacity kgpu.io/gpu-card=2 on kgpu-worker3: err=<nil> node/kgpu-worker3 patched (no change)
-    kindcards_test.go:70: [cleanup] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 already uncordoned
-    kindcards_test.go:72: [cleanup] capacity kgpu.io/gpu-card=2 on kgpu-worker4: err=<nil> node/kgpu-worker4 patched (no change)
-    kindcards_test.go:79: [cleanup] kgpu-worker3: capacity=2 allocatable=2
-    kindcards_test.go:79: [cleanup] kgpu-worker4: capacity=2 allocatable=2
-[cleanup] kubectl delete namespace kgpu-xcheck --wait
-[cleanup] err=<nil> namespace "kgpu-xcheck" deleted
-    kindcards_test.go:53: [cleanup] restore kgpu workers to 2: err=<nil> deployment.apps/worker scaled
-    kindcards_test.go:54: [k8s] 2 worker pod(s) Ready in kgpu after 2.2s: [worker-86c9dcf67d-j2jpq(uid=00c8d91f node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.20) worker-86c9dcf67d-wvddj(uid=959dad2f node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.19)]
-    kindcards_test.go:60: [cleanup] kgpu workers back: [worker-86c9dcf67d-j2jpq(uid=00c8d91f node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.20) worker-86c9dcf67d-wvddj(uid=959dad2f node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.19)]
---- PASS: TestKindCards (278.80s)
-    --- PASS: TestKindCards/ReverseOrderStartWaitsForSchema (107.63s)
-    --- PASS: TestKindCards/NodeAndPodCardFacts (0.33s)
-    --- PASS: TestKindCards/FourWorkersFillCardsFifthPending (15.18s)
-    --- PASS: TestKindCards/NoCardPodIgnoresCap (2.44s)
-    --- PASS: TestKindCards/KilledWorkerKeepsItsCard (12.86s)
-    --- PASS: TestKindCards/TwoCardPodFragmentation (10.61s)
-    --- PASS: TestKindCards/CapacityPatchedDownUnderLoad (42.97s)
-    --- PASS: TestKindCards/DrainOneGPUNodeHalvesPool (40.70s)
-PASS
-ok  	github.com/arqbca11/KubernetesGPU/scheduler/crosscheck	279.349s
+ok  	github.com/arqbca11/KubernetesGPU/shard/client	2.300s
+?   	github.com/arqbca11/KubernetesGPU/shard/cmd/shardsim	[no test files]
+ok  	github.com/arqbca11/KubernetesGPU/shard/sim	7.598s
 
-== Docker events for container kgpu-test-pg-30824
-  23:52:42  create
-  23:52:43  start
-  23:57:25  kill
-  23:57:25  die
-  23:57:25  destroy
+== Docker events for container kgpu-test-pg-36158
+  00:44:44  create
+  00:44:44  start
+  00:44:57  kill
+  00:44:57  die
+  00:44:57  destroy
 
 == Result: PASS
