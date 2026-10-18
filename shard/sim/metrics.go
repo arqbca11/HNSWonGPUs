@@ -7,9 +7,35 @@ package sim
 // modeled local build is observed as 2 s.
 
 import (
+	"strconv"
+
+	"github.com/arqbca11/KubernetesGPU/experiments/workload"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+// Every series exists from the first scrape (Phase 2 decision 35): the fixed
+// label sets are created when the package loads, the per-shard ones when a
+// round's shards are created (initShardSeries). The cross-check caught the
+// first version serving only two families until a round had started.
+func init() {
+	buildDuration.WithLabelValues("local")
+	for _, b := range []string{"true", "false"} {
+		queryWait.WithLabelValues(b)
+	}
+	for _, k := range []workload.QueryKind{workload.KindFanOut, workload.KindSingleShard, workload.KindLocalDDL} {
+		queriesTotal.WithLabelValues(string(k))
+	}
+}
+
+// InitShardSeries sets every shard's queue-depth gauge to 0. shardsim calls
+// it at startup (N_SHARDS is known then, before any round or any wait for
+// workers), so a dashboard sees N shards at zero rather than nothing.
+func InitShardSeries(nShards int) {
+	for i := 0; i < nShards; i++ {
+		shardQueueDepth.WithLabelValues(strconv.Itoa(i)).Set(0)
+	}
+}
 
 var (
 	buildDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

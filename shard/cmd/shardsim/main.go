@@ -90,6 +90,7 @@ func main() {
 				log.Error("metrics server failed", "err", err)
 			}
 		}()
+		sim.InitShardSeries(nShards)
 		log.Info("metrics listening", "addr", addr)
 	}
 

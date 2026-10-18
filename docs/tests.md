@@ -33,6 +33,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, step 4: shards outside the cluster (`scripts/k8s-check-step4.sh`, via `scripts/k8s-round.sh`). Log: `phase2/step4-shards-outside.log`](#phase-2-step-4-shards-outside-the-cluster-scriptsk8s-check-step4sh-via-scriptsk8s-roundsh-log-phase2step4-shards-outsidelog)
 - [Phase 2, step 4, cross-check from the laptop (Go, `scheduler/crosscheck`, `TestKindOutside` subtests; need `KGPU_KIND=1`). Log: `phase2/step4-crosscheck-kind-outside.log`](#phase-2-step-4-cross-check-from-the-laptop-go-schedulercrosscheck-testkindoutside-subtests-need-kgpukind1-log-phase2step4-crosscheck-kind-outsidelog)
 - [Phase 2, step 5: metrics and dashboards (`scripts/k8s-check-step5.sh`). Log: `phase2/step5-monitoring.log`](#phase-2-step-5-metrics-and-dashboards-scriptsk8s-check-step5sh-log-phase2step5-monitoringlog)
+- [Phase 2, step 5, cross-check of metrics and dashboards (Go, `scheduler/crosscheck`, `TestKindMetrics` subtests; need `KGPU_KIND=1`). Log: `phase2/step5-crosscheck-kind-metrics.log`](#phase-2-step-5-cross-check-of-metrics-and-dashboards-go-schedulercrosscheck-testkindmetrics-subtests-need-kgpukind1-log-phase2step5-crosscheck-kind-metricslog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -377,3 +378,16 @@ The agent scales the implementer's workers to zero for the run, since cards are 
 | 3 | Start a two-round, 50-shard simulator on the laptop and read Prometheus's targets mid-round. | Prometheus scrapes the scheduler, both workers and the shards on the laptop through the Service + Endpoints (decision 32); the laptop target is down when no simulator runs. |
 | 4 | After the rounds, query Prometheus. | `round_duration_seconds_count` +2, `placement_decisions_total` +100, the workers' build durations +100, `worker_busy` reached 1, the shards' `queries_total` and query-wait p99 and the build queue wait p99 are there (decision 31). |
 | 5 | Grafana's health and search APIs through a port-forward. | Grafana is up and the 17-panel KGPU dashboard is provisioned from the ConfigMap (decision 33). |
+
+## Phase 2, step 5, cross-check of metrics and dashboards (Go, `scheduler/crosscheck`, `TestKindMetrics` subtests; need `KGPU_KIND=1`). Log: `phase2/step5-crosscheck-kind-metrics.log`
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| KindMetrics/SchedulerExposition | Parse the scheduler's `/metrics` through the NodePort. | All nine families have the roadmap's types; every placement and outcome series exists at zero (decision 35). |
+| KindMetrics/WorkerExposition | Read each worker's probe port through the API-server proxy. | The gpu build-duration histogram, the busy gauge and `builds_total` with every outcome are served per worker. |
+| KindMetrics/ShardsTargetAndFirstScrape | Start a simulator held before its first round; watch its `/metrics` and the Prometheus target; kill it. | The target goes down to up within 10 s and back; every shard family, including the per-shard queue gauges, exists from the first scrape (decision 35; found the simulator bug). |
+| KindMetrics/RoundMetricsMatchSimulator | Three 6-shard rounds; compare scheduler, API, simulator and Prometheus. | Once per round for duration and lag, once per GPU build for queue wait; the sums in real seconds match the API and the simulator; the local build-duration series exists at zero. |
+| KindMetrics/RoundObservedOnceByEitherCloser | One round closed by a GET right after the last report, one by the reaper with no GET. | Each is observed exactly once however many GETs and ticks follow (decision 31). |
+| KindMetrics/LeaseExpiryAndWorkerBusy | SIGKILL the leaseholder's python during an 8M-vector build. | `lease_expirations_total{queued}` +1 exactly, attempt 2 completes elsewhere, `worker_busy` follows the leaseholder. |
+| KindMetrics/ScrapeWiring | Inspect Prometheus's targets and config; run a simulator on another port. | Scheduler, both workers and the laptop's 9091 are scraped every 5 s; another port is not (decision 32). |
+| KindMetrics/DashboardPanelsReturnData | Read the dashboard ConfigMap, fetch the dashboard anonymously, run every panel query. | 17 panels in both places; all 25 expressions return data through Prometheus and through Grafana (decision 33). |

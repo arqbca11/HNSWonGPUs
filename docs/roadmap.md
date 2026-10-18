@@ -225,10 +225,10 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 | --- | --- | --- |
 | `round_duration_seconds` | histogram | scheduler |
 | `shard_lag_seconds` (last shard minus median shard, per round) | histogram | scheduler |
-| `build_queue_wait_seconds` | histogram | scheduler |
+| `build_queue_wait_seconds{placement}` | histogram | scheduler |
 | `build_duration_seconds{placement}` | histogram | worker, shard |
 | `placement_decisions_total{placement, policy}` | counter | scheduler |
-| `lease_expirations_total` | counter | scheduler |
+| `lease_expirations_total{outcome}` (queued, failed) | counter | scheduler |
 | `gpu_queue_depth` | gauge | scheduler |
 | `worker_busy` | gauge | worker |
 

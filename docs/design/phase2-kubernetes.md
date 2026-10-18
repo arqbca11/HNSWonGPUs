@@ -264,6 +264,19 @@ A fresh agent ran 7 subtests from the laptop against the `kgpu` stack, all passe
 
 Observed: the scheduler lists all nine of its metrics through the NodePort; each worker lists its three on the probe port; Prometheus shows `scheduler`, two `worker` targets and `shards` (the laptop) up while a simulator runs, the laptop target going down between runs as nothing listens; after two 50-shard rounds `round_duration_seconds_count` grew by 2, `placement_decisions_total` by 100 and the workers' `build_duration_seconds_count` by 100; `worker_busy` reached 1; the shard side delivered 59656 queries with a `needs_index` wait p99 of 9.8 s and a build queue wait p99 of 6.4 s, the straggler story already visible; Grafana is healthy with the dashboard provisioned. A fresh install needs about a minute before the operator has turned the ServiceMonitors into targets; the check waits for it.
 
+### Cross-check of step 5, metrics and dashboards (2026-10-18)
+
+A fresh agent ran 8 subtests against the `kgpu` and `monitoring` stacks with simulators from the laptop, saved as `test-logs/phase2/step5-crosscheck-kind-metrics.log`. First run: 6 passed, 2 failed, both the same bug; after the fix all 8 pass. Beyond the implementer's check: metric names and types parsed from the exposition format against the roadmap table on all three sides; three rounds produced exactly +3 round durations, +3 lags, +18 queue waits for 18 GPU builds, with the duration sum (9.114 s) equal to the API timestamps and the simulator's printed durations, so the unit is real seconds; a round closed by a shard's GET and one closed by the reaper were each observed exactly once however many GETs and ticks followed (decision 31); a SIGKILLed leaseholder produced exactly one `lease_expirations_total{outcome="queued"}` increment, `worker_busy` followed the leaseholder, and the attempt-2 completion landed on the other worker; a simulator on another port was not scraped; all 25 panel expressions of the dashboard returned data through Prometheus and through Grafana.
+
+| Finding | Resolution |
+| --- | --- |
+| **The simulator did not pre-create its series** (decision 35 held for the scheduler and the workers only): before its first round `/metrics` had two families, and `build_duration_seconds{placement="local"}` never existed under `always_gpu`, so the dashboard's local line is a gap, not zero. | Fixed: fixed label sets created at package load, the per-shard queue-depth gauges at simulator startup (`sim.InitShardSeries`, N_SHARDS is known then). |
+| The roadmap table listed `lease_expirations_total` and `build_queue_wait_seconds` without their labels. | Table updated (`{outcome}`, `{placement}`). |
+| After a scheduler restart the stat panels read two series in the window, one per pod. | Stat panels now `max()` across pods. |
+| Grafana listed an Alertmanager datasource with Alertmanager disabled. | Sidecar datasource for Alertmanager disabled in the chart values. |
+| Shard-side panels have data only while a simulator runs; panel 11 shows only the gpu line in Phase 2. | Expected from decisions 26 and 28 and from `always_gpu`; stated here. The local line appears with Phase 3's policies. |
+| `builds_total{outcome="lost"}` cannot be produced by SIGKILL (the process and its counters die). | By design: "lost" is the fencing outcome, a live worker whose renew or complete is rejected (Phase 1 decision 36). The step 3 cross-check's Postgres outage produced it. |
+
 ## Open questions
 
 - How long should `terminationGracePeriodSeconds` be relative to the modeled build times? Long enough to finish a typical fake build, short enough that a drain is not slow. (Workers: 30 s with a 5 s finish budget; the real-build answer is "release", see decision 19 and the published-figures section.)

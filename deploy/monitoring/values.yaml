@@ -35,6 +35,9 @@ grafana:
       enabled: true
       label: grafana_dashboard
       searchNamespace: ALL      # our dashboard ConfigMap lives in kgpu
+    datasources:
+      alertmanager:
+        enabled: false          # Alertmanager is off above; no dangling datasource
   grafana.ini:
     analytics: {check_for_updates: false, reporting_enabled: false}
     auth.anonymous: {enabled: true, org_role: Viewer}
