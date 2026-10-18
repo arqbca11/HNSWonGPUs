@@ -232,7 +232,7 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 | `gpu_queue_depth` | gauge | scheduler |
 | `worker_busy` | gauge | worker |
 
-Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and scrape each service with a ServiceMonitor. The shards are outside the cluster (decision 26), so shard-emitted metrics (`build_duration_seconds{placement=local}`) need another route: the simulator's `/metrics` scraped via the Docker host address, a push gateway, or deriving them from the scheduler's rows. Decided in step 5.
+Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and scrape each service with a ServiceMonitor. The shards are outside the cluster (decision 26), so shard-emitted metrics (`build_duration_seconds{placement=local}`, per-shard queue depth and waits) are scraped from the simulator's `/metrics` on the laptop through the Docker host address, as a fleet's monitoring would be pointed at the shards; scheduler-side metrics come from the scheduler (decision 28).
 
 ### Failure injection
 
