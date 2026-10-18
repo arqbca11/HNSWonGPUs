@@ -40,6 +40,10 @@ flowchart LR
 
 The comparison in decision 3 (long-running workers vs one Job per build) was framed with fake builds of seconds, where a pod's startup and a multi-gigabyte cuVS image pull dominate. Real GPU builds are 17 seconds to several minutes, so per-build pods amortise their startup far better than the Phase 1 scale suggested, and the expected outcome of the measurement is no longer obvious. The measurement should be run at production sizes in the simulator's model as well as live.
 
+## What the worker-count question changes here (2026-10-17)
+
+Kueue's quota counts cards (`nvidia.com/gpu`), so a ClusterQueue with a quota of 4 admits four builds whether they land on one four-card machine or four one-card machines. The per-node transfer contention that Phase 2 decision 23 asks Phase 5 to measure is invisible to Kueue; if it turns out to matter, the Kubernetes-native design needs either a topology-aware ResourceFlavor per machine type or a scheduler-side priority that accounts for it, and that is a point for the comparison in decision 3.
+
 ## Open questions
 
 - Is this phase worth doing at all, versus writing the mapping table from reading the Kueue docs? The measurement in decision 3 is the only thing that needs it built.

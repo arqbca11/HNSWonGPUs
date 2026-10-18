@@ -20,8 +20,8 @@ flowchart TB
             SH["shards"]
             MON["prometheus, grafana,<br/>DCGM exporter"]
         end
-        subgraph gpu["GPU node pool: spot, 0…N nodes, one L4 each<br/>taint gpu-only, device plugin"]
-            W["worker (cuVS image)<br/>requests nvidia.com/gpu: 1"]
+        subgraph gpu["GPU node pool: spot, 0…N machines × M cards<br/>taint gpu-only, device plugin advertises nvidia.com/gpu: M per node"]
+            W["worker (cuVS image) ×(cards in use)<br/>requests nvidia.com/gpu: 1"]
         end
     end
     AS["cluster autoscaler"] -- "pending worker pod → add node<br/>idle node → remove" --> gpu
@@ -85,6 +85,14 @@ sequenceDiagram
 - **A spot preemption costs up to a whole build**, minutes of GPU work, not the seconds the fake builds suggested. Record lost GPU-minutes per preemption; whether checkpointing partial graphs is worth it becomes a real question (noted below).
 - **Transfer inside the cluster matters.** 6 to 61 GB per shard means the worker's network path to the object store is part of the GPU cost; place workers and MinIO in the same zone and measure the bandwidth the worker actually gets.
 - **Expected GPU numbers to compare against:** 1M x 128 in 17 s and 10M x 128 in 227 s on an A10G; 50M in under 30 minutes on an H100.
+
+## What the worker-count question changes here (2026-10-17)
+
+Phase 2 decisions 22 to 24 put a fake card resource (`kgpu.io/gpu-card`) on two stand-in nodes, one card per worker. This phase is where it becomes real:
+
+- **The only manifest change is the resource name.** The device plugin advertises `nvidia.com/gpu: M` on each GPU node; the worker's limit becomes `nvidia.com/gpu: 1`; the taint, selector, probes and grace period are the Phase 2 ones. A worker beyond the card total stays Pending with the same "Insufficient" message the kind check already asserts.
+- **Workers per node is a measurement of this phase.** On a two-card machine, run one worker and then two, at 128 and at 1536 dimensions, and record per-build transfer time and build time. The ratio of two-worker to one-worker throughput is the per-node bandwidth term the Phase 3 cost model needs; the expectation is "almost 2x at 128 dims, well under 2x at 1536". The node pool choice is part of the experiment: one-card and two-card machines of the same card type (e.g. L4) cost about the same per card and differ only in this sharing.
+- **More than one worker per card is a configuration, not code.** The device plugin's time-slicing setting advertises each card as N slots. It is worth one measurement (does overlapping one build's transfer with another's compute help?) and not more; a card gives its full compute to one build at a time, so two builds sharing it finish about when they would have run back to back.
 
 ## Open questions
 

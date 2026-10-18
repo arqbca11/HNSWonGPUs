@@ -1,0 +1,45 @@
+
+== Phase 2 step 3b: GPU cards as a countable resource  (2026-10-17 23:35:34 PDT, commit 7b3087e)
+
+== 1. Every GPU node advertises its cards; general nodes advertise none
+   kgpu-control-plane   <none>   <none>
+   kgpu-worker          <none>   <none>
+   kgpu-worker2         <none>   <none>
+   kgpu-worker3         true     2
+   kgpu-worker4         true     2
+   GPU nodes: kgpu-worker3 kgpu-worker4 ; total cards: 4
+
+== 2. Each running worker holds exactly one card
+   worker-55789b76c-8mldh   Running   kgpu-worker4
+   worker-55789b76c-h2lv4   Running   kgpu-worker3
+   kgpu-worker3: 1 worker(s), 1 card(s) allocated
+   kgpu-worker4: 1 worker(s), 1 card(s) allocated
+   pool: 2 live workers
+
+== 3. Scale the workers to the card total (4): every card is used, both nodes carry workers, none on a general node
+   worker-55789b76c-85rzp   Running   kgpu-worker3
+   worker-55789b76c-8mldh   Running   kgpu-worker4
+   worker-55789b76c-8ssp8   Running   kgpu-worker4
+   worker-55789b76c-h2lv4   Running   kgpu-worker3
+   kgpu-worker3: 2 worker(s)
+   kgpu-worker4: 2 worker(s)
+   pool: 4 live workers
+
+== 4. One more worker than cards: it stays Pending, and the scheduler says why
+   worker-55789b76c-85rzp   Running   kgpu-worker3
+   worker-55789b76c-8mldh   Running   kgpu-worker4
+   worker-55789b76c-8ssp8   Running   kgpu-worker4
+   worker-55789b76c-drsbx   Pending   <none>
+   worker-55789b76c-h2lv4   Running   kgpu-worker3
+   scheduler says: 0/5 nodes are available: 1 node(s) had untolerated taint(s), 2 Insufficient kgpu.io/gpu-card, 2 node(s) didn't match Pod's node affinity/selector. preemption: 0/5 nodes are available: 2 No preemption victims found for in
+   pool: 4 live workers (the Pending pod is not a worker yet)
+
+== 5. Scale back to 2: the extra pods go, the cards are freed, the pool follows
+   worker-55789b76c-8mldh   Running   kgpu-worker4
+   worker-55789b76c-h2lv4   Running   kgpu-worker3
+   cards allocated across GPU nodes: 2
+   pool: 2 live workers
+scripts/k8s-check-gpu-cards.sh: line 19: 27998 Terminated: 15          $K port-forward svc/scheduler 18091:8080 > /dev/null 2>&1
+
+== Result: PASS
+log: test-logs/phase2/step3b-gpu-cards.log

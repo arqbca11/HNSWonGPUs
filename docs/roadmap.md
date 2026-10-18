@@ -204,8 +204,9 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 
 ### Cluster layout
 
-- [x] kind cluster with one control-plane node and three worker nodes
-- [x] Label and taint one node as the stand-in GPU pool. Workers get a `nodeSelector` and a toleration; nothing else can land there. This rehearses real GPU scheduling before there is a GPU.
+- [x] kind cluster with one control-plane node and three worker nodes *(now four: a second GPU node was added in step 3b)*
+- [x] Label and taint one node as the stand-in GPU pool. Workers get a `nodeSelector` and a toleration; nothing else can land there. This rehearses real GPU scheduling before there is a GPU. *(Two nodes since step 3b.)*
+- [x] GPU cards as a countable resource: each stand-in GPU node advertises `kgpu.io/gpu-card: 2` as an extended resource and every worker requests one, so Kubernetes caps workers per node at the card count and `replicas` picks how many cards to use. Workers per card and per machine are experiment parameters, not assumptions (Phase 2 design decisions 22 to 24). Phase 5 renames the resource to `nvidia.com/gpu`.
 - [x] Postgres as a StatefulSet with a PersistentVolumeClaim
 - [x] Scheduler as a Deployment with one replica. Running two replicas is also safe for the reaper, because reaping is a conditional `UPDATE` and doing it twice changes nothing.
 - [x] Workers as a Deployment of long-running pullers. One Kubernetes Job per build is a different design; Phase 6 compares the two.
@@ -297,6 +298,7 @@ A workload is a seeded combination of four knobs: size distribution, query strea
 | Variable | Values | What it shows |
 | --- | --- | --- |
 | GPU workers | 1, 2, 4 | Where GPUs stop being the bottleneck |
+| Workers per node at a fixed card count | 1, 2 per two-card node | Whether a second card on one machine adds a second card's throughput, given the shared network link (the per-node transfer term; Phase 2 decision 23) |
 | Size skew (Zipf exponent) | 0.5, 1.0, 1.5 | How much critical-path priority matters |
 | Estimate error (log-normal σ on every estimate) | 0, 0.3, 0.6 | How fragile the cost model is, and whether speculation covers for it |
 | Query load relative to build work (arrival rate × duration) | 0.5×, 1×, 2× | When blocking the shard costs the most |
@@ -364,15 +366,16 @@ Add a real GPU build path, run it on a small cloud GPU node pool for a few hours
 
 ### Cluster
 
-- [ ] A managed cluster (e.g. GKE) with one single-GPU node pool (e.g. one L4) on spot, autoscaling from zero
+- [ ] A managed cluster (e.g. GKE) with a GPU node pool on spot, autoscaling from zero. Both one-card and two-card machines of the same card type (e.g. L4), for the workers-per-node measurement below
 - [ ] Drivers and device plugin per the provider's docs; outside a managed provider, the NVIDIA GPU Operator
-- [ ] Workers request `nvidia.com/gpu: 1`, with the same taint and `nodeSelector` rehearsed in Phase 2
+- [ ] Workers request `nvidia.com/gpu: 1`, with the same taint and `nodeSelector` rehearsed in Phase 2; the only change from the kind manifests is the resource name (`kgpu.io/gpu-card` → `nvidia.com/gpu`)
 - [ ] NVIDIA's DCGM exporter for GPU utilization and memory, on the same Grafana dashboard
 
 ### What to measure
 
 - [ ] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. Expect CPU fallback to win more often while the pool is cold.
 - [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it.
+- [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model. One measurement of time-slicing (two workers per card) to see whether overlapping transfer with compute helps.
 - [ ] Rerun the Phase 3 sweeps in the simulator with the measured GPU model, then validate a few rounds live
 
 ### Cost control

@@ -1,11 +1,16 @@
-# Phase 2 cluster: one control-plane node and three worker nodes, all Docker
-# containers on the laptop. Node "gpu-1" is the stand-in GPU pool: it carries
+# Phase 2 cluster: one control-plane node, two general worker nodes and two
+# stand-in GPU nodes, all Docker containers on the laptop. The GPU nodes carry
 # the label kgpu.io/gpu=true and the taint kgpu.io/gpu=true:NoSchedule, so
 # only pods that tolerate the taint and select the label (the GPU workers)
-# can land there, and nothing else can. Phase 5 adds a real GPU to the same
-# selector and toleration.
+# can land there. scripts/kind-up.sh then advertises CARDS_PER_NODE fake GPU
+# cards on each of them as the extended resource kgpu.io/gpu-card, the same
+# mechanism the NVIDIA device plugin uses for nvidia.com/gpu, so Kubernetes
+# itself caps the workers per node at the card count (Phase 2 decision 22).
+# The two-node, two-card shape models "two small GPU machines"; how many
+# workers to run per card and per machine is an experiment parameter, not an
+# assumption (decision 23). Phase 5 swaps the resource name for the real one.
 #
-#   scripts/kind-up.sh      create the cluster and taint the GPU node
+#   scripts/kind-up.sh      create the cluster, advertise the cards
 #   scripts/kind-down.sh    delete it
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -18,6 +23,18 @@ nodes:
   - role: worker
     labels:
       kgpu.io/role: general
+  - role: worker
+    labels:
+      kgpu.io/role: gpu
+      kgpu.io/gpu: "true"
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          taints:
+            - key: kgpu.io/gpu
+              value: "true"
+              effect: NoSchedule
   - role: worker
     labels:
       kgpu.io/role: gpu

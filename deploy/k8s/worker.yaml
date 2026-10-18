@@ -1,6 +1,9 @@
-# GPU workers: a Deployment of long-running pullers pinned to the GPU node by
-# a node selector and a toleration (Phase 2 decisions 1, 5). WORKER_ID is the
-# pod name. The probe server runs on its own thread (port 8081): /livez is
+# GPU workers: a Deployment of long-running pullers pinned to the GPU nodes by
+# a node selector and a toleration (Phase 2 decisions 1, 5), each holding one
+# GPU card (the extended resource kgpu.io/gpu-card, decision 22), so the
+# cluster's card count caps the workers and `replicas` chooses how many of the
+# cards to use. Phase 5 renames the resource to nvidia.com/gpu. WORKER_ID is
+# the pod name. The probe server runs on its own thread (port 8081): /livez is
 # liveness, /healthz (a recent heartbeat) is readiness. SIGTERM gives the
 # worker terminationGracePeriodSeconds to finish or release its build.
 apiVersion: v1
@@ -80,4 +83,6 @@ spec:
             terminationGracePeriodSeconds: 5
           resources:
             requests: {cpu: "100m", memory: "128Mi"}
-            limits: {memory: "512Mi"}
+            # One card per worker. Extended resources are whole and exclusive;
+            # a request equal to the limit is required, so only the limit is set.
+            limits: {memory: "512Mi", kgpu.io/gpu-card: "1"}

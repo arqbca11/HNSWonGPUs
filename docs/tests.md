@@ -28,6 +28,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, steps 1 and 2, cross-check on kind (Go, `scheduler/crosscheck`, `TestKind` subtests; need `KGPU_KIND=1`). Log: `phase2/step12-crosscheck-kind.log`](#phase-2-steps-1-and-2-cross-check-on-kind-go-schedulercrosscheck-testkind-subtests-need-kgpukind1-log-phase2step12-crosscheck-kindlog)
 - [Phase 2, step 3: the workers on kind (`scripts/k8s-check-step3.sh`). Log: `phase2/step3-workers.log`](#phase-2-step-3-the-workers-on-kind-scriptsk8s-check-step3sh-log-phase2step3-workerslog)
 - [Phase 2, step 3, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindWorkers` subtests; need `KGPU_KIND=1`). Log: `phase2/step3-crosscheck-kind-workers.log`](#phase-2-step-3-cross-check-on-kind-go-schedulercrosscheck-testkindworkers-subtests-need-kgpukind1-log-phase2step3-crosscheck-kind-workerslog)
+- [Phase 2, step 3b: GPU cards as a countable resource (`scripts/k8s-check-gpu-cards.sh`). Log: `phase2/step3b-gpu-cards.log`](#phase-2-step-3b-gpu-cards-as-a-countable-resource-scriptsk8s-check-gpu-cardssh-log-phase2step3b-gpu-cardslog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -101,6 +102,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 | test_bad_config_is_refused_before_connecting | Zero bandwidth, renew interval equal to the lease, negative time scale, a non-numeric cost constant, an unknown log format. | Each is refused with a message naming the variable, before any connection (decision 39). |
 | test_survives_lost_database_connections_mid_build | Mid-build, every one of the worker's backend connections is terminated server-side with `pg_terminate_backend` (what a Postgres restart does to clients). | All three threads reconnect; the lease is renewed in time (no reap, attempt stays 1); the build completes; the worker goes on to claim and complete the next one (bug log 7, decision 48). |
 | test_renew_outage_past_lease_deadline_assumes_lost | Every renew raises a connection error for longer than the lease. | The worker assumes the lease is lost, cancels the build, counts it lost and writes nothing (decision 48). |
+| `test_waits_for_schema_at_startup` | The `workers` table is hidden; a worker starts; after 1.5 s the table is restored. | The worker waits for a missing schema instead of crashing (bug 9, Phase 2 decision 25) and registers on its next retry. |
 
 ## Step 3, cross-check of the worker as a black-box process (Go, `scheduler/crosscheck`, `Worker*` tests). Log: `step3-crosscheck-worker.log`
 
@@ -311,3 +313,13 @@ The agent deploys its own copy of the stack into a `kgpu-xcheck` namespace with 
 | KindWorkers/DrainGPUNode | `kubectl drain` the GPU node mid-build, submit more, uncordon. | Both builds released, pool 0, replacements Pending on the taint, five builds queued; after uncordon all done once (released at attempt 2, new at attempt 1). |
 | KindWorkers/BuildLogLinesCarryIDs | Collect every worker and scheduler log line naming a build. | Each carries `attempt` and `round_id` (CLAUDE.md convention). |
 | KindWorkers/ImplementerWorkersBack | Snapshot the `kgpu` workers around the drain. | They return to 2 Running and Ready on the GPU node; the node is schedulable. |
+
+## Phase 2, step 3b: GPU cards as a countable resource (`scripts/k8s-check-gpu-cards.sh`). Log: `phase2/step3b-gpu-cards.log`
+
+| Step | Scenario | Proves |
+| --- | --- | --- |
+| 1 | Read every node's allocatable `kgpu.io/gpu-card`. | Each GPU node advertises its cards; general nodes advertise none (decisions 22, 24). |
+| 2 | Compare running workers per GPU node with the node's allocated cards; read each pod's resource limit. | Every worker holds exactly one card. |
+| 3 | Scale the workers to the card total (4). | Every card is used, both GPU nodes carry workers, none on a general node, the pool shows 4. |
+| 4 | Scale to one more than the cards. | The extra pod stays Pending with "Insufficient kgpu.io/gpu-card" and the pool stays 4: Kubernetes, not convention, caps the workers (decision 22). |
+| 5 | Scale back to 2. | The cards are freed and the pool follows. |

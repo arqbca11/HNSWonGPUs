@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler) and 3 (workers) done; steps 4 to 6 (shards, metrics, failure injection) to come.
+**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers) and 3b (GPU cards as a resource, two GPU nodes) done; steps 4 to 6 (shards, metrics, failure injection) to come.
 
 Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Grafana watching it. The scheduler code and the schema do not change. What changes is who keeps processes alive and where they run.
 
@@ -10,7 +10,7 @@ Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Gr
 
 ## System diagram
 
-One control-plane node and three worker nodes, all Docker containers on the laptop. One node is labeled and tainted as the stand-in GPU pool.
+One control-plane node and four worker nodes, all Docker containers on the laptop. Two nodes are labeled and tainted as the stand-in GPU pool, and each advertises two fake GPU cards as a countable resource (`kgpu.io/gpu-card`). A worker pod holds one card, so the card count caps the workers per node the same way the NVIDIA device plugin will in Phase 5; `replicas` chooses how many of the cards to use (decisions 22 to 24).
 
 ```mermaid
 flowchart TB
@@ -18,9 +18,11 @@ flowchart TB
         subgraph cp["control-plane node"]
             KAPI["API server, etcd,<br/>Kubernetes scheduler"]
         end
-        subgraph n1["node 1: label gpu=true, taint gpu-only"]
-            WD["Deployment: worker ×2<br/>nodeSelector gpu=true<br/>toleration gpu-only"]
+        subgraph gpu["GPU nodes: label gpu=true, taint gpu-only"]
+            G1["gpu-1<br/>kgpu.io/gpu-card: 2"]
+            G2["gpu-2<br/>kgpu.io/gpu-card: 2"]
         end
+        WD["Deployment: worker ×N (N ≤ 4)<br/>nodeSelector gpu=true, toleration gpu-only<br/>limits kgpu.io/gpu-card: 1"]
         subgraph n2["node 2"]
             SD["Deployment: scheduler ×1"]
             PGS["StatefulSet: postgres ×1<br/>PersistentVolumeClaim"]
@@ -30,13 +32,14 @@ flowchart TB
             SS["StatefulSet: shards ×5 pods<br/>10 simulated shards each<br/>CPU requests and limits"]
         end
     end
+    WD -- "one pod per card" --> G1 & G2
     SS -- HTTP --> SD
     SD -- SQL --> PGS
     WD -- SQL --> PGS
     MON -- "scrape /metrics" --> SD & WD & SS
 ```
 
-The taint keeps every pod *without the toleration* off node 1; the node selector keeps the workers *on* it. Precisely: the toleration grants access and the selector constrains, so any manifest that copies the toleration can land on the GPU node, and on an otherwise idle node the Kubernetes scheduler will even prefer it (the cross-check saw six toleration-only pods all placed there). "Only workers on the GPU node" is therefore a convention kept by not copying the toleration, not something Kubernetes enforces; an admission policy could enforce it later if it ever matters. This rehearses real GPU scheduling before any GPU exists; in Phase 5 the same manifests add a GPU resource request, which on kind stays Pending with "Insufficient nvidia.com/gpu" because there is no device plugin.
+The taint keeps every pod *without the toleration* off the GPU nodes; the node selector keeps the workers *on* them. Precisely: the toleration grants access and the selector constrains, so any manifest that copies the toleration can land on the GPU node, and on an otherwise idle node the Kubernetes scheduler will even prefer it (the cross-check saw six toleration-only pods all placed there). "Only workers on the GPU node" is therefore a convention kept by not copying the toleration, not something Kubernetes enforces; an admission policy could enforce it later if it ever matters. This rehearses real GPU scheduling before any GPU exists. The card resource completes the rehearsal: a pod requests one card, the scheduler subtracts it from the node's count, and a worker beyond the card total stays Pending with "Insufficient kgpu.io/gpu-card", exactly the message a real cluster gives for `nvidia.com/gpu`. Phase 5 changes the resource name and nothing else.
 
 ## Flows
 
@@ -105,6 +108,10 @@ sequenceDiagram
 | 19 | **The crash test on Kubernetes is an in-container kill of the worker process, not a forced pod deletion.** `kubectl delete pod --grace-period=0 --force` still delivers SIGTERM before the kill, so the worker's release path runs and no lease expires; it is a graceful stop in disguise. The in-container kill exits the container with 137, the lease expires, the reaper requeues, and the kubelet restarts the container in place | Treat forced deletion as the crash | Measured: forced deletion gave attempt 2 in 8 s with zero lease expiries; the in-container kill gave attempt 2 in 17 s (10 s lease plus the 6.5 s build) with one expiry and restart count 1. The script keeps the forced deletion as a documented observation. |
 | 20 | **The worker's liveness probe carries its own `terminationGracePeriodSeconds: 5`** | Inherit the pod's 30 s | A process the liveness probe has declared hung cannot act on SIGTERM; waiting the pod's full grace period before SIGKILL meant a frozen worker took 52 s to restart (cross-check). The lease path was unaffected (reaped at 10 s); this only shortens how long a dead container occupies the slot. |
 | 21 | **`GET /workers` lists every registered worker with a `live` flag; `pool` counts only the live ones** | List only live workers | An operator wants to see who went quiet; the policy wants the live count. Both from one call. (Cross-check gap.) |
+| 22 | **GPU cards are a countable node resource.** `scripts/kind-up.sh` advertises `kgpu.io/gpu-card: CARDS_PER_NODE` on every GPU node as a Kubernetes *extended resource* (a status patch, the same mechanism the NVIDIA device plugin uses for `nvidia.com/gpu`), and each worker pod requests one. Kubernetes itself then caps the workers per node at the card count and reports "Insufficient kgpu.io/gpu-card" beyond it | Pod anti-affinity to force one worker per node; nothing, leave the count to `replicas` | Anti-affinity encodes "one per machine", which is an assumption the owner rejected (decision 23). The resource encodes "one per card", which is physics: a card runs one build at a time (CLAUDE.md modeling assumption). Phase 5 renames the resource; the manifests are otherwise final. |
+| 23 | **How many workers to run per card and per machine is an experiment parameter, not a design assumption.** The cluster is described as machines × cards; `replicas` picks how many cards are in use; the Phase 3 cost model gets a per-node shared transfer bandwidth term; Phase 5 measures workers per node at a fixed card count; more than one worker per card is the device plugin's time-slicing setting, also a number | Fix one worker per machine (the first instinct: "maximise one GPU's speed"); fix one worker per card | Workers on one box share its network link, PCIe bus, host CPU and RAM, and every build starts by streaming its vectors in. Whether a second card on a box adds a second card's throughput depends on the transfer-to-build ratio, which depends on the dimension (published figures: transfer is noise at 128 dims and binds at 1536). That is a measurement, so the system must not hard-code the answer. |
+| 24 | **Cluster shape: two stand-in GPU nodes with two cards each** (`deploy/kind/cluster.yaml`, `CARDS_PER_NODE`), modelling two small GPU machines; refines decision 9 | Keep one GPU node (the step 3 shape, "one box with two cards") | Index builds have the *inference* shape (each build fits one card, cards never talk to each other, the bottleneck is the network into the card), and inference fleets are mostly one or two cards per server or small cloud VMs; the eight-card boxes are the training shape. Two nodes also make a drain halve the pool instead of emptying it, which is the `shrinking_pool` scenario Phase 3 cares about. |
+| 25 | **Worker registration waits for the schema.** An `UndefinedTable` on the first heartbeat is "not yet", retried with backoff; readiness stays 503 meanwhile | Crash and let Kubernetes restart the pod (what happened) | Kubernetes has no startup ordering between Deployments; Compose's `depends_on: service_healthy` had been doing load-bearing work nobody wrote down. Bug 9. |
 
 ## Implementation notes
 
@@ -178,6 +185,23 @@ The agent disclosed that one exploratory `kubectl apply` landed on the `kgpu` na
 | The readiness threshold is "within three heartbeat intervals" measured from the last *successful* heartbeat; the probe period adds up to one interval, so the first 503 lands 2 to 3 intervals after the last success. | Stated here. |
 | A Postgres outage longer than the lease always costs the in-flight attempt (decision 48 working as designed). | Noted beside the roadmap's "Restart Postgres" item. |
 | The drain checklist item is answered for workers; the dashboard view is pending. | Roadmap ticked with the note. |
+
+### Step 3b: GPU cards as a resource, two GPU nodes (done 2026-10-17)
+
+Prompted by the owner's question whether the design assumed one GPU machine with two workers on it, and the follow-up that the worker count should be measured, not assumed (decisions 22 to 24).
+
+| Path | What |
+| --- | --- |
+| `deploy/kind/cluster.yaml` | A second GPU node, same label and join-time taint. |
+| `scripts/kind-up.sh` | Advertises `kgpu.io/gpu-card: CARDS_PER_NODE` (default 2) on every GPU node by patching the node's status, waits for the kubelet to copy capacity into allocatable, prints the card table. Idempotent. |
+| `deploy/k8s/worker.yaml` | `limits: kgpu.io/gpu-card: "1"` per worker (an extended resource must have request = limit, so only the limit is set). |
+| `scripts/k8s-check-gpu-cards.sh` | The step's check; saves `test-logs/phase2/step3b-gpu-cards.log`. |
+| `scripts/kind-check-gpu-node.sh`, `scripts/k8s-check-step3.sh` | Now accept a set of GPU nodes. Rerun on the rebuilt cluster together with the step 2 check; all pass. |
+| `worker/kgpu_worker/worker.py` | Registration waits for the schema (decision 25, bug 9), found on the first deploy to the rebuilt cluster. |
+
+Observed: both GPU nodes advertise 2 cards, no other node advertises any; two workers run one per node, each holding one card, the node's allocated count matching its worker count; scaled to 4, every card is used, two workers per node, and the pool shows 4; scaled to 5, the fifth pod stays Pending with "2 Insufficient kgpu.io/gpu-card, 1 node(s) had untolerated taint(s), 2 node(s) didn't match Pod's node affinity/selector" and the pool stays 4; scaled back to 2, two cards are allocated and the pool returns to 2. The kubelet takes a few seconds to copy a patched capacity into allocatable; `kind-up.sh` waits for it.
+
+Kubernetes placed the two default workers one per node without being asked (the scheduler spreads a Deployment's pods by default), so the default configuration already is "two machines, one card each in use". That is a preference, not a guarantee; the card resource is the guarantee.
 
 ## Open questions
 

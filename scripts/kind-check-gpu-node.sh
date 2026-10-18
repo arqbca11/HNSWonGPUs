@@ -19,17 +19,18 @@ say "1. Nodes, labels and taints"
 kubectl wait --for=condition=Ready node --all --timeout=180s >/dev/null
 kubectl get nodes -L kgpu.io/role,kgpu.io/gpu -o wide --no-headers | awk '{print "   "$1, $2, "role="$NF}' 
 kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key' --no-headers | sed 's/^/   taints: /'
-GPU=$(kubectl get nodes -l kgpu.io/gpu=true -o name | sed 's|node/||'); [ -n "$GPU" ] || fail "no node carries kgpu.io/gpu=true"
-note "GPU node: $GPU"
+GPU=$(kubectl get nodes -l kgpu.io/gpu=true -o name | sed 's|node/||' | tr '\n' ' '); [ -n "$GPU" ] || fail "no node carries kgpu.io/gpu=true"
+is_gpu() { case " $GPU " in *" $1 "*) return 0;; esac; return 1; }
+note "GPU nodes: $GPU"
 
 say "2. Six plain pods (no toleration): none may land on the GPU node"
 for i in 1 2 3 4 5 6; do
   kubectl run plain-$i --image=registry.k8s.io/pause:3.10 --labels=kgpu.io/check=1 --restart=Never >/dev/null
 done
 kubectl wait --for=jsonpath='{.spec.nodeName}' pod -l kgpu.io/check=1 --timeout=120s >/dev/null 2>&1 || true
-for i in 1 2 3 4 5 6; do n=$(kubectl get pod plain-$i -o jsonpath='{.spec.nodeName}'); note "plain-$i -> $n"; [ "$n" != "$GPU" ] || fail "plain-$i landed on the GPU node"; done
+for i in 1 2 3 4 5 6; do n=$(kubectl get pod plain-$i -o jsonpath='{.spec.nodeName}'); note "plain-$i -> $n"; if is_gpu "$n"; then fail "plain-$i landed on a GPU node"; fi; done
 
-say "3. A worker-shaped pod (toleration + nodeSelector): must land on the GPU node"
+say "3. A worker-shaped pod (toleration + nodeSelector): must land on a GPU node"
 kubectl apply -f - >/dev/null <<YAML
 apiVersion: v1
 kind: Pod
@@ -40,8 +41,8 @@ spec:
   tolerations: [{key: kgpu.io/gpu, operator: Equal, value: "true", effect: NoSchedule}]
   containers: [{name: pause, image: registry.k8s.io/pause:3.10}]
 YAML
-kubectl wait --for=jsonpath='{.spec.nodeName}'="$GPU" pod/gpu-shaped --timeout=120s >/dev/null 2>&1 || true
-n=$(kubectl get pod gpu-shaped -o jsonpath='{.spec.nodeName}'); note "gpu-shaped -> ${n:-<unscheduled>}"; [ "$n" = "$GPU" ] || fail "gpu-shaped did not land on the GPU node"
+kubectl wait --for=jsonpath='{.spec.nodeName}' pod/gpu-shaped --timeout=120s >/dev/null 2>&1 || true
+n=$(kubectl get pod gpu-shaped -o jsonpath='{.spec.nodeName}'); note "gpu-shaped -> ${n:-<unscheduled>}"; is_gpu "$n" || fail "gpu-shaped did not land on a GPU node"
 
 say "4. A pod with the selector but no toleration: must stay Pending (the taint repels it)"
 kubectl apply -f - >/dev/null <<YAML

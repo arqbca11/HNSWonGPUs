@@ -15,11 +15,11 @@ say() { printf '\n== %s\n' "$*"; }; note() { printf '   %s\n' "$*"; }
 result=PASS; reached_end=0; fail() { printf '\n!! FAIL: %s\n' "$*"; result=FAIL; }
 PF_PID=""; API=http://127.0.0.1:18090
 pf() { [ -n "$PF_PID" ] && { kill "$PF_PID" 2>/dev/null || true; wait "$PF_PID" 2>/dev/null || true; }
-  $K port-forward svc/scheduler 18090:8080 >/dev/null 2>&1 & PF_PID=$!
+  $K port-forward svc/scheduler 18090:8080 >/dev/null 2>&1 & PF_PID=$!; disown
   for _ in $(seq 1 40); do curl -sf $API/livez >/dev/null 2>&1 && return 0; sleep 0.25; done; return 1; }
 cleanup() { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true; [ "$reached_end" = 1 ] || result="ABORTED (script error before the end)"; say "Result: $result"; echo "log: $log"; [ "$result" = PASS ]; }
 trap cleanup EXIT
-pods() { $K get pods -l app=worker -o wide --no-headers | awk '{print "   "$1, $3, "restarts="$4, "node="$7}'; }
+pods() { $K get pods -l app=worker -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,NODE:.spec.nodeName' --no-headers | sed 's/^/   /'; }
 jget() { python3 scripts/jget.py "$1" 2>/dev/null || echo ""; }
 build_row() { curl -s "$API/builds/$1" | jget "dict((k,d.get(k)) for k in ('build_id','state','attempt','lease_owner'))"; }
 bfield() { curl -s "$API/builds/$1" | jget "d.get('$2') or ''"; }
@@ -29,10 +29,11 @@ new_round() { curl -s -X POST $API/rounds -d "{\"scenario\":\"k8s-step3\",\"seed
 submit() { curl -s -X POST $API/builds -d "{\"round_id\":$1,\"shard_id\":0,\"n_vectors\":$2,\"dim\":128}" | jget "d['build_id']"; }
 
 say "Phase 2 step 3: GPU workers on kind  ($(date '+%Y-%m-%d %H:%M:%S %Z'), commit $(git rev-parse --short HEAD))"
-say "1. Both workers run on the GPU node and are registered with the scheduler"
+say "1. Both workers run on GPU nodes and are registered with the scheduler"
 pods
-GPU=$($K get nodes -l kgpu.io/gpu=true -o name | sed 's|node/||')
-for n in $($K get pods -l app=worker -o jsonpath='{.items[*].spec.nodeName}'); do [ "$n" = "$GPU" ] || fail "a worker pod is on $n, not the GPU node"; done
+GPU=$($K get nodes -l kgpu.io/gpu=true -o name | sed 's|node/||' | tr '\n' ' ')
+is_gpu() { case " $GPU " in *" $1 "*) return 0;; esac; return 1; }
+for n in $($K get pods -l app=worker -o jsonpath='{.items[*].spec.nodeName}'); do is_gpu "$n" || fail "a worker pod is on $n, not a GPU node"; done
 pf || fail "port-forward failed"
 W=$(curl -s $API/workers | jget "str(d['pool']['live_workers'])+' live: '+', '.join(w['worker_id'] for w in d['workers'])")
 note "pool: $W"; [ "$(curl -s $API/workers | jget "d['pool']['live_workers']")" = 2 ] || fail "expected 2 live workers"
@@ -60,7 +61,7 @@ note "$(build_row "$B")"
 [ "$(completions_of "$B")" = 1 ] || fail "expected exactly one completion"
 $K rollout status deployment/worker --timeout=120s >/dev/null; pods
 [ "$($K get pods -l app=worker --field-selector=status.phase=Running --no-headers | wc -l | tr -d ' ')" = 2 ] || fail "expected 2 running workers after replacement"
-for n in $($K get pods -l app=worker -o jsonpath='{.items[*].spec.nodeName}'); do [ "$n" = "$GPU" ] || fail "replacement landed on $n"; done
+for n in $($K get pods -l app=worker -o jsonpath='{.items[*].spec.nodeName}'); do is_gpu "$n" || fail "replacement landed on $n"; done
 note "the deleted worker's last lines:"; $K logs "$OWNER" 2>/dev/null | python3 -c 'import sys,json
 for l in sys.stdin:
     try: d=json.loads(l)
