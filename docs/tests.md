@@ -29,6 +29,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, step 3: the workers on kind (`scripts/k8s-check-step3.sh`). Log: `phase2/step3-workers.log`](#phase-2-step-3-the-workers-on-kind-scriptsk8s-check-step3sh-log-phase2step3-workerslog)
 - [Phase 2, step 3, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindWorkers` subtests; need `KGPU_KIND=1`). Log: `phase2/step3-crosscheck-kind-workers.log`](#phase-2-step-3-cross-check-on-kind-go-schedulercrosscheck-testkindworkers-subtests-need-kgpukind1-log-phase2step3-crosscheck-kind-workerslog)
 - [Phase 2, step 3b: GPU cards as a countable resource (`scripts/k8s-check-gpu-cards.sh`). Log: `phase2/step3b-gpu-cards.log`](#phase-2-step-3b-gpu-cards-as-a-countable-resource-scriptsk8s-check-gpu-cardssh-log-phase2step3b-gpu-cardslog)
+- [Phase 2, step 3b, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindCards` subtests; need `KGPU_KIND=1`). Log: `phase2/step3b-crosscheck-kind-cards.log`](#phase-2-step-3b-cross-check-on-kind-go-schedulercrosscheck-testkindcards-subtests-need-kgpukind1-log-phase2step3b-crosscheck-kind-cardslog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -323,3 +324,18 @@ The agent deploys its own copy of the stack into a `kgpu-xcheck` namespace with 
 | 3 | Scale the workers to the card total (4). | Every card is used, both GPU nodes carry workers, none on a general node, the pool shows 4. |
 | 4 | Scale to one more than the cards. | The extra pod stays Pending with "Insufficient kgpu.io/gpu-card" and the pool stays 4: Kubernetes, not convention, caps the workers (decision 22). |
 | 5 | Scale back to 2. | The cards are freed and the pool follows. |
+
+## Phase 2, step 3b, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindCards` subtests; need `KGPU_KIND=1`). Log: `phase2/step3b-crosscheck-kind-cards.log`
+
+The agent scales the implementer's workers to zero for the run, since cards are cluster-wide, and restores them.
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| KindCards/ReverseOrderStartWaitsForSchema | Apply the worker Deployment first, then Postgres, then the scheduler, holding each stage past the liveness budget. | Workers never crash-loop (restarts 0), stay not ready with liveness 200, log that they wait, and register within a second of the migration (decision 25, bug 9). |
+| KindCards/NodeAndPodCardFacts | Read every node's card capacity and allocatable, and every pod's card request and limit. | Both GPU nodes advertise 2 = 2, no other node advertises any, each worker requests exactly one card, nothing else consumes cards (decisions 22, 24). |
+| KindCards/FourWorkersFillCardsFifthPending | Scale workers to 4, then 5. | Four fill every card, two per node, pool 4; the fifth stays Pending with "Insufficient kgpu.io/gpu-card" and the pool stays 4. |
+| KindCards/NoCardPodIgnoresCap | All cards in use; a GPU-shaped pod with no card request, then one requesting a card. | The cap applies only to pods that request a card: the no-card pod lands on a full node; the requesting non-worker is refused like a worker. |
+| KindCards/KilledWorkerKeepsItsCard | Four workers plus a Pending fifth; SIGKILL the python inside one. | The container restarts in place, the node's allocated count never drops, the Pending pod never gets the card. |
+| KindCards/TwoCardPodFragmentation | A pod requesting two cards with 3, 2 (one per node) and 1 workers running. | Cards are per node: Pending while no single node has two free, even with two free in total; lands once a node has two. |
+| KindCards/CapacityPatchedDownUnderLoad | Patch one node's capacity from 2 to 1 with two workers on it, delete one, restore. | Kubernetes evicts nothing (the node runs over-allocated); the replacement stays Pending until capacity is restored. |
+| KindCards/DrainOneGPUNodeHalvesPool | Four workers with four long builds; drain one GPU node, then uncordon. | Exactly that node's two workers are evicted and release; the other two keep building; the pool halves; replacements wait; every build ends done once (decision 24). |

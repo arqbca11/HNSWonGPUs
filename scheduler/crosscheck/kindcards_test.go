@@ -95,6 +95,8 @@ func TestKindCards(t *testing.T) {
 	if api == nil {
 		t.Fatal("stack did not come up; remaining subtests need it")
 	}
+	// The parent owns the port-forward, so it outlives each subtest.
+	api.pf = forward(t, "svc/scheduler", kPortA)
 	t.Run("NodeAndPodCardFacts", func(t *testing.T) { testCardFacts(t, gpus) })
 	t.Run("FourWorkersFillCardsFifthPending", func(t *testing.T) { testFillCards(t, api, gpus) })
 	t.Run("NoCardPodIgnoresCap", func(t *testing.T) { testNoCardPod(t, gpus) })
@@ -163,6 +165,12 @@ func testReverseStart(t *testing.T) *kwAPI {
 	}
 	bound, _ := myWorkers(t)
 	for _, p := range bound {
+		all := strings.TrimSpace(podLogs(t, p.Metadata.Name, false))
+		n := 0
+		if all != "" {
+			n = len(strings.Split(all, "\n"))
+		}
+		t.Logf("[stage A] %s wrote %d log line(s) in ~45 s with no Postgres Service at all (observation: the spec promises no log here)", p.Metadata.Name, n)
 		lines := strings.Split(strings.TrimSpace(podLogs(t, p.Metadata.Name, false)), "\n")
 		if len(lines) > 3 {
 			lines = lines[len(lines)-3:]
@@ -216,10 +224,11 @@ func testReverseStart(t *testing.T) *kwAPI {
 			t.Errorf("%s restart count %d at the end, want 0 (decision 25)", p.Metadata.Name, p.restarts())
 		}
 	}
-	api := &kwAPI{pf: forward(t, "svc/scheduler", kPortA)}
-	waitPool(t, api, names(ps), 30*time.Second)
+	local := &kwAPI{pf: forward(t, "svc/scheduler", kPortA)}
+	waitPool(t, local, names(ps), 30*time.Second)
+	local.pf.stop()
 	t.Logf("[check] reverse-order start: restarts 0 on %v throughout; not Ready until migrated; registered under their pod names", names(ps))
-	return api
+	return &kwAPI{}
 }
 
 func firstOr(ls []string) string {
