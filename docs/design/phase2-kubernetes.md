@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers) and 3b (GPU cards as a resource, two GPU nodes) done; steps 4 to 6 (shards, metrics, failure injection) to come.
+**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers), 3b (GPU cards as a resource, two GPU nodes) and 4 (shards outside the cluster) done; steps 5 and 6 (metrics, failure injection) to come.
 
 Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Grafana watching it. The scheduler code and the schema do not change. What changes is who keeps processes alive and where they run.
 
@@ -10,7 +10,7 @@ Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Gr
 
 ## System diagram
 
-One control-plane node and four worker nodes, all Docker containers on the laptop. Two nodes are labeled and tainted as the stand-in GPU pool, and each advertises two fake GPU cards as a countable resource (`kgpu.io/gpu-card`). A worker pod holds one card, so the card count caps the workers per node the same way the NVIDIA device plugin will in Phase 5; `replicas` chooses how many of the cards to use (decisions 22 to 24).
+The cluster holds the control plane and the GPU pool: scheduler, Postgres, workers. The **shards are not in it.** In the real system they are the database machines, clients of the scheduler; here the shard simulator runs on the laptop and reaches the scheduler through one address, a NodePort mapped to `127.0.0.1:30080` (decisions 26, 27). One control-plane node and four worker nodes, all Docker containers on the laptop. Two nodes are labeled and tainted as the stand-in GPU pool, and each advertises two fake GPU cards as a countable resource (`kgpu.io/gpu-card`). A worker pod holds one card, so the card count caps the workers per node the same way the NVIDIA device plugin will in Phase 5; `replicas` chooses how many of the cards to use (decisions 22 to 24).
 
 ```mermaid
 flowchart TB
@@ -23,20 +23,20 @@ flowchart TB
             G2["gpu-2<br/>kgpu.io/gpu-card: 2"]
         end
         WD["Deployment: worker ×N (N ≤ 4)<br/>nodeSelector gpu=true, toleration gpu-only<br/>limits kgpu.io/gpu-card: 1"]
-        subgraph n2["node 2"]
-            SD["Deployment: scheduler ×1"]
+        subgraph n2["general nodes 1 and 2"]
+            SD["Deployment: scheduler ×1<br/>Service: ClusterIP 8080 + NodePort 30080"]
             PGS["StatefulSet: postgres ×1<br/>PersistentVolumeClaim"]
             MON["Prometheus + Grafana<br/>(kube-prometheus-stack)"]
         end
-        subgraph n3["node 3"]
-            SS["StatefulSet: shards ×5 pods<br/>10 simulated shards each<br/>CPU requests and limits"]
-        end
+    end
+    subgraph outside["outside the cluster: the database fleet"]
+        SS["shard simulator on the laptop<br/>N shards as goroutines<br/>(in production: the shards themselves)"]
     end
     WD -- "one pod per card" --> G1 & G2
-    SS -- HTTP --> SD
+    SS -- "HTTP to 127.0.0.1:30080<br/>(kind maps it to the NodePort)" --> SD
     SD -- SQL --> PGS
     WD -- SQL --> PGS
-    MON -- "scrape /metrics" --> SD & WD & SS
+    MON -- "scrape /metrics" --> SD & WD
 ```
 
 The taint keeps every pod *without the toleration* off the GPU nodes; the node selector keeps the workers *on* them. Precisely: the toleration grants access and the selector constrains, so any manifest that copies the toleration can land on the GPU node, and on an otherwise idle node the Kubernetes scheduler will even prefer it (the cross-check saw six toleration-only pods all placed there). "Only workers on the GPU node" is therefore a convention kept by not copying the toleration, not something Kubernetes enforces; an admission policy could enforce it later if it ever matters. This rehearses real GPU scheduling before any GPU exists. The card resource completes the rehearsal: a pod requests one card, the scheduler subtracts it from the node's count, and a worker beyond the card total stays Pending with "Insufficient kgpu.io/gpu-card", exactly the message a real cluster gives for `nvidia.com/gpu`. Phase 5 changes the resource name and nothing else. Like the toleration, the cards are a convention as far as *who* may use them: any pod that requests `kgpu.io/gpu-card` gets one if free, and a pod that copies the toleration and selector without requesting a card lands on a full GPU node (the step 3b cross-check did both). The resource caps pods that request it; it does not reserve the cards for workers. An admission rule would, if it ever matters.
@@ -112,6 +112,8 @@ sequenceDiagram
 | 23 | **How many workers to run per card and per machine is an experiment parameter, not a design assumption.** The cluster is described as machines × cards; `replicas` picks how many cards are in use; the Phase 3 cost model gets a per-node shared transfer bandwidth term; Phase 5 measures workers per node at a fixed card count; more than one worker per card is the device plugin's time-slicing setting, also a number | Fix one worker per machine (the first instinct: "maximise one GPU's speed"); fix one worker per card | Workers on one box share its network link, PCIe bus, host CPU and RAM, and every build starts by streaming its vectors in. Whether a second card on a box adds a second card's throughput depends on the transfer-to-build ratio, which depends on the dimension (published figures: transfer is noise at 128 dims and binds at 1536). That is a measurement, so the system must not hard-code the answer. |
 | 24 | **Cluster shape: two stand-in GPU nodes with two cards each** (`deploy/kind/cluster.yaml`, `CARDS_PER_NODE`), modelling two small GPU machines; refines decision 9 | Keep one GPU node (the step 3 shape, "one box with two cards") | Index builds have the *inference* shape (each build fits one card, cards never talk to each other, the bottleneck is the network into the card), and inference fleets are mostly one or two cards per server or small cloud VMs; the eight-card boxes are the training shape. Two nodes also make a drain halve the pool instead of emptying it, which is the `shrinking_pool` scenario Phase 3 cares about. |
 | 25 | **Worker registration waits for the schema.** An `UndefinedTable` on the first heartbeat is "not yet", retried with backoff; readiness stays 503 meanwhile | Crash and let Kubernetes restart the pod (what happened) | Kubernetes has no startup ordering between Deployments; Compose's `depends_on: service_healthy` had been doing load-bearing work nobody wrote down. Bug 9. |
+| 26 | **The shards run outside the cluster.** The shard simulator is a client on the laptop, as the database fleet would be; the cluster holds only the control plane and the GPU pool. Reverses the roadmap's "shards as a StatefulSet with CPU limits" | Shards as a StatefulSet in their own namespace, labelled as a stand-in fleet (keeps Kubernetes CPU limits for Phase 4 and in-cluster scraping) | The owner's correction (2026-10-18): the honest topology has the shards where the database is, reaching the scheduler over the network, and the Kubernetes work should cover what one would deploy. Phase 4's real CPU builds then run on the laptop's CPU, which is where the shard's CPU is; fifty shards will contend for it regardless, just without Kubernetes metering. If metering matters, a per-process cap on the simulator or a revisit then. |
+| 27 | **The scheduler is reachable from outside through a NodePort** (`type: NodePort`, port 30080), which kind maps to the laptop with `extraPortMappings` on the control-plane node; the in-cluster `scheduler:8080` address is unchanged | `kubectl port-forward` only (what the checks used); an Ingress controller | A port-forward is a debugging tool that dies with its terminal; the shards need a stable address. An Ingress is the production answer for HTTP but adds a controller for no gain on kind. On a real cluster this becomes a LoadBalancer or Ingress and the shards' `SCHEDULER_URL` changes; nothing else does. |
 
 ## Implementation notes
 
@@ -213,6 +215,19 @@ A fresh agent deployed its own stack into `kgpu-xcheck`, scaled the implementer'
 | Capacity is a status patch the cluster does not check; lowering it below use evicts nothing. Does it survive a kubelet restart? | Tested after the run: `docker restart kgpu-worker4` (the node container, so its kubelet) came back with capacity and allocatable still 2; the kubelet preserves extended resources it did not advertise. `kind-up.sh` re-applies it anyway. The over-allocation behaviour is the same a real device plugin shows when a card drops: running pods keep theirs. |
 | A missing Postgres Service at startup (not just a missing schema) is not in decision 25's text. | Covered by the connect retry from bug 7; the reverse-order test is the evidence. Recorded here. |
 | One implementer worker showed restart count 1 before the run. | From the step 3 check's in-container kill, rerun earlier that day. |
+
+### Step 4: the shards, outside the cluster (done 2026-10-18)
+
+| Path | What |
+| --- | --- |
+| `deploy/k8s/scheduler.yaml` | Service `type: NodePort`, `nodePort: 30080` (decision 27). |
+| `deploy/kind/cluster.yaml` | `extraPortMappings` 30080 on the control-plane node, bound to 127.0.0.1. One more cluster rebuild. |
+| `scripts/k8s-round.sh` | Runs simulator rounds from the laptop against `http://127.0.0.1:30080`: scales the workers, waits for the pool, checks the time scales agree, runs, prints the timeline, the round rows from the API and the pod logs. `KILL_WORKER=1` deletes the leaseholder of the largest leased build mid-round. |
+| `scripts/k8s-check-step4.sh` | Three runs; saves `test-logs/phase2/step4-shards-outside.log`. |
+
+Observed: no shard pods exist in the cluster; the simulator on the laptop completed a 6-shard, 2-worker round (3.0 s real, 30 s modeled, all 3412 queries recorded and finished), a 50-shard, 2-worker round with a worker pod deleted mid-round (the pod finished the 200k build it held inside its 5 s budget and exited, the replacement joined and claimed two builds in the same round, all 50 builds done at attempt 1, 30388 queries finished, 7.8 s real), and a 50-shard, 4-worker round using every card (4.3 s real, 43 s modeled). The workers on the rebuilt cluster started with restart count 0: decision 25 held on a fresh deploy where bug 9 had bitten the day before.
+
+The roadmap's "Delete a worker pod mid-build" failure-injection item is answered as far as correctness goes (the round completed, nothing twice); its dashboard view is step 6. Fake builds at 10x are under a second, so a graceful deletion lands on the finish path; the release path under a real round was shown in the step 3 cross-check with 8M-vector builds.
 
 ## Open questions
 

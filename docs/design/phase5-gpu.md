@@ -14,16 +14,16 @@ The same manifests as Phase 2, applied to a managed cluster with a GPU node pool
 flowchart TB
     subgraph cloud["managed cluster (e.g. GKE)"]
         subgraph std["standard node pool"]
-            SD["scheduler"]
+            SD["scheduler<br/>(LoadBalancer or Ingress for the shards)"]
             PG["postgres"]
             MO["minio"]
-            SH["shards"]
             MON["prometheus, grafana,<br/>DCGM exporter"]
         end
         subgraph gpu["GPU node pool: spot, 0…N machines × M cards<br/>taint gpu-only, device plugin advertises nvidia.com/gpu: M per node"]
             W["worker (cuVS image) ×(cards in use)<br/>requests nvidia.com/gpu: 1"]
         end
     end
+    SH["shards: the database fleet,<br/>outside the cluster (Phase 2 decision 26)"] -- HTTP --> SD
     AS["cluster autoscaler"] -- "pending worker pod → add node<br/>idle node → remove" --> gpu
     SP["spot reclaim"] -. "node disappears mid-build" .-> gpu
 ```

@@ -210,7 +210,7 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 - [x] Postgres as a StatefulSet with a PersistentVolumeClaim
 - [x] Scheduler as a Deployment with one replica. Running two replicas is also safe for the reaper, because reaping is a conditional `UPDATE` and doing it twice changes nothing.
 - [x] Workers as a Deployment of long-running pullers. One Kubernetes Job per build is a different design; Phase 6 compares the two.
-- [ ] Shards as a StatefulSet, e.g. 5 pods running 10 simulated shards each. Set CPU requests and limits now, so local builds compete for real CPU in Phase 4.
+- [x] ~~Shards as a StatefulSet, e.g. 5 pods running 10 simulated shards each. Set CPU requests and limits now, so local builds compete for real CPU in Phase 4.~~ **Replaced (Phase 2 decision 26):** the shards run *outside* the cluster, as the database fleet would; the simulator runs on the laptop and reaches the scheduler through a NodePort mapped to `127.0.0.1:30080` (decision 27). Phase 4's local builds run on the laptop's CPU. Done 2026-10-18.
 
 ### Lifecycle
 
@@ -232,11 +232,11 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 | `gpu_queue_depth` | gauge | scheduler |
 | `worker_busy` | gauge | worker |
 
-Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and scrape each service with a ServiceMonitor.
+Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and scrape each service with a ServiceMonitor. The shards are outside the cluster (decision 26), so shard-emitted metrics (`build_duration_seconds{placement=local}`) need another route: the simulator's `/metrics` scraped via the Docker host address, a push gateway, or deriving them from the scheduler's rows. Decided in step 5.
 
 ### Failure injection
 
-- [ ] Delete a worker pod mid-build
+- [x] Delete a worker pod mid-build *(step 4 check, under a 50-shard round from outside: the round completed, nothing twice; the dashboard view is step 6)*
 - [ ] Delete the scheduler pod mid-round
 - [x] Drain the stand-in GPU node: every worker is evicted and the queue grows. This is the case the CPU-fallback policies in Phase 3 should handle. *(Step 3 cross-check: both workers released their builds, five builds queued, replacements Pending on the taint, all completed once after uncordon. The dashboard view comes with step 5.)*
 - [x] Restart Postgres: services retry, and nothing completes twice *(step 2 check and step 3 cross-check; note that an outage longer than the lease costs the in-flight attempt, by design, Phase 1 decision 48)*

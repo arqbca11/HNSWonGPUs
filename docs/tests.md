@@ -30,6 +30,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, step 3, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindWorkers` subtests; need `KGPU_KIND=1`). Log: `phase2/step3-crosscheck-kind-workers.log`](#phase-2-step-3-cross-check-on-kind-go-schedulercrosscheck-testkindworkers-subtests-need-kgpukind1-log-phase2step3-crosscheck-kind-workerslog)
 - [Phase 2, step 3b: GPU cards as a countable resource (`scripts/k8s-check-gpu-cards.sh`). Log: `phase2/step3b-gpu-cards.log`](#phase-2-step-3b-gpu-cards-as-a-countable-resource-scriptsk8s-check-gpu-cardssh-log-phase2step3b-gpu-cardslog)
 - [Phase 2, step 3b, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindCards` subtests; need `KGPU_KIND=1`). Log: `phase2/step3b-crosscheck-kind-cards.log`](#phase-2-step-3b-cross-check-on-kind-go-schedulercrosscheck-testkindcards-subtests-need-kgpukind1-log-phase2step3b-crosscheck-kind-cardslog)
+- [Phase 2, step 4: shards outside the cluster (`scripts/k8s-check-step4.sh`, via `scripts/k8s-round.sh`). Log: `phase2/step4-shards-outside.log`](#phase-2-step-4-shards-outside-the-cluster-scriptsk8s-check-step4sh-via-scriptsk8s-roundsh-log-phase2step4-shards-outsidelog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -339,3 +340,12 @@ The agent scales the implementer's workers to zero for the run, since cards are 
 | KindCards/TwoCardPodFragmentation | A pod requesting two cards with 3, 2 (one per node) and 1 workers running. | Cards are per node: Pending while no single node has two free, even with two free in total; lands once a node has two. |
 | KindCards/CapacityPatchedDownUnderLoad | Patch one node's capacity from 2 to 1 with two workers on it, delete one, restore. | Kubernetes evicts nothing (the node runs over-allocated); the replacement stays Pending until capacity is restored. |
 | KindCards/DrainOneGPUNodeHalvesPool | Four workers with four long builds; drain one GPU node, then uncordon. | Exactly that node's two workers are evicted and release; the other two keep building; the pool halves; replacements wait; every build ends done once (decision 24). |
+
+## Phase 2, step 4: shards outside the cluster (`scripts/k8s-check-step4.sh`, via `scripts/k8s-round.sh`). Log: `phase2/step4-shards-outside.log`
+
+| Step | Scenario | Proves |
+| --- | --- | --- |
+| 0 | Read the scheduler Service and list shard pods. | The only door is the NodePort on 30080; no shard pods exist in the cluster (decisions 26, 27). |
+| 1 | The simulator on the laptop runs a 6-shard round against 2 workers. | The default configuration completes end to end on Kubernetes from outside: all builds done at attempt 1, every query recorded and finished. |
+| 2 | A 50-shard round against 2 workers; the leaseholder of the largest leased build is deleted mid-round. | The round completes, nothing completes twice, the replacement pod joins the round in flight and claims builds; the deleted pod finishes its short build inside its budget (the release path under a real round is in the step 3 cross-check). |
+| 3 | A 50-shard round against 4 workers, every card in use. | The pool scales to the card total and the round completes. |

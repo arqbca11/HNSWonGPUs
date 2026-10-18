@@ -20,7 +20,7 @@ Update this line when a phase is done. Don't start work that belongs to a later 
 | `worker/` | Pulls GPU jobs, renews its lease, runs the build, publishes the result | Python |
 | `db/migrations/` | Postgres schema; Postgres is the only source of truth | SQL |
 | `experiments/` | Seeded workloads, discrete-event simulator, runner, results | Go / Python |
-| `deploy/` | Docker Compose now; kind + manifests from Phase 2 | YAML |
+| `deploy/` | Docker Compose; kind cluster and manifests for the control plane and GPU pool (scheduler, Postgres, workers). The shards run outside the cluster, as the database fleet would | YAML |
 
 ## Invariants (never break these)
 
@@ -89,7 +89,8 @@ Toolchain (macOS, Homebrew): `brew install go python@3.12 uv libpq kind kubectl 
 | Compose failure tests (kill, pause, scheduler restart, duplicate submit) | `scripts/compose-failures.sh` (saves `test-logs/phase1/step4-compose-failures.log`; `KEEP=1` leaves the stack up) |
 | The same failure tests under simulator load | `scripts/compose-failures-load.sh` (continuous rounds; saves `test-logs/phase1/step6-compose-failures-load.log`; `N_SHARDS=50 WORKERS=3 LOG=phase1/step7-...` for step 7) |
 | Phase 2 cluster | `scripts/kind-up.sh` (creates the `kgpu` kind cluster with two stand-in GPU nodes and advertises `CARDS_PER_NODE` fake cards on each, default 2; idempotent), `scripts/kind-check-gpu-node.sh` (proves the GPU nodes' scheduling rules; saves `test-logs/phase2/step1-kind-cluster.log`), `scripts/k8s-check-gpu-cards.sh` (proves the card resource caps the workers; saves `step3b-gpu-cards.log`), `scripts/kind-down.sh`. `kubectl config use-context kind-kgpu` to talk to it. |
-| Phase 2 stack on the cluster | `scripts/k8s-build-load.sh [scheduler|worker|shardsim]` builds `:dev` images and loads them into kind; `scripts/k8s-up.sh` applies `deploy/k8s` and waits; `scripts/k8s-check-step2.sh` and `scripts/k8s-check-step3.sh` run the step checks (saving `test-logs/phase2/step2-postgres-scheduler.log` and `step3-workers.log`). `kubectl -n kgpu get pods`, `kubectl -n kgpu port-forward svc/scheduler 8080:8080`. |
+| Phase 2 stack on the cluster | `scripts/k8s-build-load.sh [scheduler|worker|shardsim]` builds `:dev` images and loads them into kind; `scripts/k8s-up.sh` applies `deploy/k8s` and waits; `scripts/k8s-check-step2.sh` and `scripts/k8s-check-step3.sh` run the step checks (saving `test-logs/phase2/step2-postgres-scheduler.log` and `step3-workers.log`). `kubectl -n kgpu get pods`; the scheduler is reachable from the laptop at `http://127.0.0.1:30080` (NodePort). |
+| Simulator rounds from the laptop against the cluster | `scripts/k8s-round.sh` (`N_SHARDS`, `WORKERS` scales the Deployment, `SCENARIO`, `ROUNDS`, `KILL_WORKER=1` deletes a leaseholder mid-round); `scripts/k8s-check-step4.sh` runs 6/2, 50/2 with a kill, 50/4 and saves `test-logs/phase2/step4-shards-outside.log`. |
 | One or more simulator rounds on the stack, with the timeline | `scripts/compose-round.sh` (`SCENARIO`, `N_SHARDS`, `ROUNDS`, `FAKE_TIME_SCALE`; saves `test-logs/phase1/step5-compose-round.log` by default) |
 
 | Run the scheduler locally | `DATABASE_URL=postgres://postgres:test@127.0.0.1:5432/kgpu?sslmode=disable LOG_FORMAT=text go run ./scheduler/cmd/scheduler` (env vars documented at the top of `scheduler/cmd/scheduler/main.go`) |
