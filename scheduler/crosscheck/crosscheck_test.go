@@ -435,7 +435,8 @@ func TestRoundStaysOpenWhileAQueryIsUnfinished(t *testing.T) {
 	if err := e.st.ReportStatus(e.ctx, store.ShardStatus{RoundID: round, ShardID: 0, StreamDone: true}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := e.st.FinishCompleteRounds(e.ctx)
+	fin, err := e.st.FinishCompleteRounds(e.ctx)
+	n := len(fin)
 	jobs, _ := e.st.ListJobs(e.ctx, round)
 	r := e.mustRound(t, round)
 	t.Logf("FinishCompleteRounds -> %d %v; [db] jobs=%+v round.finished_at=%v", n, err, jobs, tptr(r.FinishedAt))
@@ -481,7 +482,8 @@ func TestStreamDoneFromBuildlessShardDoesNotCount(t *testing.T) {
 	if !errors.Is(err99, store.ErrNoBuild) {
 		t.Errorf("decision 33: a report from a buildless shard must be refused with ErrNoBuild; got %v", err99)
 	}
-	n, err := e.st.FinishCompleteRounds(e.ctx)
+	fin, err := e.st.FinishCompleteRounds(e.ctx)
+	n := len(fin)
 	sts, _ := e.st.ListShardStatus(e.ctx, round)
 	r := e.mustRound(t, round)
 	t.Logf("builds for shards 0,1 done; stream_done: shard0=true shard1=false shard99(no build)=true")

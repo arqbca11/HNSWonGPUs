@@ -14,6 +14,7 @@
 //	ROUND_TIMEOUT     default 30m
 //	TIMELINE_DIR      if set, write <dir>/round-<id>.json per round
 //	LOG_FORMAT        json (default) or text
+//	METRICS_ADDR      serve Prometheus metrics here; default :9091; empty disables (Phase 2 decision 28)
 //	PRINT_WORKLOAD    if 1, print the generated workload summary and exit (no scheduler needed)
 package main
 
@@ -22,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -32,6 +34,7 @@ import (
 	"github.com/arqbca11/KubernetesGPU/experiments/workload"
 	"github.com/arqbca11/KubernetesGPU/shard/client"
 	"github.com/arqbca11/KubernetesGPU/shard/sim"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -75,6 +78,19 @@ func main() {
 	if os.Getenv("PRINT_WORKLOAD") == "1" {
 		printWorkload(workload.Generate(sc, seed))
 		return
+	}
+	if addr, ok := os.LookupEnv("METRICS_ADDR"); !ok || addr != "" {
+		if addr == "" {
+			addr = ":9091"
+		}
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", promhttp.Handler())
+		go func() {
+			if err := (&http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}).ListenAndServe(); err != nil {
+				log.Error("metrics server failed", "err", err)
+			}
+		}()
+		log.Info("metrics listening", "addr", addr)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

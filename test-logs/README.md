@@ -30,6 +30,7 @@ Narrated test output, kept so what was checked and what happened can be read wit
 | `phase2/step3b-crosscheck-kind-cards.log` | The cross-check agent's eight card scenarios: reverse-order startup, fragmentation, kill keeps the card, capacity patched down, one-node drain halving the pool. |
 | `phase2/step4-shards-outside.log` | Phase 2 step 4: simulator rounds from the laptop against the cluster; 6/2, 50/2 with a worker deleted mid-round, 50/4, 50/2 with the scheduler pod deleted mid-round (bug 10 closed). |
 | `phase2/step4-crosscheck-kind-outside.log` | The cross-check agent's seven from-the-laptop scenarios: the NodePort as the only door, scheduler deletion mid-round (found bug 10), two simulators at once, zero workers then scale-up. |
+| `phase2/step5-monitoring.log` | Phase 2 step 5: metrics on all three sides, Prometheus targets including the laptop, two rounds' numbers, the Grafana dashboard. |
 
 Per-step logs are the state of the tests at the end of that step, including any fixes from the step's cross-check round, regenerated whenever the step's code changes. `history/` (local only, not committed) keeps every timestamped run.
 

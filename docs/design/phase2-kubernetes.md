@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers), 3b (GPU cards as a resource, two GPU nodes) and 4 (shards outside the cluster) done; steps 5 and 6 (metrics, failure injection) to come.
+**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers), 3b (GPU cards as a resource, two GPU nodes), 4 (shards outside the cluster) and 5 (metrics and dashboards) done; step 6 (failure injection on the dashboard) to come.
 
 Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Grafana watching it. The scheduler code and the schema do not change. What changes is who keeps processes alive and where they run.
 
@@ -26,7 +26,7 @@ flowchart TB
         subgraph n2["general nodes 1 and 2"]
             SD["Deployment: scheduler ×1<br/>Service: ClusterIP 8080 + NodePort 30080"]
             PGS["StatefulSet: postgres ×1<br/>PersistentVolumeClaim"]
-            MON["Prometheus + Grafana<br/>(kube-prometheus-stack)"]
+            MON["namespace monitoring:<br/>Prometheus + Grafana + operator<br/>(kube-prometheus-stack)"]
         end
     end
     subgraph outside["outside the cluster: the database fleet"]
@@ -36,7 +36,8 @@ flowchart TB
     SS -- "HTTP to 127.0.0.1:30080<br/>(kind maps it to the NodePort)" --> SD
     SD -- SQL --> PGS
     WD -- SQL --> PGS
-    MON -- "scrape /metrics" --> SD & WD
+    MON -- "scrape /metrics every 5 s<br/>(ServiceMonitors)" --> SD & WD
+    MON -. "scrape laptop:9091<br/>(Service + Endpoints to host.docker.internal)" .-> SS
 ```
 
 The taint keeps every pod *without the toleration* off the GPU nodes; the node selector keeps the workers *on* them. Precisely: the toleration grants access and the selector constrains, so any manifest that copies the toleration can land on the GPU node, and on an otherwise idle node the Kubernetes scheduler will even prefer it (the cross-check saw six toleration-only pods all placed there). "Only workers on the GPU node" is therefore a convention kept by not copying the toleration, not something Kubernetes enforces; an admission policy could enforce it later if it ever matters. This rehearses real GPU scheduling before any GPU exists. The card resource completes the rehearsal: a pod requests one card, the scheduler subtracts it from the node's count, and a worker beyond the card total stays Pending with "Insufficient kgpu.io/gpu-card", exactly the message a real cluster gives for `nvidia.com/gpu`. Phase 5 changes the resource name and nothing else. On the laptop the NodePort is reachable only as `127.0.0.1:30080` because Docker Desktop does not route the kind network to the host; on a Linux host every node's IP on 30080 would answer too. The design claim is only that the shards use one URL. Like the toleration, the cards are a convention as far as *who* may use them: any pod that requests `kgpu.io/gpu-card` gets one if free, and a pod that copies the toleration and selector without requesting a card lands on a full GPU node (the step 3b cross-check did both). The resource caps pods that request it; it does not reserve the cards for workers. An admission rule would, if it ever matters.
@@ -117,6 +118,11 @@ sequenceDiagram
 | 28 | **Shard-side metrics come from the shard, scraped from outside the cluster; scheduler-side metrics come from the scheduler.** The simulator exposes `/metrics` on the laptop and Prometheus is given the Docker host address to pull from, as a fleet's monitoring would be pointed at the shards; `build_duration_seconds{placement=local}` and per-shard queue and wait numbers come from there. Round, queue, placement and lease metrics come from the scheduler's own state, which is the view the dashboard should show | A push gateway in the cluster (one more component, inverts the pull model for one process); deriving local build durations from the scheduler's submit and done timestamps (the scheduler's view at report cadence, not the shard's measurement) | Owner's choice (2026-10-18) after decision 26 moved the shards outside. Scraping the laptop is kind-specific in its address only; the shape is the production one. |
 | 29 | **A deleted scheduler pod keeps serving for `SHUTDOWN_DELAY` (3 s) after SIGTERM, and the shard client bounds one connection attempt with a 2 s `DialTimeout`** separate from its 10 s request timeout | A `preStop: sleep` hook (same effect; the image has no shell); accept the stall | Bug 10: endpoint removal is eventually consistent across nodes, so a server must outlive its removal from the Service by the propagation time, or connections are black-holed until the client's timeout. Measured: a 10.5 s stall per deletion became zero retries. |
 | 30 | **A shard client that cannot reach the scheduler waits without limit before its first round** (the simulator's `MIN_WORKERS` wait and the client's "scheduler not ready, retrying" loop have no deadline; `ROUND_TIMEOUT` applies only once a round has started) | A startup deadline that exits non-zero | A database shard does not give up on its control plane; it keeps reporting until the scheduler is back, and a loud log line every minute is the right signal. The cross-check raised it as a gap; it is intended, and now written down. |
+| 31 | **Round metrics are observed where a round is stamped finished, in both places that do it:** the reaper's tick and `GET /rounds/{id}`, which stamps on read so a polling shard never sees a stale "open". `store.FinishCompleteRounds` returns the closed rounds with duration, straggler lag (last shard's finish minus the median's, computed in SQL) and every GPU build's queue wait; `metrics.ObserveFinishedRounds` records them | Observe only in the reaper (the first version; it missed every round a shard's poll had already closed, so `round_duration_seconds_count` stayed 0 while rounds completed); have the worker observe queue wait at claim | One function, called by both closers, observes each round exactly once. Queue wait therefore lands at round end, a few seconds late for a dashboard but on the same clock as the round. |
+| 32 | **Scrape wiring:** a ServiceMonitor per in-cluster service (`scheduler`, and a new headless `worker` Service that exists only so the workers' probe port can be found); for the shards on the laptop a selector-less `shards` Service plus a hand-written `Endpoints` object carrying the laptop's address as the kind nodes resolve `host.docker.internal`, filled in by `scripts/k8s-monitoring-up.sh` | A PodMonitor for the workers; `additionalScrapeConfigs` with a static address for the shards; an `EndpointSlice` instead of `Endpoints` | PodMonitor works too; a Service keeps one pattern for everything. The static config would bypass the operator's model. The EndpointSlice was tried first and the operator did not discover it: ServiceMonitor targets come from `Endpoints`, so the older kind is the one that works, deprecation warning included. |
+| 33 | **Dashboards are reached by `kubectl port-forward`** (`scripts/k8s-dashboards.sh`: Grafana on 3000, Prometheus on 9090), not a NodePort | NodePorts mapped in the kind config (another cluster rebuild) | The dashboards are for a person at this laptop; the shards needed a stable address because they are clients of the system. Different audiences, different doors. |
+| 34 | **kube-prometheus-stack trimmed for a laptop:** no Alertmanager, no node-exporter, no bundled alert rules, no scrapes of the control-plane components; kube-state-metrics kept for pod restart counts; 5 s scrape interval, 2-day retention; the chart told to pick up every ServiceMonitor in the cluster, not only its own release's | The chart's defaults | The defaults are a production cluster's monitoring and most of it would show red on kind (no node-exporter mounts, unreachable control-plane ports). What is kept is what Phase 2's done-when needs: our metrics, pod restarts, a dashboard. |
+| 35 | **Every metric series exists from the first scrape:** label combinations are pre-created at startup (`metrics.Init` in Go, module import in Python) | Let a series appear on its first increment | A dashboard reading a counter that does not exist yet shows a gap, not zero; the first version of the API test failed on exactly this. |
 
 ## Implementation notes
 
@@ -242,6 +248,21 @@ A fresh agent ran 7 subtests from the laptop against the `kgpu` stack, all passe
 | A simulator that cannot reach the scheduler waits forever. | Decision 30: intended for a fleet client; documented. |
 | "One address" holds partly because Docker Desktop does not route the kind network to the host; on Linux the node IPs on 30080 would also be a way in. | Stated beside the diagram. The claim that matters is the design one: the shards use one URL; which addresses *also* answer is the host's networking. |
 | Decision 4 and two open questions still described shard pods. | Decision 26 supersedes 4 (append-only table); the open questions are replaced below. |
+
+### Step 5: metrics and dashboards (done 2026-10-18)
+
+| Path | What |
+| --- | --- |
+| `scheduler/metrics/metrics.go` | The scheduler's metrics (roadmap names) and `ObserveFinishedRounds`, `Init`. `/metrics` served by the API. |
+| `scheduler/store/store.go` | `FinishCompleteRounds` returns `[]FinishedRound` (duration, straggler lag, queue waits); `Stats` for the gauges. |
+| `scheduler/reaper/reaper.go` | Lease-expiration counter, round observation, gauges (`gpu_queue_depth`, `builds_leased`, `rounds_open`, `gpu_workers_live`) every tick. |
+| `worker/kgpu_worker/metrics.py`, `health.py`, `worker.py` | `build_duration_seconds{placement=gpu}`, `worker_busy`, `builds_total{outcome}`; `/metrics` on the probe port. New dependency `prometheus-client`. |
+| `shard/sim/metrics.go`, `shard.go`, `shard/cmd/shardsim/main.go` | `build_duration_seconds{placement=local}`, `local_builds_aborted_total`, `query_wait_seconds{needs_index}`, `queries_total{kind}`, `shard_queue_depth{shard}`, `shards_active`; served at `METRICS_ADDR` (default `:9091`) on the laptop. New Go dependency `prometheus/client_golang`. |
+| `deploy/monitoring/values.yaml`, `servicemonitors.yaml`, `dashboard-kgpu.yaml` | The trimmed chart values (decision 34); ServiceMonitors and the laptop target (decision 32); a 17-panel Grafana dashboard as a ConfigMap the sidecar loads. |
+| `deploy/k8s/worker.yaml` | The headless `worker` Service. |
+| `scripts/k8s-monitoring-up.sh`, `k8s-dashboards.sh`, `k8s-check-step5.sh` | Install (idempotent), port-forwards, and the check; saves `test-logs/phase2/step5-monitoring.log`. |
+
+Observed: the scheduler lists all nine of its metrics through the NodePort; each worker lists its three on the probe port; Prometheus shows `scheduler`, two `worker` targets and `shards` (the laptop) up while a simulator runs, the laptop target going down between runs as nothing listens; after two 50-shard rounds `round_duration_seconds_count` grew by 2, `placement_decisions_total` by 100 and the workers' `build_duration_seconds_count` by 100; `worker_busy` reached 1; the shard side delivered 59656 queries with a `needs_index` wait p99 of 9.8 s and a build queue wait p99 of 6.4 s, the straggler story already visible; Grafana is healthy with the dashboard provisioned. A fresh install needs about a minute before the operator has turned the ServiceMonitors into targets; the check waits for it.
 
 ## Open questions
 

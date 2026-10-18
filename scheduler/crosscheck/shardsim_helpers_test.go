@@ -139,7 +139,7 @@ func setupSim(t *testing.T) *simEnv {
 			case <-ctx.Done():
 				return
 			case <-tk.C:
-				reaper.Tick(ctx, e.st, 5, logger)
+				reaper.Tick(ctx, e.st, 5, 30*time.Second, logger)
 			}
 		}
 	}()

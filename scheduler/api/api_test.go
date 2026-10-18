@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,7 +208,7 @@ func TestEndToEndRoundOverHTTP(t *testing.T) {
 	report(2, ReportRequest{QueueDepth: 0, StreamDone: true})
 
 	t.Log("--- the reaper tick (or a GET) stamps the round finished")
-	reaper.Tick(ctx, h.st, 5, h.log)
+	reaper.Tick(ctx, h.st, 5, 30*time.Second, h.log)
 	h.call("GET", fmt.Sprintf("/rounds/%d", r), nil, &rs)
 	if rs.Round.FinishedAt == nil {
 		t.Fatal("round not finished")
@@ -385,5 +386,60 @@ func TestReportWithJobBatch(t *testing.T) {
 	}
 	if code := h.call("POST", path, ReportRequest{StreamDone: true, Jobs: []store.JobRecord{{Seq: 2, DurationMs: 10, ArrivedAt: *at(30)}}}, nil); code != 409 {
 		t.Fatalf("arrival after stream_done: got %d want 409", code)
+	}
+}
+
+// Phase 2 step 5: the scheduler exposes the roadmap's metrics at /metrics, and
+// finishing a round through the reaper observes its duration, straggler lag
+// and the GPU builds' queue waits (decision 31: round metrics are observed
+// when the round is stamped finished).
+func TestMetricsExposedAndRoundObserved(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	var cr CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "metrics", Seed: 1, NShards: 1}, &cr)
+	var sb SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 1000, Dim: 8}, &sb)
+	c, ok, err := h.st.Claim(ctx, "w", 1<<30, time.Minute)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if _, err := h.st.Complete(ctx, c.BuildID, c.Attempt); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.ReportStatus(ctx, store.ShardStatus{RoundID: cr.RoundID, ShardID: 0, StreamDone: true}); err != nil {
+		t.Fatal(err)
+	}
+	reaper.Tick(ctx, h.st, 5, 30*time.Second, h.log)
+
+	resp, err := http.Get(h.srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	text := string(body)
+	for _, name := range []string{"round_duration_seconds_count", "shard_lag_seconds_count", "build_queue_wait_seconds_count",
+		"placement_decisions_total", "lease_expirations_total", "gpu_queue_depth", "gpu_workers_live", "builds_leased", "rounds_open"} {
+		if !strings.Contains(text, name) {
+			t.Errorf("/metrics lacks %s", name)
+		}
+	}
+	line := func(prefix string) string {
+		for _, l := range strings.Split(text, "\n") {
+			if strings.HasPrefix(l, prefix) {
+				return l
+			}
+		}
+		return "<missing>"
+	}
+	t.Logf("after one round through the reaper:\n    %s\n    %s\n    %s\n    %s", line("round_duration_seconds_count"),
+		line("shard_lag_seconds_count"), line(`build_queue_wait_seconds_count{placement="gpu"}`), line(`placement_decisions_total{placement="gpu"`))
+	// Other tests in this package also finish rounds, so assert "at least".
+	for _, prefix := range []string{"round_duration_seconds_count ", `build_queue_wait_seconds_count{placement="gpu"} `} {
+		l := line(prefix)
+		if l == "<missing>" || strings.HasSuffix(l, " 0") {
+			t.Errorf("expected %s to have observations, got %q", prefix, l)
+		}
 	}
 }

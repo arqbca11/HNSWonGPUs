@@ -26,8 +26,10 @@ import (
 	"time"
 
 	"github.com/arqbca11/KubernetesGPU/scheduler/costmodel"
+	"github.com/arqbca11/KubernetesGPU/scheduler/metrics"
 	"github.com/arqbca11/KubernetesGPU/scheduler/policy"
 	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Config struct {
@@ -55,6 +57,8 @@ func New(st *store.Store, pol policy.Policy, cm costmodel.Model, cfg Config, log
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}/{seq}/start", s.jobStart)
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}/{seq}/done", s.jobDone)
 	s.mux.HandleFunc("GET /workers", s.workers)
+	metrics.Init(pol.Name())
+	s.mux.Handle("GET /metrics", promhttp.Handler())
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 	s.mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "alive"})
@@ -112,10 +116,12 @@ func (s *Server) getRound(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Make the answer fresh: GPU completions happen via SQL and the reaper
 	// tick may not have run since.
-	if _, err := s.st.FinishCompleteRounds(ctx); err != nil {
+	fin, err := s.st.FinishCompleteRounds(ctx)
+	if err != nil {
 		s.internal(w, "finish rounds", err)
 		return
 	}
+	metrics.ObserveFinishedRounds(fin)
 	rd, found, err := s.st.GetRound(ctx, id)
 	if err != nil {
 		s.internal(w, "get round", err)
@@ -245,6 +251,7 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Placement, resp.Priority, resp.Reason, resp.Created = dec.Placement, dec.Priority, dec.Reason, true
+	metrics.PlacementDecisions.WithLabelValues(dec.Placement, s.pol.Name()).Inc()
 	s.log.Info("build placed", "build_id", buildID, "round_id", req.RoundID, "attempt", 0,
 		"shard_id", req.ShardID, "placement", dec.Placement, "priority", dec.Priority, "policy", s.pol.Name(),
 		"reason", dec.Reason, "n_vectors", req.NVectors, "dim", req.Dim, "mem_bytes", mem,

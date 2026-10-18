@@ -3,6 +3,7 @@
     GET /livez     200 always: the process is alive and this thread runs
     GET /healthz   200 if the last heartbeat to Postgres succeeded within
                    `stale_after` seconds, else 503: readiness
+    GET /metrics   Prometheus exposition (kgpu_worker.metrics)
 
 It must never depend on the main thread, which may be inside a build for
 minutes (Phase 2 design doc, "probes must not depend on the build thread").
@@ -15,6 +16,8 @@ import logging
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 log = logging.getLogger("kgpu.health")
 
@@ -41,7 +44,14 @@ class Health:
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
-                if self.path == "/livez":
+                if self.path == "/metrics":
+                    data = generate_latest()
+                    self.send_response(200)
+                    self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                elif self.path == "/livez":
                     self._reply(200, {"status": "alive"})
                 elif self.path == "/healthz":
                     ok, age = health.ready()

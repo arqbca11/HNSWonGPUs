@@ -70,7 +70,7 @@ func newHarness(t *testing.T) *harness {
 			case <-h.stop:
 				return
 			case <-tk.C:
-				reaper.Tick(ctx, st, 5, log)
+				reaper.Tick(ctx, st, 5, 30*time.Second, log)
 			}
 		}
 	}()

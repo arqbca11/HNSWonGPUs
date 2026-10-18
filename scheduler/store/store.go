@@ -74,8 +74,17 @@ func (s *Store) GetRound(ctx context.Context, id int64) (Round, bool, error) {
 // reporting stream_done, and every recorded query finished. finished_at is
 // the latest build or query finish, not now(), so the round duration does
 // not depend on how often this runs. Idempotent.
-func (s *Store) FinishCompleteRounds(ctx context.Context) (int64, error) {
-	tag, err := s.pool.Exec(ctx, `
+// FinishedRound is what FinishCompleteRounds reports per round it closed:
+// the numbers the Phase 2 metrics need, computed in SQL from the rows.
+type FinishedRound struct {
+	RoundID      int64
+	Duration     time.Duration   // finished_at - started_at
+	StragglerLag time.Duration   // last shard's finish minus the median shard's finish
+	QueueWaits   []time.Duration // per GPU build: first claim minus enqueue (builds never claimed are skipped)
+}
+
+func (s *Store) FinishCompleteRounds(ctx context.Context) ([]FinishedRound, error) {
+	rows, err := s.pool.Query(ctx, `
 		UPDATE rounds r
 		SET finished_at = GREATEST(
 		      (SELECT MAX(finished_at) FROM builds     WHERE round_id = r.round_id),
@@ -88,11 +97,82 @@ func (s *Store) FinishCompleteRounds(ctx context.Context) (int64, error) {
 		  AND NOT EXISTS (SELECT 1 FROM builds b
 		                  WHERE b.round_id = r.round_id AND b.state NOT IN ('done', 'failed'))
 		  AND NOT EXISTS (SELECT 1 FROM shard_jobs j
-		                  WHERE j.round_id = r.round_id AND j.finished_at IS NULL)`)
+		                  WHERE j.round_id = r.round_id AND j.finished_at IS NULL)
+		RETURNING r.round_id, EXTRACT(EPOCH FROM (r.finished_at - r.started_at))::float8`)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return tag.RowsAffected(), nil
+	var out []FinishedRound
+	for rows.Next() {
+		var fr FinishedRound
+		var secs float64
+		if err := rows.Scan(&fr.RoundID, &secs); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		fr.Duration = time.Duration(secs * float64(time.Second))
+		out = append(out, fr)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if err := s.fillRoundStats(ctx, &out[i]); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// fillRoundStats computes the straggler lag (a shard finishes when both its
+// build and its last query are done) and the GPU builds' queue waits.
+func (s *Store) fillRoundStats(ctx context.Context, fr *FinishedRound) error {
+	var lagSecs float64
+	err := s.pool.QueryRow(ctx, `
+		WITH per_shard AS (
+		  SELECT b.shard_id,
+		         GREATEST(b.finished_at, (SELECT MAX(j.finished_at) FROM shard_jobs j
+		                                  WHERE j.round_id = b.round_id AND j.shard_id = b.shard_id)) AS fin
+		  FROM builds b WHERE b.round_id = $1),
+		secs AS (SELECT EXTRACT(EPOCH FROM fin)::float8 AS t FROM per_shard WHERE fin IS NOT NULL)
+		SELECT COALESCE(MAX(t) - percentile_cont(0.5) WITHIN GROUP (ORDER BY t), 0) FROM secs`, fr.RoundID).Scan(&lagSecs)
+	if err != nil {
+		return fmt.Errorf("straggler lag for round %d: %w", fr.RoundID, err)
+	}
+	fr.StragglerLag = time.Duration(lagSecs * float64(time.Second))
+	rows, err := s.pool.Query(ctx, `
+		SELECT EXTRACT(EPOCH FROM (started_at - enqueued_at))::float8 FROM builds
+		WHERE round_id = $1 AND placement = 'gpu' AND started_at IS NOT NULL`, fr.RoundID)
+	if err != nil {
+		return fmt.Errorf("queue waits for round %d: %w", fr.RoundID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var secs float64
+		if err := rows.Scan(&secs); err != nil {
+			return err
+		}
+		fr.QueueWaits = append(fr.QueueWaits, time.Duration(secs*float64(time.Second)))
+	}
+	return rows.Err()
+}
+
+// QueueStats is one snapshot for the gauges.
+type QueueStats struct {
+	GPUQueued  int
+	Leased     int
+	RoundsOpen int
+}
+
+// Stats takes the gauge snapshot in one statement.
+func (s *Store) Stats(ctx context.Context) (QueueStats, error) {
+	var q QueueStats
+	err := s.pool.QueryRow(ctx, `
+		SELECT (SELECT COUNT(*) FROM builds WHERE state = 'queued' AND placement = 'gpu'),
+		       (SELECT COUNT(*) FROM builds WHERE state = 'leased'),
+		       (SELECT COUNT(*) FROM rounds WHERE finished_at IS NULL)`).Scan(&q.GPUQueued, &q.Leased, &q.RoundsOpen)
+	return q, err
 }
 
 // ---- builds -------------------------------------------------------------

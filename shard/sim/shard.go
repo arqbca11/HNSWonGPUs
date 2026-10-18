@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -118,6 +119,8 @@ func (s *Shard) event(f string, a ...any) {
 // CPU and reports until the build is terminal, the stream is exhausted and
 // the queue is empty. Returns when the final stream_done report is accepted.
 func (s *Shard) Run(ctx context.Context, start time.Time) error {
+	shardsActive.Inc()
+	defer shardsActive.Dec()
 	s.start = start
 	s.b.id = fmt.Sprintf("%d:%d", s.w.ShardID, s.round)
 	// Queries start arriving and running at round start; the build is submitted
@@ -289,6 +292,8 @@ func (s *Shard) runQuery(ctx context.Context, item *queued) {
 	s.event("query %d done: %s %s waited %s", item.seq, item.q.Kind, map[bool]string{true: "needs_index", false: ""}[item.q.NeedsIndex],
 		start.Sub(item.arrived).Round(time.Millisecond))
 	s.mu.Unlock()
+	queryWait.WithLabelValues(map[bool]string{true: "true", false: "false"}[item.q.NeedsIndex]).Observe(start.Sub(item.arrived).Seconds())
+	queriesTotal.WithLabelValues(string(item.q.Kind)).Inc()
 }
 
 func (s *Shard) runLocalBuild(ctx context.Context, dur time.Duration) {
@@ -299,6 +304,7 @@ func (s *Shard) runLocalBuild(ctx context.Context, dur time.Duration) {
 		if s.b.cancel {
 			s.b.localBusy = false
 			s.b.progress = 0
+			localBuildsAborted.Inc()
 			s.event("local build aborted at %.0f%%: preempted to the gpu queue", 100*float64(elapsed)/float64(dur))
 			s.mu.Unlock()
 			s.log.Warn("local build aborted: preempted", "progress", float64(elapsed)/float64(dur))
@@ -342,6 +348,7 @@ func (s *Shard) runLocalBuild(ctx context.Context, dur time.Duration) {
 	}
 	s.b.state, s.b.indexReady, s.b.progress = "done", true, 1
 	s.cpuFreeAt = time.Now()
+	buildDuration.WithLabelValues("local").Observe(time.Since(started).Seconds())
 	s.event("local build done after %s", time.Since(started).Round(time.Millisecond))
 	s.log.Info("local build done", "attempt", 0)
 }
@@ -420,6 +427,7 @@ func (s *Shard) drainDirtyLocked() []client.JobRecord {
 
 // reportLocked builds the load report from the current state. Caller holds mu.
 func (s *Shard) reportLocked() client.ReportRequest {
+	shardQueueDepth.WithLabelValues(strconv.Itoa(int(s.w.ShardID))).Set(float64(len(s.queue)))
 	var waitingIdx int32
 	var oldest time.Duration
 	for _, it := range s.queue {

@@ -232,6 +232,9 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 | `gpu_queue_depth` | gauge | scheduler |
 | `worker_busy` | gauge | worker |
 
+- [x] All eight metrics above are emitted (step 5), plus `gpu_workers_live`, `builds_leased`, `rounds_open` (scheduler), `builds_total{outcome}` (worker), `query_wait_seconds{needs_index}`, `queries_total{kind}`, `shard_queue_depth{shard}`, `shards_active`, `local_builds_aborted_total` (shards). `build_queue_wait_seconds` is observed when the round finishes (Phase 2 decision 31).
+- [x] Prometheus and Grafana installed with `kube-prometheus-stack`; ServiceMonitors for scheduler and workers; the shards on the laptop scraped through a Service + Endpoints (decision 32); a 17-panel Grafana dashboard provisioned from a ConfigMap (`scripts/k8s-dashboards.sh` to view).
+
 Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and scrape each service with a ServiceMonitor. The shards are outside the cluster (decision 26), so shard-emitted metrics (`build_duration_seconds{placement=local}`, per-shard queue depth and waits) are scraped from the simulator's `/metrics` on the laptop through the Docker host address, as a fleet's monitoring would be pointed at the shards; scheduler-side metrics come from the scheduler (decision 28).
 
 ### Failure injection

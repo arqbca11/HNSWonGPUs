@@ -27,6 +27,7 @@ import psycopg.errors
 from .builder import Artifact, Builder, Cancelled, Job
 from .config import Config
 from .health import Health
+from .metrics import BUILD_DURATION, BUILDS_TOTAL, WORKER_BUSY
 from .store import Claimed, Store, is_connection_error
 
 log = logging.getLogger("kgpu.worker")
@@ -138,6 +139,7 @@ class Worker:
         cur = Current(job=job, cancel=threading.Event(), lost=threading.Event(), started=now, lease_ok_at=now)
         with self._lock:
             self.current = cur
+        WORKER_BUSY.set(1)
         tags = self._tags(job)
         renewer = threading.Thread(target=self._renew_loop, args=(cur,), name=f"renew-{job.build_id}", daemon=True)
         renewer.start()
@@ -165,6 +167,7 @@ class Worker:
             if ok is None:
                 return   # already logged as lost
             if ok:
+                BUILDS_TOTAL.labels(outcome="failed").inc()
                 log.info("marked failed", extra=tags | {"reason": reason})
             else:
                 self._lost(tags, "fail rejected: stale attempt")
@@ -174,6 +177,7 @@ class Worker:
             renewer.join(timeout=5)
             with self._lock:
                 self.current = None
+            WORKER_BUSY.set(0)
 
         self._publish(cur, artifact)
 
@@ -187,6 +191,8 @@ class Worker:
             return
         if ok:
             self.builds_done += 1
+            BUILDS_TOTAL.labels(outcome="done").inc()
+            BUILD_DURATION.labels(placement="gpu").observe(artifact.elapsed_s)
             log.info("completed", extra=tags | {"kind": artifact.kind, "index_bytes": artifact.index_bytes,
                                                 "elapsed_s": round(artifact.elapsed_s, 2)})
         else:
@@ -204,6 +210,7 @@ class Worker:
             return
         if ok:
             self.builds_released += 1
+            BUILDS_TOTAL.labels(outcome="released").inc()
             log.info("released back to queue", extra=tags | {"why": why})
         else:
             self._lost(tags, "release rejected: stale attempt")
@@ -231,6 +238,7 @@ class Worker:
 
     def _lost(self, tags: dict, why: str) -> None:
         self.builds_lost += 1
+        BUILDS_TOTAL.labels(outcome="lost").inc()
         log.warning("lost ownership", extra=tags | {"why": why})
 
     # ---- background loops --------------------------------------------------------

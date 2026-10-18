@@ -32,6 +32,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 - [Phase 2, step 3b, cross-check on kind (Go, `scheduler/crosscheck`, `TestKindCards` subtests; need `KGPU_KIND=1`). Log: `phase2/step3b-crosscheck-kind-cards.log`](#phase-2-step-3b-cross-check-on-kind-go-schedulercrosscheck-testkindcards-subtests-need-kgpukind1-log-phase2step3b-crosscheck-kind-cardslog)
 - [Phase 2, step 4: shards outside the cluster (`scripts/k8s-check-step4.sh`, via `scripts/k8s-round.sh`). Log: `phase2/step4-shards-outside.log`](#phase-2-step-4-shards-outside-the-cluster-scriptsk8s-check-step4sh-via-scriptsk8s-roundsh-log-phase2step4-shards-outsidelog)
 - [Phase 2, step 4, cross-check from the laptop (Go, `scheduler/crosscheck`, `TestKindOutside` subtests; need `KGPU_KIND=1`). Log: `phase2/step4-crosscheck-kind-outside.log`](#phase-2-step-4-cross-check-from-the-laptop-go-schedulercrosscheck-testkindoutside-subtests-need-kgpukind1-log-phase2step4-crosscheck-kind-outsidelog)
+- [Phase 2, step 5: metrics and dashboards (`scripts/k8s-check-step5.sh`). Log: `phase2/step5-monitoring.log`](#phase-2-step-5-metrics-and-dashboards-scriptsk8s-check-step5sh-log-phase2step5-monitoringlog)
 
 ## Step 1: the store (Go, `scheduler/store`). Log: `step1-store.log`
 
@@ -64,6 +65,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 | policy: AlwaysGPU | Four inputs: fits, exactly fits, too big for every live worker, no live workers at all. | GPU, GPU, local, GPU. The memory rule applies only when a worker is live, since an empty pool may be cold-starting (decision 19). The same input twice gives the same answer (invariant 8). |
 | costmodel: DefaultsAreInTheIntendedRange | A 100k x 128 build and a 1k x 128 build. | The big build takes about 20 s on CPU and less on the GPU; the tiny one is faster on CPU because of the fixed GPU overhead and transfer. The defaults produce the tradeoff the project studies. |
 | costmodel: MonotonicInSize | Builds of 1k, 10k, 100k, 1M vectors. | CPU time strictly increases with size; degenerate sizes cost nothing. |
+| `TestMetricsExposedAndRoundObserved` | One round is created, claimed, completed and reported through the API, then the reaper ticks; `/metrics` is read. | Every roadmap metric is exposed, and finishing a round observes its duration and the GPU builds' queue waits (Phase 2 decision 31). |
 
 ## Steps 1 and 2, cross-check (Go, `scheduler/crosscheck`, non-worker tests). Log: `step2-crosscheck.log`
 
@@ -106,6 +108,7 @@ Each step has its own tests first, then any scripts, then the independent cross-
 | test_survives_lost_database_connections_mid_build | Mid-build, every one of the worker's backend connections is terminated server-side with `pg_terminate_backend` (what a Postgres restart does to clients). | All three threads reconnect; the lease is renewed in time (no reap, attempt stays 1); the build completes; the worker goes on to claim and complete the next one (bug log 7, decision 48). |
 | test_renew_outage_past_lease_deadline_assumes_lost | Every renew raises a connection error for longer than the lease. | The worker assumes the lease is lost, cancels the build, counts it lost and writes nothing (decision 48). |
 | `test_waits_for_schema_at_startup` | The `workers` table is hidden; a worker starts; after 1.5 s the table is restored. | The worker waits for a missing schema instead of crashing (bug 9, Phase 2 decision 25) and registers on its next retry. |
+| `test_metrics_served_on_the_health_port` | GET `/metrics` on the probe server. | The worker's metrics are served on the probe port with every `builds_total` outcome present from the start (Phase 2 decision 35). |
 
 ## Step 3, cross-check of the worker as a black-box process (Go, `scheduler/crosscheck`, `Worker*` tests). Log: `step3-crosscheck-worker.log`
 
@@ -364,3 +367,13 @@ The agent scales the implementer's workers to zero for the run, since cards are 
 | KindOutside/NoWorkersThenScaleUp | Workers at zero: a `MIN_WORKERS=1` and a `MIN_WORKERS=0` simulator; then scale to 2. | The first starts no round, the second leaves its builds queued; both complete after the scale-up. |
 | KindOutside/FiftyShardsFourWorkers | A 50-shard `downstream_heavy` round on 4 workers from the laptop. | Every worker completes builds; every query matches the workload. |
 | KindOutside/SimulatorOnlyReachesNodePort | Point a simulator at the ClusterIP and at a pod IP. | It cannot connect, creates no round, and retries without limit (decision 30). |
+
+## Phase 2, step 5: metrics and dashboards (`scripts/k8s-check-step5.sh`). Log: `phase2/step5-monitoring.log`
+
+| Step | Scenario | Proves |
+| --- | --- | --- |
+| 1 | Read the scheduler's `/metrics` through the NodePort. | All nine scheduler metrics are present. |
+| 2 | Read each worker's `/metrics` on its probe port from inside the pod. | `build_duration_seconds`, `worker_busy` and `builds_total` are served per worker. |
+| 3 | Start a two-round, 50-shard simulator on the laptop and read Prometheus's targets mid-round. | Prometheus scrapes the scheduler, both workers and the shards on the laptop through the Service + Endpoints (decision 32); the laptop target is down when no simulator runs. |
+| 4 | After the rounds, query Prometheus. | `round_duration_seconds_count` +2, `placement_decisions_total` +100, the workers' build durations +100, `worker_busy` reached 1, the shards' `queries_total` and query-wait p99 and the build queue wait p99 are there (decision 31). |
+| 5 | Grafana's health and search APIs through a port-forward. | Grafana is up and the 17-panel KGPU dashboard is provisioned from the ConfigMap (decision 33). |

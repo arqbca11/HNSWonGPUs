@@ -1,0 +1,79 @@
+# What Prometheus scrapes inside the cluster. A ServiceMonitor is a custom
+# resource the Prometheus operator turns into scrape configuration: "find the
+# Service with these labels, scrape the named port at this path, this often".
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: scheduler
+  namespace: kgpu
+  labels: {app: scheduler}
+spec:
+  selector:
+    matchLabels: {app: scheduler}
+  namespaceSelector: {matchNames: [kgpu]}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: worker
+  namespace: kgpu
+  labels: {app: worker}
+spec:
+  selector:
+    matchLabels: {app: worker}
+  namespaceSelector: {matchNames: [kgpu]}
+  endpoints:
+    - port: health
+      path: /metrics
+      interval: 5s
+---
+# The shards run outside the cluster (decision 26). A Service with no selector
+# plus a hand-written Endpoints object gives Prometheus an in-cluster name for
+# an address outside it (decision 28); scripts/k8s-monitoring-up.sh fills in
+# the laptop's address as the kind nodes see it (host.docker.internal). It is
+# the older Endpoints kind, not an EndpointSlice, because the Prometheus
+# operator discovers ServiceMonitor targets through Endpoints.
+apiVersion: v1
+kind: Service
+metadata:
+  name: shards
+  namespace: kgpu
+  labels: {app: shards}
+spec:
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: shards            # must equal the Service's name: that is how they pair
+  namespace: kgpu
+  labels: {app: shards}
+subsets:
+  - addresses:
+      - ip: HOST_IP
+    ports:
+      - name: metrics
+        port: 9091
+        protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: shards
+  namespace: kgpu
+  labels: {app: shards}
+spec:
+  selector:
+    matchLabels: {app: shards}
+  namespaceSelector: {matchNames: [kgpu]}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 5s

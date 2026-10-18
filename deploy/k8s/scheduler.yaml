@@ -18,6 +18,7 @@ kind: Service
 metadata:
   name: scheduler
   namespace: kgpu
+  labels: {app: scheduler}
 spec:
   # NodePort: besides the in-cluster address (scheduler:8080), every node
   # listens on 30080 and forwards to the pods. The shards live outside the

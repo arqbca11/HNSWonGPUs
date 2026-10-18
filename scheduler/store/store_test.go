@@ -449,10 +449,11 @@ func TestRoundFinishesOnlyWhenEveryShardIsDone(t *testing.T) {
 	}
 
 	finish := func(label string) int64 {
-		n, err := s.FinishCompleteRounds(ctx)
+		fin, err := s.FinishCompleteRounds(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
+		n := int64(len(fin))
 		rd, _, _ := s.GetRound(ctx, r)
 		done := "open"
 		if rd.FinishedAt != nil {
@@ -757,7 +758,7 @@ func TestReportBatchIsIdempotentAndFillsIn(t *testing.T) {
 	t.Log("the round completes from the batched records like any other")
 	c, _, _ := s.Claim(ctx, "w", 1<<30, lease)
 	s.Complete(ctx, c.BuildID, c.Attempt) //nolint:errcheck
-	if k, _ := s.FinishCompleteRounds(ctx); k != 1 {
+	if k, _ := s.FinishCompleteRounds(ctx); len(k) != 1 {
 		t.Fatal("round did not finish")
 	}
 }

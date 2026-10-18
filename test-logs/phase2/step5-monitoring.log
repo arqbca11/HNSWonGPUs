@@ -1,0 +1,49 @@
+
+== Phase 2 step 5: metrics and dashboards  (2026-10-18 01:20:02 PDT, commit 84bf60a)
+
+== 1. The scheduler exposes the roadmap's metrics at /metrics (through the NodePort)
+   builds_leased 0
+   gpu_queue_depth 0
+   gpu_workers_live 2
+   rounds_open 0
+
+== 2. Each worker exposes build_duration_seconds, worker_busy and builds_total on its probe port
+   worker-5c95dbb97f-6bhjg: worker_busy 0.0 builds_total{outcome="done"} 100.0 
+   worker-5c95dbb97f-njctb: worker_busy 0.0 builds_total{outcome="done"} 100.0 
+
+== 3. Prometheus scrapes scheduler, workers and the shards on the laptop (Service shards -> Endpoints -> host.docker.internal:9091)
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+   Endpoints shards -> 192.168.65.254:9091 (the laptop, as the kind nodes see it)
+   targets before the rounds (shards is 'down' until a simulator runs: nothing listens on the laptop's 9091 yet):
+   scheduler  10.244.5.15:8080       up
+   shards     192.168.65.254:9091    down
+   worker     10.244.2.14:8081       up
+   worker     10.244.4.14:8081       up
+   before the rounds: round_duration_seconds_count=2 placement_decisions_total=100 gpu builds observed=200
+   targets while a round runs:
+   scheduler  10.244.5.15:8080       up
+   shards     192.168.65.254:9091    up
+   worker     10.244.2.14:8081       up
+   worker     10.244.4.14:8081       up
+   live: gpu_workers_live=2 rounds_open=0 shards_active=0 busy=0 queries/s=478.5843
+   simulator finished both rounds
+
+== 4. After two 50-shard rounds the numbers are in Prometheus
+   round_duration_seconds_count: 2 -> 4 (expect +2); placement_decisions_total: 100 -> 200 (expect +100)
+   last round duration (mean of all): 7.574923500000001 s; straggler lag mean: 3.1754458540000003 s
+   GPU build durations observed by the workers: 200 -> 300 (expect +100)
+   worker_busy reached 1 in the window: 1
+   shard side (laptop) in the window: queries_total=60443 query_wait p99 needs_index=true: 9.821379085168642 s
+   build_queue_wait p99 (observed at round end): 6.3999999999999995 s
+   lease_expirations_total by outcome:
+    {'instance': '10.244.5.15:8080', 'job': 'scheduler', 'outcome': 'failed', 'pod': 'scheduler-bc6ddd446-v7vxt'} 0
+    {'instance': '10.244.5.15:8080', 'job': 'scheduler', 'outcome': 'queued', 'pod': 'scheduler-bc6ddd446-v7vxt'} 0
+
+== 5. Grafana is up and has the KGPU dashboard (provisioned from the ConfigMap by the sidecar)
+   health: {"database":"ok","version":"13.2.4","commit":"0e79aef9d91abf3bdadae9af15763029072fb45b"}
+   dashboards: kgpu-round KGPU: rounds, queue, workers, shards
+   panels: 17
+   open with scripts/k8s-dashboards.sh -> http://127.0.0.1:3000/d/kgpu-round
+
+== Result: PASS
+log: test-logs/phase2/step5-monitoring.log

@@ -79,7 +79,7 @@ func main() {
 		"waited_for_lock", rep.WaitedForLock.Round(time.Millisecond))
 	st := store.New(pool)
 
-	go reaper.Run(ctx, st, reaper.Config{Interval: reapInterval, MaxAttempts: int32(maxAttempts)}, log)
+	go reaper.Run(ctx, st, reaper.Config{Interval: reapInterval, MaxAttempts: int32(maxAttempts), StaleAfter: staleAfter}, log)
 
 	srv := &http.Server{
 		Addr:              addr,

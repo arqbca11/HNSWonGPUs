@@ -47,3 +47,24 @@ def test_livez_always_and_healthz_follows_heartbeats():
         print("liveness never depends on Postgres; readiness ages out with the heartbeat")
     finally:
         srv.shutdown()
+
+
+def test_metrics_served_on_the_health_port():
+    """Phase 2 step 5: /metrics on the probe port lists the worker's metrics, every
+    builds_total series present from the start so dashboards never see a gap."""
+    from kgpu_worker import metrics  # noqa: F401  registers the metrics
+
+    h = Health(stale_after_s=5)
+    port = free_port()
+    srv = h.serve(f"127.0.0.1:{port}")
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=2) as r:
+            assert r.status == 200
+            assert r.headers["Content-Type"].startswith("text/plain")
+            text = r.read().decode()
+        for name in ("build_duration_seconds_bucket", "worker_busy", 'builds_total{outcome="done"}',
+                     'builds_total{outcome="released"}', 'builds_total{outcome="lost"}', 'builds_total{outcome="failed"}'):
+            assert name in text, name
+        print("/metrics served on the probe port; worker_busy and every builds_total outcome present")
+    finally:
+        srv.shutdown()

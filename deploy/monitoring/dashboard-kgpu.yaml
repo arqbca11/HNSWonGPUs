@@ -1,0 +1,713 @@
+# Grafana dashboard, provisioned through the kube-prometheus-stack sidecar: any
+# ConfigMap labelled grafana_dashboard=1 (in any namespace, see values.yaml) is
+# loaded as a dashboard. Edit the JSON and re-apply; the sidecar picks it up.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kgpu
+  namespace: kgpu
+  labels:
+    grafana_dashboard: "1"
+data:
+  kgpu-round.json: |
+    {
+     "uid": "kgpu-round",
+     "title": "KGPU: rounds, queue, workers, shards",
+     "tags": [
+      "kgpu"
+     ],
+     "timezone": "browser",
+     "schemaVersion": 39,
+     "version": 1,
+     "refresh": "5s",
+     "time": {
+      "from": "now-15m",
+      "to": "now"
+     },
+     "panels": [
+      {
+       "id": 1,
+       "type": "stat",
+       "title": "Rounds open",
+       "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "rounds_open",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       }
+      },
+      {
+       "id": 2,
+       "type": "stat",
+       "title": "GPU queue depth",
+       "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "gpu_queue_depth",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       },
+       "description": "GPU builds waiting for a worker"
+      },
+      {
+       "id": 3,
+       "type": "stat",
+       "title": "Builds leased",
+       "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "builds_leased",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       }
+      },
+      {
+       "id": 4,
+       "type": "stat",
+       "title": "Live GPU workers",
+       "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "gpu_workers_live",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       }
+      },
+      {
+       "id": 5,
+       "type": "stat",
+       "title": "Workers busy",
+       "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(worker_busy)",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       },
+       "description": "Workers with a build in progress right now"
+      },
+      {
+       "id": 6,
+       "type": "stat",
+       "title": "Shards active",
+       "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "shards_active",
+         "legendFormat": "",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+       },
+       "description": "From the simulator outside the cluster"
+      },
+      {
+       "id": 7,
+       "type": "timeseries",
+       "title": "Round duration",
+       "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "round_duration_seconds_sum / round_duration_seconds_count",
+         "legendFormat": "mean of all rounds",
+         "refId": "A"
+        },
+        {
+         "expr": "histogram_quantile(0.5, sum(rate(round_duration_seconds_bucket[10m])) by (le))",
+         "legendFormat": "p50 (10 m window)",
+         "refId": "B"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "Real seconds; the simulator's TIME_SCALE divides modeled time"
+      },
+      {
+       "id": 8,
+       "type": "timeseries",
+       "title": "Straggler lag per round",
+       "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "shard_lag_seconds_sum / shard_lag_seconds_count",
+         "legendFormat": "mean",
+         "refId": "A"
+        },
+        {
+         "expr": "histogram_quantile(0.9, sum(rate(shard_lag_seconds_bucket[10m])) by (le))",
+         "legendFormat": "p90 (10 m window)",
+         "refId": "B"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "Last shard's finish minus the median shard's finish"
+      },
+      {
+       "id": 9,
+       "type": "timeseries",
+       "title": "GPU queue, leased, live workers",
+       "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "gpu_queue_depth",
+         "legendFormat": "queued (gpu)",
+         "refId": "A"
+        },
+        {
+         "expr": "builds_leased",
+         "legendFormat": "leased",
+         "refId": "B"
+        },
+        {
+         "expr": "gpu_workers_live",
+         "legendFormat": "live workers",
+         "refId": "C"
+        },
+        {
+         "expr": "sum(worker_busy)",
+         "legendFormat": "busy workers",
+         "refId": "D"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       }
+      },
+      {
+       "id": 10,
+       "type": "timeseries",
+       "title": "Placement decisions / s",
+       "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(rate(placement_decisions_total[30s])) by (placement, policy)",
+         "legendFormat": "{{placement}} ({{policy}})",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       }
+      },
+      {
+       "id": 11,
+       "type": "timeseries",
+       "title": "Build duration p50 / p99 by placement",
+       "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "histogram_quantile(0.5, sum(rate(build_duration_seconds_bucket[2m])) by (le, placement))",
+         "legendFormat": "p50 {{placement}}",
+         "refId": "A"
+        },
+        {
+         "expr": "histogram_quantile(0.99, sum(rate(build_duration_seconds_bucket[2m])) by (le, placement))",
+         "legendFormat": "p99 {{placement}}",
+         "refId": "B"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "gpu from the workers, local from the shards"
+      },
+      {
+       "id": 12,
+       "type": "timeseries",
+       "title": "Build queue wait p50 / p99 (observed at round end)",
+       "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "histogram_quantile(0.5, sum(rate(build_queue_wait_seconds_bucket[10m])) by (le))",
+         "legendFormat": "p50",
+         "refId": "A"
+        },
+        {
+         "expr": "histogram_quantile(0.99, sum(rate(build_queue_wait_seconds_bucket[10m])) by (le))",
+         "legendFormat": "p99",
+         "refId": "B"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       }
+      },
+      {
+       "id": 13,
+       "type": "timeseries",
+       "title": "Lease expirations (total)",
+       "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 8,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(lease_expirations_total) by (outcome)",
+         "legendFormat": "{{outcome}}",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "The reaper found an expired lease: a worker died or stalled"
+      },
+      {
+       "id": 14,
+       "type": "timeseries",
+       "title": "Worker build outcomes / s",
+       "gridPos": {
+        "x": 8,
+        "y": 25,
+        "w": 8,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(rate(builds_total[1m])) by (outcome)",
+         "legendFormat": "{{outcome}}",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       }
+      },
+      {
+       "id": 15,
+       "type": "timeseries",
+       "title": "Worker pod restarts",
+       "gridPos": {
+        "x": 16,
+        "y": 25,
+        "w": 8,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"kgpu\", container=\"worker\"}) by (pod)",
+         "legendFormat": "{{pod}}",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "From kube-state-metrics: a restart in place (crash, liveness)"
+      },
+      {
+       "id": 16,
+       "type": "timeseries",
+       "title": "Query wait p99 by needs_index (shards)",
+       "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "histogram_quantile(0.99, sum(rate(query_wait_seconds_bucket[1m])) by (le, needs_index))",
+         "legendFormat": "needs_index={{needs_index}}",
+         "refId": "A"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       },
+       "description": "Time a query waited for the shard's CPU; needs_index queries also wait for the build"
+      },
+      {
+       "id": 17,
+       "type": "timeseries",
+       "title": "Queries / s and busiest shards' queue depth",
+       "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 7
+       },
+       "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+       },
+       "targets": [
+        {
+         "expr": "sum(rate(queries_total[30s]))",
+         "legendFormat": "queries / s",
+         "refId": "A"
+        },
+        {
+         "expr": "topk(5, shard_queue_depth)",
+         "legendFormat": "shard {{shard}} queue",
+         "refId": "B"
+        }
+       ],
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short"
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "list",
+         "placement": "bottom"
+        },
+        "tooltip": {
+         "mode": "multi"
+        }
+       }
+      }
+     ],
+     "templating": {
+      "list": []
+     },
+     "annotations": {
+      "list": []
+     }
+    }

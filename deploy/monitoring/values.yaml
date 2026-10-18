@@ -1,0 +1,40 @@
+# kube-prometheus-stack values for the kind cluster (Phase 2 step 5).
+# Prometheus + Grafana + the operator + kube-state-metrics; no Alertmanager,
+# no node-exporter, no scrapes of the control-plane components (noise on kind).
+# Our own targets are declared as ServiceMonitors in deploy/monitoring/*.yaml.
+alertmanager:
+  enabled: false
+nodeExporter:
+  enabled: false
+kubeScheduler: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeEtcd: {enabled: false}
+kubeProxy: {enabled: false}
+coreDns: {enabled: false}
+kubeDns: {enabled: false}
+kubelet:
+  enabled: true          # container CPU/memory and restart signals per pod
+defaultRules:
+  create: false          # the bundled alert rules are for production clusters
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    scrapeInterval: 5s
+    evaluationInterval: 15s
+    # Pick up every ServiceMonitor in the cluster, not only those with the chart's release label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 1Gi}
+grafana:
+  adminPassword: kgpu           # a lab cluster on a laptop; the API is reached by port-forward only
+  defaultDashboardsEnabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL      # our dashboard ConfigMap lives in kgpu
+  grafana.ini:
+    analytics: {check_for_updates: false, reporting_enabled: false}
+    auth.anonymous: {enabled: true, org_role: Viewer}
