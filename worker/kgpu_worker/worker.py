@@ -22,6 +22,8 @@ import threading
 import time
 from dataclasses import dataclass
 
+import psycopg.errors
+
 from .builder import Artifact, Builder, Cancelled, Job
 from .config import Config
 from .health import Health
@@ -96,10 +98,7 @@ class Worker:
         log.info("worker starting", extra={"worker_id": self.cfg.worker_id, "mem_bytes": self.cfg.mem_bytes,
                                           "builder": self.builder.name, "lease_s": self.cfg.lease_s,
                                           "renew_interval_s": self.cfg.renew_interval_s})
-        # The first heartbeat is synchronous: a worker must be in `workers`
-        # before it can hold a lease, so pool state never misses a busy worker.
-        self.store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes)
-        self.health.heartbeat_ok()
+        self._register()
         log.info("registered", extra={"worker_id": self.cfg.worker_id})
         hb = threading.Thread(target=self._heartbeat_loop, name="heartbeat", daemon=True)
         hb.start()
@@ -273,6 +272,33 @@ class Worker:
                     return
         finally:
             store.close()
+
+    def _register(self) -> None:
+        """The first heartbeat, synchronous: a worker must be in `workers` before
+        it can hold a lease, so pool state never misses a busy worker.
+
+        Retried while the schema is missing. Nothing on Kubernetes orders the
+        worker after the scheduler, so on a fresh cluster the worker can connect
+        before the scheduler has applied the migrations (bug 9). A missing table
+        is "not yet", not "wrong": wait for it rather than crash. Readiness stays
+        503 meanwhile, since no heartbeat has succeeded."""
+        wait = 0.5
+        while True:
+            try:
+                self.store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes)
+                self.health.heartbeat_ok()
+                return
+            except psycopg.errors.UndefinedTable as e:
+                log.warning("schema not ready, waiting for the scheduler to migrate",
+                            extra={"err": str(e).strip().splitlines()[0][:120], "in_s": wait})
+                time.sleep(wait)
+                wait = min(wait * 2, 5.0)
+            except Exception as e:  # noqa: BLE001
+                if not is_connection_error(e):
+                    raise
+                log.warning("postgres unavailable during registration, reconnecting",
+                            extra={"err": str(e).strip()[:200]})
+                self.store.reconnect()
 
     def _heartbeat_loop(self) -> None:
         store = Store(self.cfg.database_url)

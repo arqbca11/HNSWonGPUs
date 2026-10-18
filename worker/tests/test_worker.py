@@ -229,3 +229,27 @@ def test_renew_outage_past_lease_deadline_assumes_lost(db, dsn):
     assert d["state"] == "leased" and d["attempt"] == 1, "it wrote nothing (the real reaper would requeue it)"
     w.shutdown("test over"); t.join(5)
     assert w.builds_done == 0
+
+
+def test_waits_for_schema_at_startup(db, dsn):
+    """Bug 9: on Kubernetes nothing starts the worker after the scheduler, so on a
+    fresh cluster the worker can connect before the tables exist. It must wait,
+    not crash. The test hides the `workers` table, starts a worker, checks it is
+    alive and unregistered, then restores the table and expects registration."""
+    db.execute("ALTER TABLE workers RENAME TO workers_not_yet")
+    try:
+        print("`workers` table hidden; starting a worker against a database with no schema for it")
+        w = make_worker(dsn, "gpu-early")
+        t = run_in_thread(w)
+        time.sleep(1.5)
+        assert t.is_alive(), "worker thread died: it crashed instead of waiting"
+        assert db.execute("SELECT count(*) FROM workers_not_yet").fetchone()[0] == 0
+        print("  after 1.5 s: worker alive, not registered, no crash")
+    finally:
+        db.execute("ALTER TABLE workers_not_yet RENAME TO workers")
+    print("table restored (the scheduler has 'migrated')")
+    wait_for(lambda: db.execute("SELECT count(*) FROM workers WHERE worker_id = 'gpu-early'").fetchone()[0] == 1,
+             10, "registration once the schema exists")
+    print("  [db] worker registered on its next retry")
+    w.shutdown("test over")
+    t.join(5)

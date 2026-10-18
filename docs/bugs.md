@@ -6,6 +6,22 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
+## 9. Workers crashed on a fresh cluster: they connected before the schema existed
+
+**Found:** 2026-10-17, on the first deploy to a rebuilt kind cluster (Phase 2 step 3b). Fixed in [`2f501d0`](https://github.com/arqbca11/KubernetesGPU/commit/2f501d0), `worker/kgpu_worker/worker.py`. **Related:** entry 7 (same class: a dependency not being there at a moment the code assumed it was; that one was the connection, this one is the schema), entry 5 (crash while an error could have been waited out).
+
+**Symptom.** Both worker pods went to `CrashLoopBackOff` within seconds of the stack being applied, each with one restart, then came up fine. The previous container's log ended in `psycopg.errors.UndefinedTable: relation "workers" does not exist` from the first heartbeat's `INSERT INTO workers`.
+
+**Why it matters.** Kubernetes restarted them and nothing was lost, which is why this was never seen in Compose and would be easy to wave away. But a crash loop on every fresh deploy is noise that hides real failures, the restart backoff doubles each time so a slow migration leaves workers out for minutes, and on a real GPU fleet a restart can mean re-initialising the device. In production this looks like a wave of worker restarts after every new environment or every migration that adds a table the worker touches, timed exactly to the deploy.
+
+**Cause.** Compose started the worker only after the scheduler reported healthy (`depends_on: condition: service_healthy`), and the scheduler is healthy only after it has applied the migrations. That ordering was doing load-bearing work nobody had written down. Kubernetes has no startup ordering between Deployments: every pod starts when it can, and the worker connected to a Postgres that was up but empty. The worker's connect path already retried while Postgres was *down* (entry 7), but a missing table is a `ProgrammingError`, not a connection error, so it fell through to the crash.
+
+**Fix (decision 25).** Registration treats `UndefinedTable` as "not yet": it logs `schema not ready, waiting for the scheduler to migrate` and retries with backoff up to 5 s, forever. Readiness stays 503 meanwhile, because no heartbeat has succeeded, so the pod is visibly not ready rather than crash-looping. The test `test_waits_for_schema_at_startup` hides the `workers` table, starts a worker, checks it is alive and unregistered after 1.5 s, restores the table and expects registration on the next retry.
+
+**Lesson.** When a platform provides ordering (Compose `depends_on`, systemd `After=`), the code acquires hidden assumptions that the next platform will not honour. Kubernetes' stance is that every component must tolerate every other component not existing yet, and "the schema isn't there" is the same kind of transient as "the database isn't there." The general form: classify errors by what they mean (not yet, never, lost ownership), not by which exception class the driver chose.
+
+---
+
 ## 8. Every simulated query ran 0.6 ms longer than modeled: a fixed overhead that scales with the time scale
 
 **Found:** 2026-10-06, by the step 7 cross-check's run-time fidelity test at 50 shards (and confirmed at 6). Fixed in [`2e601f3`](https://github.com/arqbca11/KubernetesGPU/commit/2e601f3), `shard/sim/shard.go` (`runQuery`). **Related:** the step 5 cross-check's time-scale finding (the HTTP calls inside the measured interval), which decision 60 fixed; this is the residue underneath it.
@@ -96,7 +112,7 @@ FOR UPDATE;                                                        -- the lock
 
 The intent: lock the round's row so submits into one round serialise, count the builds already present, insert only if under the cap. It reads as atomic. It is not.
 
-**What READ COMMITTED does.** Each statement takes its own snapshot at the moment it starts and sees exactly the rows committed before that moment. `FOR UPDATE` adds one refinement: if the row to be locked is held by another transaction, the statement blocks until that transaction ends, then re-fetches the latest version of *that one row* and rechecks the `WHERE` clause against it (EvalPlanQual). Nothing else in the statement is re-evaluated. A subquery against another table still answers from the snapshot taken at the start.
+**What READ 2f501d0TED does.** Each statement takes its own snapshot at the moment it starts and sees exactly the rows committed before that moment. `FOR UPDATE` adds one refinement: if the row to be locked is held by another transaction, the statement blocks until that transaction ends, then re-fetches the latest version of *that one row* and rechecks the `WHERE` clause against it (EvalPlanQual). Nothing else in the statement is re-evaluated. A subquery against another table still answers from the snapshot taken at the start.
 
 **The interleaving.** Two shards, cap 3, round 7 empty.
 
@@ -107,7 +123,7 @@ The intent: lock the round's row so submits into one round serialise, count the 
 | 3 | | Statement starts, snapshot taken: still 0 builds (A has not committed) |
 | 4 | | Tries to lock round 7's row, blocks behind A |
 | 5 | Inserts the build for shard 1 | blocked |
-| 6 | COMMIT, lock released | blocked |
+| 6 | 2f501d0, lock released | blocked |
 | 7 | | Acquires the lock. Rechecks round 7's row: unchanged, A never modified it. Returns `n_shards = 3`, count = 0, from the step-3 snapshot |
 | 8 | | 0 < 3, inserts the build for shard 2 |
 
@@ -126,7 +142,7 @@ Both halves are necessary. Lock without a fresh count is this bug. A fresh count
 
 **Alternatives not taken.** `SERIALIZABLE` isolation would have detected the read-write conflict and aborted one side with a serialization failure, correct but turning a rare condition into a retry loop. A database constraint cannot express a count cap directly without a trigger.
 
-**Lesson.** Under READ COMMITTED, "lock, then read, then act" must be three statements, or at least the read must come after the lock in a statement of its own. A check folded into the locking statement is answered before the lock is granted. More generally: a test that exercises a concurrency promise must actually be concurrent. The promise in the design doc said "the row lock serialises submits per round so the cap holds"; the implementer tested the cap, the cross-checker tested the sentence.
+**Lesson.** Under READ 2f501d0TED, "lock, then read, then act" must be three statements, or at least the read must come after the lock in a statement of its own. A check folded into the locking statement is answered before the lock is granted. More generally: a test that exercises a concurrency promise must actually be concurrent. The promise in the design doc said "the row lock serialises submits per round so the cap holds"; the implementer tested the cap, the cross-checker tested the sentence.
 
 ---
 
