@@ -513,7 +513,7 @@ data:
       {
        "id": 13,
        "type": "timeseries",
-       "title": "Lease expirations (total)",
+       "title": "Lease expirations (2m windows)",
        "gridPos": {
         "x": 0,
         "y": 25,
@@ -526,7 +526,7 @@ data:
        },
        "targets": [
         {
-         "expr": "sum(lease_expirations_total) by (outcome)",
+         "expr": "sum(increase(lease_expirations_total[2m])) by (outcome)",
          "legendFormat": "{{outcome}}",
          "refId": "A"
         }

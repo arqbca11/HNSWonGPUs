@@ -32,7 +32,8 @@ Narrated test output, kept so what was checked and what happened can be read wit
 | `phase2/step4-crosscheck-kind-outside.log` | The cross-check agent's seven from-the-laptop scenarios: the NodePort as the only door, scheduler deletion mid-round (found bug 10), two simulators at once, zero workers then scale-up. |
 | `phase2/step5-monitoring.log` | Phase 2 step 5: metrics on all three sides, Prometheus targets including the laptop, two rounds' numbers, the Grafana dashboard. |
 | `phase2/step5-crosscheck-kind-metrics.log` | The cross-check agent's eight metrics scenarios: names and types, exactly-once round observation by either closer, lease expiry under a kill, scrape wiring, every dashboard panel. |
-| `phase2/step6-failures-dashboard.log` | Phase 2 step 6: the failure injections read through Grafana's datasource proxy; a leaseholder force-deleted mid-build (the done-when), the scheduler pod deleted mid-round, both GPU nodes drained and uncordoned. |
+| `phase2/step6-failures-dashboard.log` | Phase 2 step 6: the failure injections read through Grafana's datasource proxy; a leaseholder crashed and its pod deleted mid-build (the done-when), the scheduler pod deleted mid-round, both GPU nodes drained and uncordoned. |
+| `phase2/step6-crosscheck-kind-failures.log` | The cross-check agent's 21 checks in 5 scenarios: release vs expiry told apart by the build row, two kills on one build, the scheduler deleted at the moment a round closes (4 trials), one-node drains at 4 and 2 replicas; found F1-F3 (decisions 37, 38). |
 
 Per-step logs are the state of the tests at the end of that step, including any fixes from the step's cross-check round, regenerated whenever the step's code changes. `history/` (local only, not committed) keeps every timestamped run.
 

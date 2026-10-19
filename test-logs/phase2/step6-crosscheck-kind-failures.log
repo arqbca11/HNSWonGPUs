@@ -1,0 +1,287 @@
+# Phase 2 step 6 cross-check: failure injections on the dashboard (kind-kgpu, namespace kgpu)
+# date: 2026-10-19T08:00:47Z  commit: 8478e9e (after triage: decisions 37, 38; KILL_FORCE corrected; panel windowed; all subtests pass)  go version go1.27.1 darwin/arm64  kubectl: v1.37.1
+# command: KGPU_KIND=1 go test -count=1 -v -timeout 60m -run TestKindFail ./scheduler/crosscheck/
+
+=== RUN   TestKindFail
+    kindfail_test.go:55: [setup] worker FAKE_TIME_SCALE=10; the simulator runs with TIME_SCALE=10 (shardsim header)
+    kindfail_test.go:59: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-64cc596c96-2c9b7(uid=a8917785 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.52) worker-64cc596c96-ch5f8(uid=0377a874 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.51)]
+    kindfail_test.go:59: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindfail_test.go:60: [port-forward] monitoring/svc/kps-grafana:80 on 127.0.0.1:29310
+    kindfail_test.go:60: [grafana] Prometheus datasource uid="prometheus" default=true url=http://kps-kube-prometheus-stack-prometheus.monitoring:9090/; every number below is read through /api/datasources/proxy/uid/prometheus (decision 36)
+    kindfail_test.go:62: [setup] dashboard before any injection: max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce
+    kindfail_test.go:78: [dashboard before] scheduler pod scheduler-bc6ddd446-fcqzc; panel "sum(lease_expirations_total) by (outcome)" = {failed=0 queued=0}; round_duration_seconds_count = 2
+    kindfail_test.go:80: started shardsim pid 64464 with [LOG_FORMAT=text MIN_WORKERS=2 N_SHARDS=6 ROUNDS=1 ROUND_TIMEOUT=5m SCENARIO=skewed SCHEDULER_URL=http://127.0.0.1:30080 SEED=61 TIME_SCALE=10]
+    kindfail_test.go:82: [shards] round 148 started (skewed, 6 shards, seed 61)
+    kindfail_test.go:104: [api] largest build 4:148 n=200000 leased: attempt=1 owner=worker-64cc596c96-2c9b7 lease_until=07:53:04.955
+    kindfail_test.go:105: [kubectl 00:52:54.975] delete pod worker-64cc596c96-2c9b7 --grace-period=0 --force: pod "worker-64cc596c96-2c9b7" force deleted from kgpu namespace
+    kindfail_test.go:123: [api] 0.8s after the kill: build_id=4:148 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=07:52:55.709; lease_until was kill+10.0s -> completed by the dying worker at attempt 1 (SIGTERM path: finish within the budget)
+    kindfail_test.go:125: [api http://127.0.0.1:30080] GET /rounds/148: scenario=skewed seed=61 n_shards=6 finished_at-started_at=3.04s, 6 builds, 3509 queries
+    kindfail_test.go:125: [check] round 148 builds by attempt: map[1:6]; completions by worker pod: map[worker-64cc596c96-2c9b7:2 worker-64cc596c96-87w5l:1 worker-64cc596c96-ch5f8:3]
+    kindfail_test.go:125: [workload] round 148 (skewed seed 61, 6 shards): 3509 recorded queries vs 3509 in the workload, 0 field mismatches; arrivals worst late +0.002s, worst early +0.000s
+    kindfail_test.go:125: [shards] time=2026-10-19T00:52:58.487-07:00 level=INFO msg="round finished" round_id=148 duration=3.036s duration_modeled=30.355s straggler_lag=27ms builds_gpu=6 builds_local=0 queries=3509
+    kindfail_test.go:125: [shards] round 148  scenario=skewed seed=61  time_scale=10 | duration 3.0s real (30.4s modeled)   straggler lag 0.0s   builds: 6 gpu, 0 local   queries: 3509
+    kindfail_test.go:125: [verify] round 148 complete and correct from outside: 6 builds done once each, 3509 queries finished, matching the seeded workload
+    kindfail_test.go:130: [api] build 4:148 finally: build_id=4:148 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=07:52:55.709
+    kindfail_test.go:138: [logs] worker-64cc596c96-2c9b7's lines about 4:148 (the stream is cut by the kill): [claimed@1 finishing current build before exit@1 completed@1]
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the round's last numbers reach Prometheus
+    kindfail_test.go:144: [dashboard after] panel sum(lease_expirations_total) by (outcome) -> {failed=0 queued=0}: queued +0 failed +0; round_duration_seconds_count 2 -> 3 (+1)
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce/CounterMatchesWhatHappened
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce/RoundObservedOnce
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce/KilledPodSeriesEnded
+    kindfail_test.go:169: [dashboard] worker_busy{pod=worker-64cc596c96-2c9b7}: no current series (target gone)
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce/ReplacementSeriesPreCreated
+    kindfail_test.go:181: [dashboard] worker-64cc596c96-87w5l: 3 scrapes of up, 3 samples of worker_busy; builds_total by outcome {done=1 failed=0 lost=0 released=0}
+    kindfail_test.go:181: [dashboard] worker-64cc596c96-ch5f8: 7 scrapes of up, 7 samples of worker_busy; builds_total by outcome {done=10 failed=0 lost=0 released=0}
+=== RUN   TestKindFail/ForceDeletedLeaseholderCountedOnce/GaugesAtRest
+    kindfail_test.go:190: [dashboard at rest after 0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart
+    kindfail_test.go:198: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-64cc596c96-87w5l(uid=e68460aa node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.45) worker-64cc596c96-ch5f8(uid=0377a874 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.51)]
+    kindfail_test.go:198: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindfail_test.go:202: [dashboard before] panel {failed=0 queued=0}; round_duration_seconds_count{pod=scheduler-bc6ddd446-fcqzc}=3
+    kindfail_test.go:204: [api] POST /rounds {scenario:xcheck-step6-twokills n_shards:1} -> 201 round_id=149
+    kindfail_test.go:205: [api] POST /builds {round:149 shard:0 n:8000000} -> 201 build_id=0:149 placement=gpu gpu_total_ms=275950
+    kindfail_test.go:209: [api] build 0:149 leased at attempt 1 after 0.2s: build_id=0:149 placement=gpu state=leased attempt=1 lease_owner=worker-64cc596c96-87w5l finished_at=<nil>
+    kindfail_test.go:217: [kubectl 00:53:13.180] delete pod worker-64cc596c96-87w5l --grace-period=0 --force: pod "worker-64cc596c96-87w5l" force deleted from kgpu namespace
+    kindfail_test.go:227: [api] kill #1 of worker-64cc596c96-87w5l: attempt 1 left leased 0.2s after the kill (lease_until kill+7.8s) -> released=true: build_id=0:149 placement=gpu state=queued attempt=1 lease_owner=<nil> finished_at=<nil>
+    kindfail_test.go:209: [api] build 0:149 leased at attempt 2 after 0.2s: build_id=0:149 placement=gpu state=leased attempt=2 lease_owner=worker-64cc596c96-ch5f8 finished_at=<nil>
+    kindfail_test.go:217: [kubectl 00:53:15.553] delete pod worker-64cc596c96-ch5f8 --grace-period=0 --force: pod "worker-64cc596c96-ch5f8" force deleted from kgpu namespace
+    kindfail_test.go:227: [api] kill #2 of worker-64cc596c96-ch5f8: attempt 2 left leased 0.2s after the kill (lease_until kill+8.0s) -> released=true: build_id=0:149 placement=gpu state=queued attempt=2 lease_owner=<nil> finished_at=<nil>
+    kindfail_test.go:230: [api] build 0:149 done after 27.9s: build_id=0:149 placement=gpu state=done attempt=3 lease_owner=<nil> finished_at=07:53:43.397
+    kindfail_test.go:240: [logs] worker 'completed' lines for 0:149: 1 [completed@3]
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the expiries and the round reach Prometheus
+    kindfail_test.go:248: [dashboard after] panel {failed=0 queued=0} (queued +0, 0 expiries inferred from the row); round_duration_seconds_count +1
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart/EachInjectionCountedOnce
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart/InContainerCrashExpiresOnce
+    kindfail_test.go:262: [k8s] 2 worker pod(s) Ready in kgpu after 0.1s: [worker-64cc596c96-mhvqs(uid=10dfa575 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.53) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:262: [api] GET /workers: pool live_workers=2 after 0.1s
+    kindfail_test.go:263: [api] POST /rounds {scenario:xcheck-step6-crash n_shards:1} -> 201 round_id=150
+    kindfail_test.go:264: [api] POST /builds {round:150 shard:0 n:2000000} -> 201 build_id=0:150 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:266: [api] build 0:150 leased after 0.2s: build_id=0:150 placement=gpu state=leased attempt=1 lease_owner=worker-64cc596c96-mhvqs finished_at=<nil>
+    kindfail_test.go:267: [exec worker-64cc596c96-mhvqs 00:53:56.955] kill -KILL 11 (the worker's python process)
+    kindfail_test.go:273: [api] attempt 1 left leased 10.6s after the crash (lease_until crash+9.8s): build_id=0:150 placement=gpu state=queued attempt=1 lease_owner=<nil> finished_at=<nil>
+    kindfail_test.go:274: [api] build 0:150 done after 6.9s: build_id=0:150 placement=gpu state=done attempt=2 lease_owner=<nil> finished_at=07:54:14.372
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the expiry reaches Prometheus
+    kindfail_test.go:281: [dashboard] panel {failed=0 queued=0} -> {failed=0 queued=1}; build ended build_id=0:150 placement=gpu state=done attempt=2 lease_owner=<nil> finished_at=07:54:14.372
+=== NAME  TestKindFail/TwoKillsOneBuildThenSchedulerRestart
+    kindfail_test.go:291: [k8s] 2 worker pod(s) Ready in kgpu after 0.1s: [worker-64cc596c96-mhvqs(uid=10dfa575 node=kgpu-worker3 phase=Running ready=true restarts=1 ip=10.244.4.53) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:291: [api] GET /workers: pool live_workers=2 after 0.1s
+    kindfail_test.go:294: [kubectl] delete pod scheduler-bc6ddd446-fcqzc: err=<nil> pod "scheduler-bc6ddd446-fcqzc" deleted from kgpu namespace
+    kindfail_test.go:295: [k8s] scheduler scheduler-bc6ddd446-fcqzc replaced by scheduler-bc6ddd446-lmj7j, Ready after 3.9s
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new scheduler pod is scraped
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: and once more
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart/NewSchedulerSeriesFromFirstScrape
+    kindfail_test.go:308: [dashboard] lease_expirations_total{outcome="queued",pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:308: [dashboard] lease_expirations_total{outcome="failed",pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:308: [dashboard] round_duration_seconds_count{pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:308: [dashboard] shard_lag_seconds_count{pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:308: [dashboard] gpu_queue_depth{pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:308: [dashboard] rounds_open{pod="scheduler-bc6ddd446-lmj7j"}: now 0 (present=true), in 6 of 6 scrapes
+    kindfail_test.go:315: [dashboard] placement_decisions_total{pod=scheduler-bc6ddd446-lmj7j}: 2 series
+    kindfail_test.go:315: [dashboard] build_queue_wait_seconds_count{pod=scheduler-bc6ddd446-lmj7j}: 1 series
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart/LeaseExpiryPanelSurvivesSchedulerRestart
+    kindfail_test.go:328: [dashboard] raw sum {failed=0 queued=0} (allowed to reset: pod scheduler-bc6ddd446-fcqzc replaced by scheduler-bc6ddd446-lmj7j held 1); panel-style increase over 1h: {failed=0 queued=8.077803497715507}
+=== RUN   TestKindFail/TwoKillsOneBuildThenSchedulerRestart/GaugesAtRest
+    kindfail_test.go:334: [dashboard at rest after 0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+=== RUN   TestKindFail/SchedulerDeletedAtRoundClose
+    kindfail_test.go:346: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-64cc596c96-mhvqs(uid=10dfa575 node=kgpu-worker3 phase=Running ready=true restarts=1 ip=10.244.4.53) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:346: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindfail_test.go:353: ---- trial 1, variant A: last report then delete at once ----
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the current scheduler pod's count is fresh in Prometheus
+    kindfail_test.go:360: [api] POST /rounds {scenario:xcheck-step6-close-1 n_shards:1} -> 201 round_id=151
+    kindfail_test.go:391: [api] POST /builds {round:151 shard:0 n:100000} -> 201 build_id=0:151 placement=gpu gpu_total_ms=4639
+    kindfail_test.go:392: [api] build 0:151 done after 1.0s: build_id=0:151 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=07:55:07.545
+    kindfail_test.go:365: [kubectl 00:55:07.726] delete pod scheduler-bc6ddd446-lmj7j: err=<nil> pod "scheduler-bc6ddd446-lmj7j" deleted from kgpu namespace
+    kindfail_test.go:404: [k8s] scheduler scheduler-bc6ddd446-lmj7j replaced by scheduler-bc6ddd446-jxc87, Ready after 3.9s
+    kindfail_test.go:413: [api] round 151 finished_at=07:55:07.545 (delete at 00:55:07.726, -0.18s)
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod scraped twice
+    kindfail_test.go:425: [result trial 1] old pod scheduler-bc6ddd446-lmj7j: count before 0, last in-process 0 (pod proxy), max ever scraped 0; new pod scheduler-bc6ddd446-jxc87: 1 -> the dashboard holds 1 observation(s) of round 151; closer: scheduler-bc6ddd446-jxc87 (the replacement)
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-lmj7j] msg=round started round_id=151 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-lmj7j] msg=build placed round_id=151 build_id=0:151 attempt=0 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-jxc87] msg=round finished round_id=151 level=INFO
+    kindfail_test.go:353: ---- trial 2, variant B: delete ~1 s before the worker completes the build ----
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the current scheduler pod's count is fresh in Prometheus
+    kindfail_test.go:360: [api] POST /rounds {scenario:xcheck-step6-close-2 n_shards:1} -> 201 round_id=152
+    kindfail_test.go:396: [api] POST /builds {round:152 shard:0 n:2000000} -> 201 build_id=0:152 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:398: [api] build 0:152 leased after 0.2s: build_id=0:152 placement=gpu state=leased attempt=1 lease_owner=worker-64cc596c96-mhvqs finished_at=<nil>
+    kindfail_test.go:400: [plan] build started 07:56:05.217, gpu_total_ms=65519 -> expected done ~07:56:11.768; deleting the scheduler at done-1s
+    kindfail_test.go:365: [kubectl 00:56:10.770] delete pod scheduler-bc6ddd446-jxc87: err=<nil> pod "scheduler-bc6ddd446-jxc87" deleted from kgpu namespace
+    kindfail_test.go:404: [k8s] scheduler scheduler-bc6ddd446-jxc87 replaced by scheduler-bc6ddd446-8tx4h, Ready after 3.9s
+    kindfail_test.go:413: [api] round 152 finished_at=07:56:11.771 (delete at 00:56:10.770, +1.00s)
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod scraped twice
+    kindfail_test.go:425: [result trial 2] old pod scheduler-bc6ddd446-jxc87: count before 1, last in-process 1 (pod proxy), max ever scraped 1; new pod scheduler-bc6ddd446-8tx4h: 1 -> the dashboard holds 1 observation(s) of round 152; closer: scheduler-bc6ddd446-8tx4h (the replacement)
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-jxc87] msg=round started round_id=152 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-jxc87] msg=build placed round_id=152 build_id=0:152 attempt=0 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8tx4h] msg=round finished round_id=152 level=INFO
+    kindfail_test.go:353: ---- trial 3, variant A: last report then delete at once ----
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the current scheduler pod's count is fresh in Prometheus
+    kindfail_test.go:360: [api] POST /rounds {scenario:xcheck-step6-close-3 n_shards:1} -> 201 round_id=153
+    kindfail_test.go:391: [api] POST /builds {round:153 shard:0 n:100000} -> 201 build_id=0:153 placement=gpu gpu_total_ms=4639
+    kindfail_test.go:392: [api] build 0:153 done after 0.6s: build_id=0:153 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=07:57:08.587
+    kindfail_test.go:365: [kubectl 00:57:08.665] delete pod scheduler-bc6ddd446-8tx4h: err=<nil> pod "scheduler-bc6ddd446-8tx4h" deleted from kgpu namespace
+    kindfail_test.go:404: [k8s] scheduler scheduler-bc6ddd446-8tx4h replaced by scheduler-bc6ddd446-8hdmj, Ready after 4.4s
+    kindfail_test.go:413: [api] round 153 finished_at=07:57:08.587 (delete at 00:57:08.665, -0.08s)
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod scraped twice
+    kindfail_test.go:425: [result trial 3] old pod scheduler-bc6ddd446-8tx4h: count before 1, last in-process 1 (pod proxy), max ever scraped 1; new pod scheduler-bc6ddd446-8hdmj: 1 -> the dashboard holds 1 observation(s) of round 153; closer: scheduler-bc6ddd446-8hdmj (the replacement)
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8tx4h] msg=round started round_id=153 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8tx4h] msg=build placed round_id=153 build_id=0:153 attempt=0 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8hdmj] msg=round finished round_id=153 level=INFO
+    kindfail_test.go:353: ---- trial 4, variant B: delete ~1 s before the worker completes the build ----
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the current scheduler pod's count is fresh in Prometheus
+    kindfail_test.go:360: [api] POST /rounds {scenario:xcheck-step6-close-4 n_shards:1} -> 201 round_id=154
+    kindfail_test.go:396: [api] POST /builds {round:154 shard:0 n:2000000} -> 201 build_id=0:154 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:398: [api] build 0:154 leased after 0.2s: build_id=0:154 placement=gpu state=leased attempt=1 lease_owner=worker-64cc596c96-mhvqs finished_at=<nil>
+    kindfail_test.go:400: [plan] build started 07:58:06.216, gpu_total_ms=65519 -> expected done ~07:58:12.767; deleting the scheduler at done-1s
+    kindfail_test.go:365: [kubectl 00:58:11.769] delete pod scheduler-bc6ddd446-8hdmj: err=<nil> pod "scheduler-bc6ddd446-8hdmj" deleted from kgpu namespace
+    kindfail_test.go:404: [k8s] scheduler scheduler-bc6ddd446-8hdmj replaced by scheduler-bc6ddd446-mcdmn, Ready after 4.4s
+    kindfail_test.go:413: [api] round 154 finished_at=07:58:12.771 (delete at 00:58:11.769, +1.00s)
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod scraped twice
+    kindfail_test.go:425: [result trial 4] old pod scheduler-bc6ddd446-8hdmj: count before 1, last in-process 1 (pod proxy), max ever scraped 1; new pod scheduler-bc6ddd446-mcdmn: 1 -> the dashboard holds 1 observation(s) of round 154; closer: scheduler-bc6ddd446-mcdmn (the replacement)
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8hdmj] msg=round started round_id=154 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-8hdmj] msg=build placed round_id=154 build_id=0:154 attempt=0 level=INFO
+    kindfail_test.go:428: [logs scheduler-bc6ddd446-mcdmn] msg=round finished round_id=154 level=INFO
+    kindfail_test.go:435: [summary] 0 of 4 trials lost or doubled the round on the dashboard
+    kindfail_test.go:436: [dashboard at rest after 0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+=== RUN   TestKindFail/DrainOneGPUNodeAllFourCards
+    kindfail_test.go:450: [kubectl] scale deployment/worker -n kgpu --replicas=4
+    kindfail_test.go:451: [k8s] 4 worker pod(s) Ready in kgpu after 2.2s: [worker-64cc596c96-8vqtj(uid=4fe5af26 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.54) worker-64cc596c96-kvtwt(uid=61f7319d node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.47) worker-64cc596c96-mhvqs(uid=10dfa575 node=kgpu-worker3 phase=Running ready=true restarts=1 ip=10.244.4.53) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:451: [api] GET /workers: pool live_workers=4 after 2.2s
+    kindfail_test.go:454: [k8s] GPU nodes [kgpu-worker3 kgpu-worker4]; workers by node before the drain map[kgpu-worker3:[worker-64cc596c96-8vqtj(ready=true) worker-64cc596c96-mhvqs(ready=true)] kgpu-worker4:[worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]]
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the pool size is fresh on the dashboard
+    kindfail_test.go:462: [api] POST /rounds {scenario:xcheck-step6-drain-4 n_shards:8} -> 201 round_id=155
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:0 n:2000000} -> 201 build_id=0:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:1 n:2000000} -> 201 build_id=1:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:2 n:2000000} -> 201 build_id=2:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:3 n:2000000} -> 201 build_id=3:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:4 n:2000000} -> 201 build_id=4:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:5 n:2000000} -> 201 build_id=5:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:6 n:2000000} -> 201 build_id=6:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:155 shard:7 n:2000000} -> 201 build_id=7:155 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:500: [drain t+0.5s] draining kgpu-worker3 (workers there: [worker-64cc596c96-8vqtj(ready=true) worker-64cc596c96-mhvqs(ready=true)]; on kgpu-worker4: [worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]); leased builds map[0:155:1 1:155:1 2:155:1 3:155:1]
+    kindfail_test.go:528: [kubectl t+1.6s] drain kgpu-worker3: err=<nil>
+        node/kgpu-worker3 cordoned
+        evicting pod kgpu/worker-64cc596c96-mhvqs
+        evicting pod kgpu/worker-64cc596c96-8vqtj
+        pod/worker-64cc596c96-8vqtj evicted
+        pod/worker-64cc596c96-mhvqs evicted
+        node/kgpu-worker3 drained
+        Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-jhkdf, kube-system/kube-proxy-gjjvj
+    kindfail_test.go:535: [api] GET /workers polled 65 times every 200 ms from the drain on: min pool live_workers=2; zero at []
+    kindfail_test.go:542: [held t+13.7s] workers by node map[kgpu-worker4:[worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]], unscheduled [worker-64cc596c96-c7cmt worker-64cc596c96-qpm6w]; GET /workers live=2; dashboard max(gpu_workers_live)=2 max(gpu_queue_depth)=4; round still open=true
+    kindfail_test.go:557: [kubectl t+13.7s] uncordon kgpu-worker3: err=<nil> node/kgpu-worker3 uncordoned
+    kindfail_test.go:563: [api t+21.0s] round 155 finished; duration 20.8s
+    kindfail_test.go:569: [build] 0:155 attempt=1 state=done (leased at drain: true@1) completions [completed@1]
+    kindfail_test.go:569: [build] 1:155 attempt=2 state=done (leased at drain: true@1) completions [completed@2]
+    kindfail_test.go:569: [build] 2:155 attempt=2 state=done (leased at drain: true@1) completions [completed@2]
+    kindfail_test.go:569: [build] 3:155 attempt=1 state=done (leased at drain: true@1) completions [completed@1]
+    kindfail_test.go:569: [build] 4:155 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:569: [build] 5:155 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:569: [build] 6:155 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:569: [build] 7:155 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:574: [k8s] 4 worker pod(s) Ready in kgpu after 0.1s: [worker-64cc596c96-c7cmt(uid=9e8dab4a node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.55) worker-64cc596c96-kvtwt(uid=61f7319d node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.47) worker-64cc596c96-qpm6w(uid=34956313 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.56) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:574: [api] GET /workers: pool live_workers=4 after 0.1s
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the round's last numbers reach Prometheus
+    kindfail_helpers_test.go:299: [dashboard t+  0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  2.1s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=1 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  4.1s] max(rounds_open)=1 max(gpu_queue_depth)=6 max(builds_leased)=2 sum(worker_busy)=2 count(worker_busy)=4 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  8.2s] max(rounds_open)=1 max(gpu_queue_depth)=5 max(builds_leased)=2 sum(worker_busy)=2 count(worker_busy)=3 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 12.3s] max(rounds_open)=1 max(gpu_queue_depth)=5 max(builds_leased)=2 sum(worker_busy)=2 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 14.4s] max(rounds_open)=1 max(gpu_queue_depth)=4 max(builds_leased)=2 sum(worker_busy)=2 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 16.4s] max(rounds_open)=1 max(gpu_queue_depth)=4 max(builds_leased)=2 sum(worker_busy)=3 count(worker_busy)=3 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 18.4s] max(rounds_open)=1 max(gpu_queue_depth)=0 max(builds_leased)=4 sum(worker_busy)=4 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 22.5s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=2 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 24.6s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+    kindfail_test.go:586: [dashboard] min of max(gpu_workers_live) over 17 samples: 2; lease expirations {failed=0 queued=0} -> {failed=0 queued=0}; round_duration_seconds_count +1
+=== RUN   TestKindFail/DrainOneGPUNodeAllFourCards/PoolThroughTheDrain
+=== RUN   TestKindFail/DrainOneGPUNodeAllFourCards/NoLeaseExpiryFromEviction
+=== RUN   TestKindFail/DrainOneGPUNodeAllFourCards/RoundObservedOnce
+=== RUN   TestKindFail/DrainOneGPUNodeAllFourCards/GaugesAtRest
+    kindfail_test.go:611: [dashboard at rest after 0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=4 max(gpu_workers_live)=4 count(up{job=scheduler}==1)=1
+=== NAME  TestKindFail/DrainOneGPUNodeAllFourCards
+    kindfail_test.go:616: [kubectl] scale deployment/worker -n kgpu --replicas=2
+    kindfail_test.go:617: [k8s] 2 worker pod(s) Ready in kgpu after 1.1s: [worker-64cc596c96-kvtwt(uid=61f7319d node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.47) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:617: [api] GET /workers: pool live_workers=2 after 1.1s
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker3: err=<nil> node/kgpu-worker3 already uncordoned
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 already uncordoned
+=== RUN   TestKindFail/DrainOneGPUNodeTwoReplicas
+    kindfail_test.go:450: [kubectl] scale deployment/worker -n kgpu --replicas=2
+    kindfail_test.go:451: [k8s] 2 worker pod(s) Ready in kgpu after 0.0s: [worker-64cc596c96-kvtwt(uid=61f7319d node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.47) worker-64cc596c96-rx4xc(uid=b1a5d9c2 node=kgpu-worker4 phase=Running ready=true restarts=0 ip=10.244.2.46)]
+    kindfail_test.go:451: [api] GET /workers: pool live_workers=2 after 0.0s
+    kindfail_test.go:454: [k8s] GPU nodes [kgpu-worker3 kgpu-worker4]; workers by node before the drain map[kgpu-worker4:[worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]]
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the pool size is fresh on the dashboard
+    kindfail_test.go:462: [api] POST /rounds {scenario:xcheck-step6-drain-2 n_shards:4} -> 201 round_id=156
+    kindfail_test.go:465: [api] POST /builds {round:156 shard:0 n:2000000} -> 201 build_id=0:156 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:156 shard:1 n:2000000} -> 201 build_id=1:156 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:156 shard:2 n:2000000} -> 201 build_id=2:156 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:465: [api] POST /builds {round:156 shard:3 n:2000000} -> 201 build_id=3:156 placement=gpu gpu_total_ms=65519
+    kindfail_test.go:500: [drain t+0.5s] draining kgpu-worker4 (workers there: [worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]; on kgpu-worker3: []); leased builds map[0:156:1 1:156:1]
+    kindfail_test.go:528: [kubectl t+1.6s] drain kgpu-worker4: err=<nil>
+        node/kgpu-worker4 cordoned
+        evicting pod kgpu/worker-64cc596c96-rx4xc
+        evicting pod kgpu/worker-64cc596c96-kvtwt
+        pod/worker-64cc596c96-rx4xc evicted
+        pod/worker-64cc596c96-kvtwt evicted
+        node/kgpu-worker4 drained
+        Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-26dzg, kube-system/kube-proxy-jkv85
+    kindfail_test.go:535: [api] GET /workers polled 65 times every 200 ms from the drain on: min pool live_workers=0; zero at [t+0.7s t+0.9s t+1.1s]
+    kindfail_test.go:542: [held t+13.6s] workers by node map[kgpu-worker3:[worker-64cc596c96-b9jdg(ready=true) worker-64cc596c96-ff2nj(ready=true)]], unscheduled []; GET /workers live=2; dashboard max(gpu_workers_live)=2 max(gpu_queue_depth)=0; round still open=true
+    kindfail_test.go:557: [kubectl t+13.7s] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 uncordoned
+    kindfail_test.go:563: [api t+14.6s] round 156 finished; duration 14.3s
+    kindfail_test.go:569: [build] 0:156 attempt=2 state=done (leased at drain: true@1) completions [completed@2]
+    kindfail_test.go:569: [build] 1:156 attempt=2 state=done (leased at drain: true@1) completions [completed@2]
+    kindfail_test.go:569: [build] 2:156 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:569: [build] 3:156 attempt=1 state=done (leased at drain: false@0) completions [completed@1]
+    kindfail_test.go:574: [k8s] 2 worker pod(s) Ready in kgpu after 0.1s: [worker-64cc596c96-b9jdg(uid=a7dc1d86 node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.57) worker-64cc596c96-ff2nj(uid=4f46774b node=kgpu-worker3 phase=Running ready=true restarts=0 ip=10.244.4.58)]
+    kindfail_test.go:574: [api] GET /workers: pool live_workers=2 after 0.1s
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the round's last numbers reach Prometheus
+    kindfail_helpers_test.go:299: [dashboard t+  0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  2.1s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=2 count(worker_busy)=3 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  4.1s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=3 count(worker_busy)=4 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+  6.2s] max(rounds_open)=1 max(gpu_queue_depth)=2 max(builds_leased)=2 sum(worker_busy)=3 count(worker_busy)=4 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 10.3s] max(rounds_open)=1 max(gpu_queue_depth)=0 max(builds_leased)=2 sum(worker_busy)=3 count(worker_busy)=3 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 12.4s] max(rounds_open)=1 max(gpu_queue_depth)=0 max(builds_leased)=2 sum(worker_busy)=2 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 18.5s] max(rounds_open)=1 max(gpu_queue_depth)=0 max(builds_leased)=2 sum(worker_busy)=1 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_helpers_test.go:299: [dashboard t+ 20.5s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+    kindfail_test.go:586: [dashboard] min of max(gpu_workers_live) over 14 samples: 2; lease expirations {failed=0 queued=0} -> {failed=0 queued=0}; round_duration_seconds_count +1
+=== RUN   TestKindFail/DrainOneGPUNodeTwoReplicas/PoolThroughTheDrain
+    kindfail_test.go:594: [decision 38] every worker sat on the drained node (placement map[kgpu-worker4:[worker-64cc596c96-kvtwt(ready=true) worker-64cc596c96-rx4xc(ready=true)]]): the pool may empty; it dipped to API min 0 (zero at [t+0.7s t+0.9s t+1.1s]), dashboard min 2, and recovered to 2
+=== RUN   TestKindFail/DrainOneGPUNodeTwoReplicas/NoLeaseExpiryFromEviction
+=== RUN   TestKindFail/DrainOneGPUNodeTwoReplicas/RoundObservedOnce
+=== RUN   TestKindFail/DrainOneGPUNodeTwoReplicas/GaugesAtRest
+    kindfail_test.go:611: [dashboard at rest after 0.0s] max(rounds_open)=0 max(gpu_queue_depth)=0 max(builds_leased)=0 sum(worker_busy)=0 count(worker_busy)=2 max(gpu_workers_live)=2 count(up{job=scheduler}==1)=1
+=== NAME  TestKindFail/DrainOneGPUNodeTwoReplicas
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker3: err=<nil> node/kgpu-worker3 already uncordoned
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 already uncordoned
+=== NAME  TestKindFail
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker3: err=<nil> node/kgpu-worker3 already uncordoned
+    kindfail_helpers_test.go:402: [cleanup] uncordon kgpu-worker4: err=<nil> node/kgpu-worker4 already uncordoned
+    kindoutside_helpers_test.go:146: [cleanup] scale deployment/worker --replicas=2: err=<nil> deployment.apps/worker scaled
+    kindoutside_helpers_test.go:148: [cleanup] rollout status worker: err=<nil> deployment "worker" successfully rolled out
+    kindoutside_helpers_test.go:150: [cleanup] rollout status scheduler: err=<nil> deployment "scheduler" successfully rolled out
+    kindfail_test.go:51: [cleanup] port 9091 free
+--- PASS: TestKindFail (454.15s)
+    --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce (17.74s)
+        --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce/CounterMatchesWhatHappened (0.00s)
+        --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce/RoundObservedOnce (0.00s)
+        --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce/KilledPodSeriesEnded (0.02s)
+        --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce/ReplacementSeriesPreCreated (0.07s)
+        --- PASS: TestKindFail/ForceDeletedLeaseholderCountedOnce/GaugesAtRest (0.02s)
+    --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart (103.70s)
+        --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart/EachInjectionCountedOnce (0.00s)
+        --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart/InContainerCrashExpiresOnce (29.88s)
+        --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart/NewSchedulerSeriesFromFirstScrape (0.09s)
+        --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart/LeaseExpiryPanelSurvivesSchedulerRestart (0.01s)
+        --- PASS: TestKindFail/TwoKillsOneBuildThenSchedulerRestart/GaugesAtRest (0.03s)
+    --- PASS: TestKindFail/SchedulerDeletedAtRoundClose (242.42s)
+    --- PASS: TestKindFail/DrainOneGPUNodeAllFourCards (49.71s)
+        --- PASS: TestKindFail/DrainOneGPUNodeAllFourCards/PoolThroughTheDrain (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeAllFourCards/NoLeaseExpiryFromEviction (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeAllFourCards/RoundObservedOnce (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeAllFourCards/GaugesAtRest (0.04s)
+    --- PASS: TestKindFail/DrainOneGPUNodeTwoReplicas (39.93s)
+        --- PASS: TestKindFail/DrainOneGPUNodeTwoReplicas/PoolThroughTheDrain (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeTwoReplicas/NoLeaseExpiryFromEviction (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeTwoReplicas/RoundObservedOnce (0.00s)
+        --- PASS: TestKindFail/DrainOneGPUNodeTwoReplicas/GaugesAtRest (0.04s)
+PASS
+ok  	github.com/arqbca11/KubernetesGPU/scheduler/crosscheck	454.629s

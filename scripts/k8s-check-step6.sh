@@ -4,9 +4,10 @@
 # and the round still completing"; this script runs the three injections and
 # reads every number THROUGH GRAFANA'S DATASOURCE PROXY, so what this log
 # records is what http://127.0.0.1:3000/d/kgpu-round showed. Three runs:
-#   1. a worker pod force-deleted mid-round (grace 0): the lease expires on
-#      the dashboard (lease_expirations panel +1), the killed pod's worker_busy
-#      series ends, and the round duration still lands (the done-when)
+#   1. a worker crashed (in-container SIGKILL, decision 19) and its pod deleted
+#      mid-round: the lease expires on the dashboard (lease_expirations +1),
+#      the killed pod's worker_busy series ends, and the round duration still
+#      lands (the done-when)
 #   2. the scheduler pod deleted mid-round: the shards stall ~1 s (bug 10),
 #      the replacement pod closes the round and observes it
 #   3. both GPU nodes drained mid-round: the pool empties while the queue
@@ -60,8 +61,8 @@ note "datasource uid: $DSUID (all numbers below come through this proxy)"
 if lsof -nP -iTCP:9091 -sTCP:LISTEN >/dev/null 2>&1; then fail ":9091 is busy; stop the running simulator first"; reached_end=1; exit 1; fi
 curl -s -u "$AUTH" "$GRAF/api/dashboards/uid/kgpu-round" >/dev/null || fail "dashboard kgpu-round not reachable"
 
-say "1. A worker pod force-deleted mid-round: the dashboard shows the lease expiring and the round still completing (the phase's done-when)"
-note "fake builds run 5x slower for this run (FAKE_TIME_SCALE 10 -> 2, restored after): at 10x the largest build sleeps ~0.6 s and the deletion usually lands between builds; at 2x it sleeps ~3 s, a window the kill cannot miss"
+say "1. A worker crashed and its pod deleted mid-round (decision 19): the dashboard shows the lease expiring and the round still completing (the phase's done-when)"
+note "fake builds run 5x slower for this run (FAKE_TIME_SCALE 10 -> 2, restored after): at 10x the largest build sleeps ~0.6 s and the kill usually lands between builds; at 2x it sleeps ~3 s, a window the kill cannot miss"
 $K patch configmap worker --type merge -p '{"data":{"FAKE_TIME_SCALE":"2"}}' >/dev/null
 $K rollout restart deployment/worker >/dev/null; $K rollout status deployment/worker --timeout=180s >/dev/null
 LQ0=$(gq 'sum(lease_expirations_total{outcome="queued"})'); LQ0=${LQ0:-0}
@@ -69,10 +70,10 @@ RC0=$(gq 'max(round_duration_seconds_count)'); RC0=${RC0:-0}
 note "before: lease_expirations{queued}=$LQ0, rounds observed=$RC0"
 T1=$(date +%s)
 env N_SHARDS=12 WORKERS=2 SEED=2 TIME_SCALE=2 KILL_WORKER=1 KILL_FORCE=1 scripts/k8s-round.sh > "$RUNS/run1.log" 2>&1 || fail "run 1: k8s-round.sh failed"
-sed 's/^/   | /' "$RUNS/run1.log" | grep -vE '^\s+\| time=' | head -60
+awk 'NR<=60 { print "   | " $0 }' "$RUNS/run1.log" | grep -v '   | time=' || true
 T1E=$(( $(date +%s) + 10 )); sleep 10   # one reaper tick and two scrapes past the round
-KP=$(grep -o 'force-deleting worker pod [^ ]*' "$RUNS/run1.log" | awk '{print $4}')
-note "the force-deleted pod: ${KP:-NONE FOUND}"
+KP=$(grep -o 'crashing the worker process in [^ ]*' "$RUNS/run1.log" | awk '{print $NF}' || true)
+note "the crashed-and-deleted pod: ${KP:-NONE FOUND}"
 [ -n "$KP" ] || fail "run 1 never struck a worker"
 LQ1=$(gq 'sum(lease_expirations_total{outcome="queued"})'); RC1=$(gq 'max(round_duration_seconds_count)')
 note "after: lease_expirations{queued}=$LQ0 -> $LQ1 (the panel ticked +1), rounds observed=$RC0 -> $RC1 (the round still landed)"
@@ -93,9 +94,9 @@ $K rollout restart deployment/worker >/dev/null; $K rollout status deployment/wo
 say "2. The scheduler pod deleted mid-round: the shards stall about a second (bug 10), the replacement closes the round and the dashboard keeps the story"
 T2=$(date +%s)
 env N_SHARDS=50 WORKERS=2 SEED=4 KILL_SCHEDULER=1 scripts/k8s-round.sh > "$RUNS/run2.log" 2>&1 || fail "run 2: k8s-round.sh failed"
-sed 's/^/   | /' "$RUNS/run2.log" | grep -vE '^\s+\| time=' | head -60
+awk 'NR<=60 { print "   | " $0 }' "$RUNS/run2.log" | grep -v '   | time=' || true
 T2E=$(( $(date +%s) + 10 )); sleep 10
-NP=$(grep -o 'replacement [^ ]* ready' "$RUNS/run2.log" | awk '{print $2}')
+NP=$(grep -o 'replacement [^ ]* ready' "$RUNS/run2.log" | awk '{print $2}' || true)
 note "the replacement scheduler pod: ${NP:-NONE FOUND}"
 [ -n "$NP" ] || fail "run 2 never reported a replacement scheduler pod"
 STALL=$(grep -o 'stalled for about [0-9.]*' "$RUNS/run2.log" | grep -o '[0-9.]*' || true)
@@ -117,7 +118,7 @@ show_range 'up{job="scheduler"}' "$T2" "$T2E"
 say "3. Both GPU nodes drained mid-round: the pool empties on the dashboard while the queue holds, uncordon refills it, the round completes"
 T3=$(date +%s)
 env N_SHARDS=50 WORKERS=2 SEED=3 DRAIN_GPU=1 DRAIN_HOLD=20 scripts/k8s-round.sh > "$RUNS/run3.log" 2>&1 || fail "run 3: k8s-round.sh failed"
-sed 's/^/   | /' "$RUNS/run3.log" | grep -vE '^\s+\| time=' | head -60
+awk 'NR<=60 { print "   | " $0 }' "$RUNS/run3.log" | grep -v '   | time=' || true
 T3E=$(( $(date +%s) + 10 )); sleep 10
 RC3=$(gq "round_duration_seconds_count{pod=\"$NP\"}")
 note "rounds observed by the scheduler pod: 1 -> ${RC3:-?} (the drained round still landed)"

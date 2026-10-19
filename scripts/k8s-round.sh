@@ -7,7 +7,7 @@
 #   scripts/k8s-round.sh                                 # 6 shards, 2 workers, skewed, 1 round
 #   N_SHARDS=50 WORKERS=4 ROUNDS=2 scripts/k8s-round.sh
 #   KILL_WORKER=1 scripts/k8s-round.sh                   # delete the owner of the round's largest build while it builds it
-#   KILL_WORKER=1 KILL_FORCE=1 scripts/k8s-round.sh      # same but --grace-period=0: no finish, no release; the lease must expire
+#   KILL_WORKER=1 KILL_FORCE=1 scripts/k8s-round.sh      # same but as a crash: in-container SIGKILL then pod deletion, so the lease must expire (decision 19)
 #   KILL_SCHEDULER=1 scripts/k8s-round.sh                # delete the scheduler pod 1 s into the round; report the shards' stall
 #   DRAIN_GPU=1 scripts/k8s-round.sh                     # drain both GPU nodes mid-round, hold DRAIN_HOLD s (default 15) after the pool empties, uncordon
 #
@@ -54,8 +54,13 @@ if [ "$KILL_WORKER" = 1 ]; then
   if [ -n "$OWNER" ]; then
     BID="$TARGET"
     if [ "$KILL_FORCE" = 1 ]; then
-      note "+$(( $(date +%s) - T0 )) s: force-deleting worker pod $OWNER (grace 0: it cannot finish or release, the lease must expire) while it builds $BID"
-      $K delete pod "$OWNER" --wait=false --grace-period=0 --force >/dev/null 2>&1
+      # Decision 19: a grace-0 forced deletion still delivers SIGTERM first, so the
+      # worker finishes or releases and the lease usually does NOT expire. The real
+      # crash is the in-container SIGKILL of the worker process; the deletion after
+      # it removes the pod before the restarted container can claim anything.
+      note "+$(( $(date +%s) - T0 )) s: crashing the worker process in $OWNER (in-container SIGKILL, decision 19) and deleting the pod while it builds $BID; the lease must expire"
+      $K exec "$OWNER" -- sh -c 'for p in /proc/[0-9]*; do c=$(tr "\0" " " < $p/cmdline 2>/dev/null); case "$c" in python*) kill -KILL ${p#/proc/};; esac; done' >/dev/null 2>&1 || true
+      $K delete pod "$OWNER" --wait=false >/dev/null
     else
       note "+$(( $(date +%s) - T0 )) s: deleting worker pod $OWNER while it builds $BID"
       $K delete pod "$OWNER" --wait=false >/dev/null
