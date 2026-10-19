@@ -391,3 +391,14 @@ The agent scales the implementer's workers to zero for the run, since cards are 
 | KindMetrics/LeaseExpiryAndWorkerBusy | SIGKILL the leaseholder's python during an 8M-vector build. | `lease_expirations_total{queued}` +1 exactly, attempt 2 completes elsewhere, `worker_busy` follows the leaseholder. |
 | KindMetrics/ScrapeWiring | Inspect Prometheus's targets and config; run a simulator on another port. | Scheduler, both workers and the laptop's 9091 are scraped every 5 s; another port is not (decision 32). |
 | KindMetrics/DashboardPanelsReturnData | Read the dashboard ConfigMap, fetch the dashboard anonymously, run every panel query. | 17 panels in both places; all 25 expressions return data through Prometheus and through Grafana (decision 33). |
+
+## Phase 2, step 6: the failure injections on the dashboard (`scripts/k8s-check-step6.sh`). Log: `phase2/step6-failures-dashboard.log`
+
+Every number is read through Grafana's datasource proxy, so the log records what the dashboard's own datasource served.
+
+| Step | Scenario | Proves |
+| --- | --- | --- |
+| 0 | Grafana's health and datasource APIs; the simulator's port is free. | The dashboard's Prometheus datasource answers through the proxy, so the runs below are read the way a panel reads them. |
+| 1 | A 12-shard round at `FAKE_TIME_SCALE=2` (restored after); the owner of the round's largest build force-deleted (`--grace-period=0`) while it builds it. | The phase's done-when: `lease_expirations{queued}` +1 on the panel, the killed pod's `worker_busy` series ends and the replacement's begins, the struck build completes at attempt 2, and the round duration still lands (+1). |
+| 2 | A 50-shard round; the scheduler pod deleted mid-round. | The replacement closes the round and observes it exactly once from fresh counters (decisions 31, 35); the shards' stall stays ~1 s or no call fails at all (bug 10); `up{job="scheduler"}` shows the old target end and the new one begin. |
+| 3 | A 50-shard round; both GPU nodes drained (`kubectl drain`) when it starts, held 20 s after the pool empties, then uncordoned. | The dashboard shows `gpu_workers_live` at 0 while `gpu_queue_depth` holds queued builds, the pool recovers to 2, and the round duration still lands (+1). This is the picture Phase 3's CPU-fallback policies answer. |

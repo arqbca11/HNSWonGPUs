@@ -6,20 +6,25 @@
 #
 #   scripts/k8s-round.sh                                 # 6 shards, 2 workers, skewed, 1 round
 #   N_SHARDS=50 WORKERS=4 ROUNDS=2 scripts/k8s-round.sh
-#   KILL_WORKER=1 scripts/k8s-round.sh                   # delete the leaseholder of the largest leased build mid-round
+#   KILL_WORKER=1 scripts/k8s-round.sh                   # delete the owner of the round's largest build while it builds it
+#   KILL_WORKER=1 KILL_FORCE=1 scripts/k8s-round.sh      # same but --grace-period=0: no finish, no release; the lease must expire
 #   KILL_SCHEDULER=1 scripts/k8s-round.sh                # delete the scheduler pod 1 s into the round; report the shards' stall
+#   DRAIN_GPU=1 scripts/k8s-round.sh                     # drain both GPU nodes mid-round, hold DRAIN_HOLD s (default 15) after the pool empties, uncordon
 #
 # Not a saved step log by itself; scripts/k8s-check-step4.sh calls it and saves.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export SCHEDULER_URL="${SCHEDULER_URL:-http://127.0.0.1:30080}" SCENARIO="${SCENARIO:-skewed}" N_SHARDS="${N_SHARDS:-6}" SEED="${SEED:-1}" \
        ROUNDS="${ROUNDS:-1}" TIME_SCALE="${TIME_SCALE:-10}" LOG_FORMAT=text MIN_WORKERS="${WORKERS:-2}" ROUND_TIMEOUT="${ROUND_TIMEOUT:-10m}"
-WORKERS="${WORKERS:-2}"; KILL_WORKER="${KILL_WORKER:-0}"; KILL_SCHEDULER="${KILL_SCHEDULER:-0}"
+WORKERS="${WORKERS:-2}"; KILL_WORKER="${KILL_WORKER:-0}"; KILL_FORCE="${KILL_FORCE:-0}"; KILL_SCHEDULER="${KILL_SCHEDULER:-0}"
+DRAIN_GPU="${DRAIN_GPU:-0}"; DRAIN_HOLD="${DRAIN_HOLD:-15}"
 K="kubectl -n kgpu"
 note() { printf '   %s\n' "$*"; }
 jget() { python3 scripts/jget.py "$1"; }
 SCRATCH="${TMPDIR:-/tmp}/kgpu-k8s-round.$$"; mkdir -p "$SCRATCH"; export TIMELINE_DIR="$SCRATCH"
-trap 'rm -rf "$SCRATCH"' EXIT
+# never leave the GPU nodes cordoned, whatever happens
+cleanup() { rm -rf "$SCRATCH"; if [ "$DRAIN_GPU" = 1 ]; then kubectl uncordon $(kubectl get nodes -l kgpu.io/gpu=true -o jsonpath='{.items[*].metadata.name}') >/dev/null 2>&1 || true; fi; }
+trap cleanup EXIT
 
 echo "== k8s round from outside the cluster: scenario=$SCENARIO shards=$N_SHARDS workers=$WORKERS seed=$SEED rounds=$ROUNDS time_scale=$TIME_SCALE kill_worker=$KILL_WORKER"
 note "scheduler: $SCHEDULER_URL (NodePort); the simulator runs on this machine, not in a pod"
@@ -36,20 +41,26 @@ go run ./shard/cmd/shardsim > "$SCRATCH/sim.log" 2>&1 &
 SIM=$!
 KILLED=""
 if [ "$KILL_WORKER" = 1 ]; then
-  # wait for the round id, then for a leased build; strike the largest one.
+  # wait for the round id, then strike the owner of the round's LARGEST build
+  # the moment that build is leased: its modeled build time is the window the
+  # deletion must land in, so target the widest one from the start of its lease.
   RID=""; for _ in $(seq 1 240); do RID=$(grep -o 'round_id=[0-9]*' "$SCRATCH/sim.log" 2>/dev/null | head -1 | cut -d= -f2 || true); [ -n "$RID" ] && break; sleep 0.25; done
-  # prefer a build big enough to still be running when the deletion lands (>= 100k vectors is ~0.4 s at 10x);
-  # after 5 s of waiting take the largest leased build there is.
-  OWNER=""; MIN=100000
-  for i in $(seq 1 240); do
-    [ "$i" -gt 20 ] && MIN=0
-    OWNER=$(curl -s "$SCHEDULER_URL/rounds/$RID" | jget "(lambda bs: (sorted(bs, key=lambda b: -b['n_vectors'])[0]['lease_owner'] if bs else ''))([b for b in d['builds'] if b['state']=='leased' and b['n_vectors']>=$MIN])" || true)
-    [ -n "$OWNER" ] && break; sleep 0.25
+  TARGET=$(curl -s "$SCHEDULER_URL/rounds/$RID" | jget "sorted(d['builds'], key=lambda b: -b['n_vectors'])[0]['build_id']")
+  OWNER=""
+  for _ in $(seq 1 600); do
+    OWNER=$(curl -s "$SCHEDULER_URL/rounds/$RID" | jget "([b.get('lease_owner') or '' for b in d['builds'] if b['build_id']=='$TARGET' and b['state']=='leased'] or [''])[0]" || true)
+    [ -n "$OWNER" ] && break; sleep 0.1
   done
   if [ -n "$OWNER" ]; then
-    BID=$(curl -s "$SCHEDULER_URL/rounds/$RID" | jget "[b['build_id'] for b in d['builds'] if b.get('lease_owner')=='$OWNER'][0]")
-    note "+$(( $(date +%s) - T0 )) s: deleting worker pod $OWNER while it builds $BID"
-    $K delete pod "$OWNER" --wait=false >/dev/null; KILLED="$OWNER"; KILLED_BUILD="$BID"
+    BID="$TARGET"
+    if [ "$KILL_FORCE" = 1 ]; then
+      note "+$(( $(date +%s) - T0 )) s: force-deleting worker pod $OWNER (grace 0: it cannot finish or release, the lease must expire) while it builds $BID"
+      $K delete pod "$OWNER" --wait=false --grace-period=0 --force >/dev/null 2>&1
+    else
+      note "+$(( $(date +%s) - T0 )) s: deleting worker pod $OWNER while it builds $BID"
+      $K delete pod "$OWNER" --wait=false >/dev/null
+    fi
+    KILLED="$OWNER"; KILLED_BUILD="$BID"
   else
     note "no leased build appeared to strike"
   fi
@@ -71,8 +82,26 @@ for l in sys.stdin:
     except Exception: pass
 print(" | ".join(out) or "(gone)")')"
 fi
+DRAINED=0
+if [ "$DRAIN_GPU" = 1 ]; then
+  for _ in $(seq 1 240); do grep -q 'round started' "$SCRATCH/sim.log" 2>/dev/null && break; sleep 0.25; done
+  sleep 2
+  GPU_NODES=$(kubectl get nodes -l kgpu.io/gpu=true -o jsonpath='{.items[*].metadata.name}')
+  note "+$(( $(date +%s) - T0 )) s: draining the GPU nodes ($GPU_NODES): every worker is evicted mid-round"
+  for n in $GPU_NODES; do kubectl drain "$n" --ignore-daemonsets --delete-emptydir-data --timeout=120s >/dev/null 2>&1 || note "drain $n reported an error (evictions may still have landed)"; done
+  for _ in $(seq 1 240); do [ "$(curl -s "$SCHEDULER_URL/workers" | jget "d['pool']['live_workers']")" = 0 ] && break; sleep 0.5; done
+  note "+$(( $(date +%s) - T0 )) s: the scheduler sees 0 live workers; the queued builds can only wait; holding the drain $DRAIN_HOLD s so the dashboard catches it"
+  sleep "$DRAIN_HOLD"
+  for n in $GPU_NODES; do kubectl uncordon "$n" >/dev/null; done
+  DRAINED=1
+  note "+$(( $(date +%s) - T0 )) s: uncordoned; the Pending replacement workers schedule and drain the queue"
+fi
 wait "$SIM" && SIM_EXIT=0 || SIM_EXIT=$?
 note "simulator exited $SIM_EXIT after $(( $(date +%s) - T0 )) s"
+if [ "$DRAINED" = 1 ]; then
+  $K rollout status deployment/worker --timeout=180s >/dev/null
+  note "workers after the drain: $($K get pods -l app=worker --field-selector=status.phase=Running -o jsonpath='{range .items[*]}{.metadata.name}@{.spec.nodeName} {end}')"
+fi
 
 if [ -n "$SCHED_KILLED_AT" ]; then
   echo; echo "== the shards' view of the scheduler deletion (retry warnings in the simulator log)"

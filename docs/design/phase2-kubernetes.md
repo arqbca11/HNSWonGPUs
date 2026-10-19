@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers), 3b (GPU cards as a resource, two GPU nodes), 4 (shards outside the cluster) and 5 (metrics and dashboards) done; step 6 (failure injection on the dashboard) to come.
+**In progress.** Started 2026-10-08. Steps 1 (the cluster), 2 (Postgres and the scheduler), 3 (workers), 3b (GPU cards as a resource, two GPU nodes), 4 (shards outside the cluster), 5 (metrics and dashboards) and 6 (failure injection on the dashboard) done; the phase closes with step 6's cross-check.
 
 Run the Phase 1 system unchanged on a local kind cluster, with Prometheus and Grafana watching it. The scheduler code and the schema do not change. What changes is who keeps processes alive and where they run.
 
@@ -123,6 +123,7 @@ sequenceDiagram
 | 33 | **Dashboards are reached by `kubectl port-forward`** (`scripts/k8s-dashboards.sh`: Grafana on 3000, Prometheus on 9090), not a NodePort | NodePorts mapped in the kind config (another cluster rebuild) | The dashboards are for a person at this laptop; the shards needed a stable address because they are clients of the system. Different audiences, different doors. |
 | 34 | **kube-prometheus-stack trimmed for a laptop:** no Alertmanager, no node-exporter, no bundled alert rules, no scrapes of the control-plane components; kube-state-metrics kept for pod restart counts; 5 s scrape interval, 2-day retention; the chart told to pick up every ServiceMonitor in the cluster, not only its own release's | The chart's defaults | The defaults are a production cluster's monitoring and most of it would show red on kind (no node-exporter mounts, unreachable control-plane ports). What is kept is what Phase 2's done-when needs: our metrics, pod restarts, a dashboard. |
 | 35 | **Every metric series exists from the first scrape:** label combinations are pre-created at startup (`metrics.Init` in Go, module import in Python) | Let a series appear on its first increment | A dashboard reading a counter that does not exist yet shows a gap, not zero; the first version of the API test failed on exactly this. |
+| 36 | **"The dashboard shows it" is proven through Grafana's datasource proxy:** the step 6 check reads every number via `/api/datasources/proxy/uid/<prometheus>`, Grafana forwarding the query to the same datasource the panels read, so the saved log records what the dashboard served | Query Prometheus directly (a parallel channel that could disagree with what Grafana sees); screenshot the panels (not assertable, not diffable) | One channel, assertable, and it exercises Grafana's auth and datasource wiring on every check |
 
 ## Implementation notes
 
@@ -276,6 +277,17 @@ A fresh agent ran 8 subtests against the `kgpu` and `monitoring` stacks with sim
 | Grafana listed an Alertmanager datasource with Alertmanager disabled. | Sidecar datasource for Alertmanager disabled in the chart values. |
 | Shard-side panels have data only while a simulator runs; panel 11 shows only the gpu line in Phase 2. | Expected from decisions 26 and 28 and from `always_gpu`; stated here. The local line appears with Phase 3's policies. |
 | `builds_total{outcome="lost"}` cannot be produced by SIGKILL (the process and its counters die). | By design: "lost" is the fencing outcome, a live worker whose renew or complete is rejected (Phase 1 decision 36). The step 3 cross-check's Postgres outage produced it. |
+
+### Step 6: the failure injections on the dashboard (done 2026-10-19)
+
+The phase's done-when. `scripts/k8s-check-step6.sh` runs the three injections and reads every number through Grafana's datasource proxy (decision 36), saving `test-logs/phase2/step6-failures-dashboard.log`.
+
+| Path | What |
+| --- | --- |
+| `scripts/k8s-round.sh` | `KILL_FORCE=1` force-deletes (grace 0: the worker can neither finish nor release, the lease must expire); `DRAIN_GPU=1` drains both GPU nodes mid-round and uncordons after `DRAIN_HOLD` s; `KILL_WORKER` now strikes the owner of the round's **largest** build the moment that build is leased, since its modeled build time is the window the deletion must land in. |
+| `scripts/k8s-check-step6.sh` | The three runs with before/after and range assertions through the proxy; restores `FAKE_TIME_SCALE`, uncordons and rescales in its cleanup. |
+
+Observed, all through the proxy: **(1) worker force-deleted mid-build** (12 shards at `FAKE_TIME_SCALE=2` for the run, since at 10× the largest build sleeps ~0.6 s and a graceful or late kill misses — the first attempt proved exactly that by striking an idle worker): `lease_expirations{queued}` 0 → 1, the struck build done at attempt 2 on the survivor, the killed pod's `worker_busy` series gone stale, two worker series again after the replacement, rounds observed +1. **(2) scheduler pod deleted mid-round:** the replacement was ready in ~1.3 s, not one shard call failed (bug 10's shutdown delay bridged the endpoint switch entirely), the replacement closed the round and observed it once from fresh counters (decisions 31, 35), and `up{job="scheduler"}` shows the old target's series end and the new one's begin. **(3) both GPU nodes drained mid-round, held 20 s:** four scrapes with `gpu_workers_live` 0 and `gpu_queue_depth` holding builds on every one of them, the pool back to 2 after uncordon, the round landed (31 s, straggler lag 26 s) — the picture Phase 3's CPU-fallback policies answer. Because `k8s-round.sh` is step 4's harness too, `step4-shards-outside.log` was regenerated with the new strike logic.
 
 ## Open questions
 

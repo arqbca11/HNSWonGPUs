@@ -239,9 +239,9 @@ Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and s
 
 ### Failure injection
 
-- [x] Delete a worker pod mid-build *(step 4 check, under a 50-shard round from outside: the round completed, nothing twice; the dashboard view is step 6)*
-- [ ] Delete the scheduler pod mid-round
-- [x] Drain the stand-in GPU node: every worker is evicted and the queue grows. This is the case the CPU-fallback policies in Phase 3 should handle. *(Step 3 cross-check: both workers released their builds, five builds queued, replacements Pending on the taint, all completed once after uncordon. The dashboard view comes with step 5.)*
+- [x] Delete a worker pod mid-build *(step 4 check, under a 50-shard round from outside: the round completed, nothing twice. Step 6 shows it on the dashboard: the leaseholder of the round's largest build force-deleted with grace 0, `lease_expirations{queued}` +1 on the panel, the killed pod's `worker_busy` series ends, attempt 2 completes on the survivor, the round duration lands — the phase's done-when)*
+- [x] Delete the scheduler pod mid-round *(step 4 exercised it and bug 10 closed the stall; step 6 shows it on the dashboard: the replacement pod closes the round and observes it once from fresh counters (decisions 31, 35), `up{job="scheduler"}` hands over between pods, and not one shard call failed)*
+- [x] Drain the stand-in GPU node: every worker is evicted and the queue grows. This is the case the CPU-fallback policies in Phase 3 should handle. *(Step 3 cross-check: both workers released their builds, five builds queued, replacements Pending on the taint, all completed once after uncordon. Step 6 shows it on the dashboard: both nodes drained mid-round, `gpu_workers_live` at 0 across four scrapes while `gpu_queue_depth` holds the queued builds, the pool back to 2 after uncordon, the round lands.)*
 - [x] Restart Postgres: services retry, and nothing completes twice *(step 2 check and step 3 cross-check; note that an outage longer than the lease costs the in-flight attempt, by design, Phase 1 decision 48)*
 
 ## Phase 3: Placement policies and experiments
