@@ -65,10 +65,23 @@ func (p Reactive) Decide(in Input) Decision {
 }
 
 func (p Reactive) Reconsider(in ReconsiderInput) []Action {
+	// The memory filter applies to preemption too (bug 11): a build preempted
+	// into a queue no live worker can claim would sit there forever, hanging
+	// the round. With an empty pool a local build keeps its progress — unlike
+	// submit, where queueing costs nothing.
+	var largestMem int64
+	for _, w := range in.Workers {
+		if w.MemBytes > largestMem {
+			largestMem = w.MemBytes
+		}
+	}
 	var acts []Action
 	for _, b := range in.Builds {
 		switch b.Phase {
 		case "local_running":
+			if b.Spec.MemBytes > largestMem {
+				continue
+			}
 			if a, ok := p.preemptIfWorth(b); ok {
 				acts = append(acts, a)
 			}
