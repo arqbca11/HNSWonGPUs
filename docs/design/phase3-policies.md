@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**Planned.** This is the core of the project: five policies behind one interface, compared on identical seeded workloads across the six scenarios. Builds are still fake.
+**In progress.** Started 2026-10-19. This is the core of the project: five policies behind one interface, compared on identical seeded workloads across the scenarios. Builds are still fake.
 
 The centerpiece is **reactive migration**: a deployable policy that knows only what a real shard reports, and moves a local build to the GPU when the shard's growing query backlog says it should. The **clairvoyant** cost-based policy, which knows every shard's future queries, is kept as an oracle to measure what the unknowable future costs. (Model revision of 2026-10-02; see Phase 1 decisions 28 to 32.)
 
@@ -115,6 +115,23 @@ sequenceDiagram
 | 5 | A speculative copy is a second `builds` row with its own `build_id` suffix | A flag on the original row | Two rows, two leases, two attempt counters. The original invariants hold unchanged. |
 | 6 | Simulator for sweeps, live cluster for validation only | Sweeps on the live cluster | Fake jobs sleep in real time; a 200-round sweep would take days. Disagreement between the two is itself a result to write up. |
 | 7 | Estimate error injected as log-normal noise on every estimate the policy sees | Only on build times | The policy never sees truth; the sweep over σ measures its fragility end to end. |
+| 8 | **The flapping guard is a margin plus moved-at-most-once** (answers the flapping open question): migrating or reneging must win by `MarginS` (default 2 s, the order of the GPU overhead), and a build whose placement already changed once after submit (`Moved`) is never moved again — a preempted build cannot renege back, a reneged build cannot be preempted. Speculation is additionally one per reconsider tick and never while a copy is in flight | Margin only (a build could still ping-pong when estimates drift past the margin twice); a cooldown timer (needs a clock, breaking purity) | The pair is clock-free and bounds the worst case absolutely: a build loses progress at most once. |
+| 9 | **The host computes every number a policy sees and passes it in**: cost-model estimates per build (`Estimates`), the GPU queue wait (`PoolState.QueueWaitS`, `BuildView.QueueWaitS`), the arrival rate and mean query duration on the report (`ShardStatus`). All times are float64 seconds relative to the call, so policies never read a clock | Policies call the cost model and estimator themselves (pure, so allowed) | One choke point implements decision 7: the host noises everything at once. The step 2 queue-replay estimator plugs in by filling `QueueWaitS` without touching any policy, and the simulator feeds modeled time through the same fields. |
+| 10 | **One priority currency: seconds of blocked shard work.** At submit the reactive and clairvoyant policies set priority to the build's (would-be) local duration — longest-processing-time-first — and after a preemption it is the backlog plus the abandoned local time, kept current by `reprioritize` past a 1 s churn delta. `static_threshold` uses the vector count, which orders identically within that policy | Priority classes; FIFO within placement | The claim orders by one number (decision 2), so every priority written by one policy must be comparable. Seconds of blocked work is the thing the round actually loses by serving this build later. |
+
+## Implementation notes
+
+### Step 1: the policy interface and the five policies (done 2026-10-19)
+
+| Path | What |
+| --- | --- |
+| `scheduler/policy/policy.go` | The interface (`Decide`, `Reconsider`), the input types (`Input`, `ReconsiderInput`, `BuildView`, `WorkerView`, `ShardStatus`, `Estimates`), the four action kinds, the shared memory filter, `AlwaysGPU`, and `ByName` (`always_gpu`, `static_threshold[:N]`, `reactive`, `reactive_spec`; the clairvoyant is deliberately absent, decision 1a). |
+| `scheduler/policy/threshold.go` | `StaticThreshold`: N or more vectors to the GPU, bigger first; never reconsiders. Default N 200 000. |
+| `scheduler/policy/reactive.go` | `Reactive` (stay-vs-migrate from the report alone, preempt past the margin, renege a stuck queued build, reprioritize to the blocked work) and `ReactiveSpec` (plus one speculation per tick onto an idle worker when the queue is empty). |
+| `scheduler/policy/clairvoyant.go` | The oracle: constructed with the futures, replays both placements exactly (including the skip rule for not-ready index queries), priority = would-be local finish. |
+| `scheduler/api/api.go` | The live host now fills `Input.Est` from the cost model; `QueueWaitS` stays 0 until step 2. `Reconsider` is not yet wired to a timer (step 3). |
+
+`WorkerView` already carries a `Node` field for step 2's per-node transfer term, but the pure types need no schema; whether `workers` gets a `node` column is the owner question flagged below, due before step 2.
 
 ## What the published build-time figures change here (2026-10-06)
 
@@ -139,4 +156,5 @@ Phase 2 decision 23: how many workers run per card and per machine is a paramete
 - Should `reconsider` be able to pre-empt a leased job (cancel it mid-build to hand the GPU to a worse straggler)? Not in Phase 3. It adds wasted work and the speculation policy already covers the idle-GPU case.
 - Where does the shard's local build estimate come from? In Phase 3 it is the same cost model the scheduler uses, corrected by reported `build_progress`. In Phase 4 the shard measures.
 - How is the arrival rate estimated from reports? First version: difference in cumulative arrivals between reports over the report interval, smoothed. The report may need a cumulative `arrived` count for this.
-- Flapping: a build preempted to the GPU queue and then reneged back to local has lost its progress twice. The margin and a "moved at most once" rule are candidates.
+- Flapping: decided as decision 8 (margin plus moved-at-most-once).
+- The `workers` table and the per-node transfer term (see "What the worker-count question changes here"): does `workers` get a `node` column so the pool state can group workers by machine? Owner's call (schema change), needed before step 2's queue-replay estimator can model shared links. The pure types already carry `WorkerView.Node`.

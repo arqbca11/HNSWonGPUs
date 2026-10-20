@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 2 is done (2026-10-19). Next: Phase 3, placement policies and experiments.** Phase 3 has not started; read its roadmap section before beginning and start its design doc under `docs/design/`. Both post-close open questions were decided by the owner: the worker spread rule (decision 39) and the draining scheduler that never stamps a round after SIGTERM (decision 40).
+**Phase 3 (placement policies and experiments) is in progress; step 1 (the policy interface and the five policies) is done (2026-10-19).** Next: step 2, the GPU finish estimator (queue replay) — blocked on an owner question first (a `node` column on `workers`, see the open questions in `docs/design/phase3-policies.md`). Phase 2 is done (2026-10-19), including its two post-close amendments (decisions 39, 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture

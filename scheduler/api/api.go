@@ -236,7 +236,14 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := policy.BuildSpec{ShardID: req.ShardID, RoundID: req.RoundID, NVectors: req.NVectors, Dim: req.Dim, MemBytes: mem}
-	dec := s.pol.Decide(policy.Input{Build: spec, Pool: policy.PoolState{LiveWorkers: pool.LiveWorkers, LargestMem: pool.LargestMem}})
+	// The host computes every estimate the policy sees (Phase 3 decision 9);
+	// QueueWaitS stays 0 until the step 2 queue-replay estimator lands.
+	est := policy.Estimates{
+		LocalBuildS: s.cm.CPUBuild(req.NVectors, req.Dim).Seconds(),
+		GPUBuildS:   s.cm.GPUBuild(req.NVectors, req.Dim).Seconds(),
+		TransferS:   s.cm.Transfer(req.NVectors, req.Dim).Seconds(),
+	}
+	dec := s.pol.Decide(policy.Input{Build: spec, Est: est, Pool: policy.PoolState{LiveWorkers: pool.LiveWorkers, LargestMem: pool.LargestMem}})
 
 	inserted, err := s.st.SubmitBuild(ctx, store.Build{
 		BuildID: buildID, RoundID: req.RoundID, ShardID: req.ShardID, NVectors: req.NVectors,

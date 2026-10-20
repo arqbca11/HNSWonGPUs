@@ -1,0 +1,85 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-19 21:43:26 PDT
+commit:    3d4c138 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-79462, port 30871)
+go:        go test -p 1 -v -count=1 ./scheduler/policy/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestClairvoyant
+    clairvoyant_test.go:12: --- no queries: the oracle compares pure build times (local 10s vs gpu 5s) and queues with priority = would-be local finish
+    clairvoyant_test.go:15:     gpu prio 10.0 (oracle: gpu recovers at 5.0s, local at 10.0s; priority = would-be local finish)
+    clairvoyant_test.go:20: --- a 20s GPU queue flips the same build to local: the oracle sees the queue through the host's estimate
+    clairvoyant_test.go:22:     local (oracle: local recovers at 10.0s, gpu at 25.0s)
+    clairvoyant_test.go:27: --- with a stream, both futures are replayed exactly: local blocks every query behind the build, gpu frees the CPU
+    clairvoyant_test.go:37:     gpu prio 15.0 (oracle: gpu recovers at 8.0s, local at 15.0s; priority = would-be local finish)
+    clairvoyant_test.go:42: --- the skip rule: an index query that is not ready waits without blocking the queries behind it
+    clairvoyant_test.go:52:     gpu prio 13.0 (oracle: gpu recovers at 7.0s, local at 13.0s; priority = would-be local finish)
+    clairvoyant_test.go:57: --- the memory filter comes first, future or no future
+    clairvoyant_test.go:63: --- pure: the same input twice gives the identical decision, and the oracle never reconsiders
+--- PASS: TestClairvoyant (0.00s)
+=== RUN   TestByName
+    clairvoyant_test.go:74: --- every deployable policy is reachable by config name; the oracle deliberately is not (decision 1a)
+    clairvoyant_test.go:87:     ""                     -> always_gpu
+    clairvoyant_test.go:87:     "always_gpu"           -> always_gpu
+    clairvoyant_test.go:87:     "static_threshold"     -> static_threshold
+    clairvoyant_test.go:87:     "static_threshold:50000" -> static_threshold
+    clairvoyant_test.go:87:     "reactive"             -> reactive
+    clairvoyant_test.go:87:     "reactive_spec"        -> reactive_spec
+    clairvoyant_test.go:98:     "clairvoyant"          -> rejected, as it must be
+    clairvoyant_test.go:98:     "static_threshold:none" -> rejected, as it must be
+    clairvoyant_test.go:98:     "static_threshold:-1"  -> rejected, as it must be
+    clairvoyant_test.go:98:     "nonsense"             -> rejected, as it must be
+--- PASS: TestByName (0.00s)
+=== RUN   TestAlwaysGPU
+    policy_test.go:19: fits                                          -> gpu   (always_gpu)
+    policy_test.go:19: exactly fits                                  -> gpu   (always_gpu)
+    policy_test.go:19: too big for every live worker                 -> local (needs 17179869184 bytes, largest live worker has 8589934592)
+    policy_test.go:19: no live workers: still queue (pool may be cold) -> gpu   (always_gpu)
+--- PASS: TestAlwaysGPU (0.00s)
+=== RUN   TestReactivePreemption
+    reactive_test.go:24: --- a shard at 20% with a blocked backlog: migrating recovers at ~20s vs ~85s local, so the build is preempted
+    reactive_test.go:29:     preempt 3:7, priority 85.0 (stay local 85.0s, migrate 20.0s, margin 2.0s)
+    reactive_test.go:34: --- the same shard at 95%: only 5s of build left, the GPU trip cannot beat it — sunk cost holds the preemption back
+    reactive_test.go:39: --- a build that already moved once is never moved again (decision 8)
+    reactive_test.go:46: --- no report yet: nothing to judge by, nothing happens
+    reactive_test.go:53: --- the margin stops a photo-finish migration (stay 21s vs migrate 20s, margin 2s)
+    reactive_test.go:60: --- growth counts: arrivals during the remaining build enlarge the backlog the local branch must drain
+--- PASS: TestReactivePreemption (0.00s)
+=== RUN   TestReactiveRenegeAndReprioritize
+    reactive_test.go:72: --- a queued GPU build whose queue has grown past its local time reneges back to local
+    reactive_test.go:81:     renege 1:7 (local from scratch 20.0s beats gpu queue 56.0s by the margin)
+    reactive_test.go:83: --- the same build with a short queue stays put; a preempted build never reneges back (decision 8)
+    reactive_test.go:95: --- a preempted build's priority follows the blocked work behind it, but only past the churn delta
+    reactive_test.go:105:     reprioritize 2:7 -> 130 (blocked work now 130.0s, priority was 10.0)
+--- PASS: TestReactiveRenegeAndReprioritize (0.00s)
+=== RUN   TestReactiveSpeculation
+    reactive_test.go:125: --- idle worker, empty queue: speculate on the worst projected straggler, without killing it
+    reactive_test.go:130:     speculate 2:7, priority 19.0 (idle worker, empty queue; worst projected recovery 19.0s)
+    reactive_test.go:132: --- no speculation while the queue has work, while a copy is in flight, while every worker is busy, or when the build fits no idle worker
+    reactive_test.go:151: --- a build being preempted this very tick is not also speculated on
+    reactive_test.go:161:     actions this tick: [preempt speculate]
+--- PASS: TestReactiveSpeculation (0.00s)
+=== RUN   TestStaticThreshold
+    threshold_test.go:21: above the threshold goes to gpu          -> gpu   prio 500000 (500000 vectors >= threshold 200000)
+    threshold_test.go:21: exactly the threshold goes to gpu        -> gpu   prio 200000 (200000 vectors >= threshold 200000)
+    threshold_test.go:21: below the threshold builds locally       -> local prio 0 (199999 vectors < threshold 200000)
+    threshold_test.go:21: memory filter overrides the threshold    -> local prio 0 (needs 17179869184 bytes, largest live worker has 8589934592)
+    threshold_test.go:27: --- bigger builds claim first: priority is the vector count, so the skewed giant never waits behind mid-sized builds
+    threshold_test.go:34: --- a static policy never reconsiders
+--- PASS: TestStaticThreshold (0.00s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/policy	0.192s
+
+== Docker events for container kgpu-test-pg-79462
+  21:43:25  create
+  21:43:25  start
+  21:43:27  kill
+  21:43:27  die
+  21:43:27  destroy
+
+== Result: PASS
