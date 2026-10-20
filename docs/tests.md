@@ -423,3 +423,9 @@ Every number is read through Grafana's datasource proxy, so the log records what
 | KindSpread/CordonedNodePacksThenRebalances | Cordon one GPU node and delete its worker; then uncordon and delete one of the packed pair. | The spread is soft: the replacement packs instead of going Pending; nothing moves on uncordon (spread is scheduling-time only); the next fresh scheduling rebalances (decision 39). |
 | KindSpread/FullNodePacks | At 1 replica, fill the other node's two cards with a non-worker pod in another namespace and scale to 2; then free the cards and replace one worker. | A card-full node makes the new worker pack, never Pending; a foreign namespace's pods don't count toward the balance; once cards are free, fresh scheduling rebalances (decision 39). |
 | KindSpread/FourReplicasTwoPerNodeFifthPendingForCards | Scale to 4, then 5, then back to 2. | Four replicas sit 2 per node; the 5th stays Pending citing only `Insufficient kgpu.io/gpu-card`, never the spread (decisions 22, 39). |
+
+## Phase 2, amendment: the draining scheduler (Go, `scheduler/api`, needs `TEST_DATABASE_URL`). Log: `phase2/amendment-draining-scheduler.log`
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| TestDrainingServesWithoutStamping | Two complete-but-unstamped one-shard rounds. The first is polled by a healthy pod; the draining flag (what main sets at SIGTERM) is flipped and the second is polled three times, a shard report is posted, and the reaper ticks. | A healthy poll stamps on read (decision 31); a draining poll answers the full, truthful status without stamping, three times; a shard report still writes while draining (bug 10 must not come back); the reaper's next tick stamps and the draining pod serves it (decision 40). |

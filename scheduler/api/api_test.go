@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,10 +28,11 @@ import (
 // unless TEST_DATABASE_URL is set; scripts/test-db.sh provides one.
 
 type harness struct {
-	t   *testing.T
-	st  *store.Store
-	srv *httptest.Server
-	log *slog.Logger
+	t        *testing.T
+	st       *store.Store
+	srv      *httptest.Server
+	log      *slog.Logger
+	draining *atomic.Bool // false unless a test flips it; main sets it at SIGTERM
 }
 
 func newHarness(t *testing.T) *harness {
@@ -53,9 +55,10 @@ func newHarness(t *testing.T) *harness {
 	}
 	st := store.New(pool)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(New(st, policy.AlwaysGPU{}, costmodel.Default(), Config{WorkerStaleAfter: 30 * time.Second}, log))
+	draining := new(atomic.Bool)
+	srv := httptest.NewServer(New(st, policy.AlwaysGPU{}, costmodel.Default(), Config{WorkerStaleAfter: 30 * time.Second, Draining: draining}, log))
 	t.Cleanup(srv.Close)
-	return &harness{t: t, st: st, srv: srv, log: log}
+	return &harness{t: t, st: st, srv: srv, log: log, draining: draining}
 }
 
 // call does one request, logs it, decodes the JSON body into out (if any),
@@ -442,4 +445,70 @@ func TestMetricsExposedAndRoundObserved(t *testing.T) {
 			t.Errorf("expected %s to have observations, got %q", prefix, l)
 		}
 	}
+}
+
+// Decision 40: past SIGTERM the scheduler is a lame duck — it answers but
+// never stamps a round, so a round's metrics cannot land in a process
+// Prometheus has stopped scraping. The replacement's reaper stamps instead.
+func TestDrainingServesWithoutStamping(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// A 1-byte worker: every build exceeds its memory, so placement is local
+	// and the shard itself can finish the build (same trick as the preemption
+	// test; a GPU build would sit queued with nobody to run it here).
+	h.st.Heartbeat(ctx, "small", 1) //nolint:errcheck
+
+	// completeRound makes a one-shard round whose work is all done but whose
+	// finished_at nobody has stamped yet (no reaper runs in this test).
+	completeRound := func(seed int64) int64 {
+		var cr CreateRoundResponse
+		h.call("POST", "/rounds", CreateRoundRequest{Scenario: "test", Seed: seed, NShards: 1}, &cr)
+		var b SubmitBuildResponse
+		h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 100_000, Dim: 128}, &b)
+		if b.Placement != "local" {
+			t.Fatalf("expected local (1-byte worker), got %s", b.Placement)
+		}
+		h.call("POST", "/builds/"+b.BuildID+"/done", nil, nil)
+		h.call("POST", fmt.Sprintf("/shards/%d/0/report", cr.RoundID), ReportRequest{QueueDepth: 0, StreamDone: true}, nil)
+		return cr.RoundID
+	}
+
+	t.Log("--- round A, healthy pod: a shard's poll stamps the round (decision 31)")
+	a := completeRound(1)
+	var rs RoundStatus
+	h.call("GET", fmt.Sprintf("/rounds/%d", a), nil, &rs)
+	if rs.Round.FinishedAt == nil {
+		t.Fatal("healthy GET did not stamp a complete round")
+	}
+	t.Logf("    round %d stamped on read, as before", a)
+
+	t.Log("--- round B, draining pod (flag set, as main does at SIGTERM): the poll answers but does not stamp")
+	b := completeRound(2)
+	h.draining.Store(true)
+	t.Cleanup(func() { h.draining.Store(false) })
+	for i := 1; i <= 3; i++ {
+		h.call("GET", fmt.Sprintf("/rounds/%d", b), nil, &rs)
+		if rs.Round.FinishedAt != nil {
+			t.Fatalf("draining GET #%d stamped the round", i)
+		}
+	}
+	if len(rs.Builds) != 1 || rs.Builds[0].State != "done" {
+		t.Fatalf("draining answer should still carry the full status, got builds %+v", rs.Builds)
+	}
+	t.Logf("    3 polls answered truthfully (round open, build done), finished_at still NULL in Postgres")
+
+	t.Log("--- writes that must survive the shutdown window (bug 10) still work while draining")
+	if code := h.call("POST", fmt.Sprintf("/shards/%d/0/report", b), ReportRequest{QueueDepth: 0, StreamDone: true}, nil); code != 200 {
+		t.Fatalf("shard report while draining: %d", code)
+	}
+
+	t.Log("--- the replacement's reaper stamps; the draining pod serves what is already stamped")
+	reaper.Tick(ctx, h.st, 5, 30*time.Second, h.log)
+	h.call("GET", fmt.Sprintf("/rounds/%d", b), nil, &rs)
+	if rs.Round.FinishedAt == nil {
+		t.Fatal("round not stamped by the reaper tick, or the draining pod hid it")
+	}
+	t.Logf("    round %d now shows finished_at %s: the cost of draining is at most one reaper interval",
+		b, rs.Round.FinishedAt.Format(time.RFC3339Nano))
 }

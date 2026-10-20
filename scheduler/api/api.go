@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/arqbca11/KubernetesGPU/scheduler/costmodel"
@@ -34,6 +35,12 @@ import (
 
 type Config struct {
 	WorkerStaleAfter time.Duration // a worker not seen for this long is not in the pool
+	// Draining is set by main after SIGTERM, for the window the pod keeps
+	// serving while endpoint removal propagates (decision 29). A draining
+	// scheduler answers but never stamps a round: a stamp here would record
+	// the round's metrics in a process Prometheus has already stopped
+	// scraping (decision 40). nil means never draining.
+	Draining *atomic.Bool
 }
 
 type Server struct {
@@ -115,13 +122,17 @@ func (s *Server) getRound(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	// Make the answer fresh: GPU completions happen via SQL and the reaper
-	// tick may not have run since.
-	fin, err := s.st.FinishCompleteRounds(ctx)
-	if err != nil {
-		s.internal(w, "finish rounds", err)
-		return
+	// tick may not have run since. Not while draining: the answer then comes
+	// from what is already stamped, and the replacement's reaper stamps the
+	// rest within a tick (decision 40).
+	if s.cfg.Draining == nil || !s.cfg.Draining.Load() {
+		fin, err := s.st.FinishCompleteRounds(ctx)
+		if err != nil {
+			s.internal(w, "finish rounds", err)
+			return
+		}
+		metrics.ObserveFinishedRounds(fin)
 	}
-	metrics.ObserveFinishedRounds(fin)
 	rd, found, err := s.st.GetRound(ctx, id)
 	if err != nil {
 		s.internal(w, "get round", err)

@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -81,9 +82,10 @@ func main() {
 
 	go reaper.Run(ctx, st, reaper.Config{Interval: reapInterval, MaxAttempts: int32(maxAttempts), StaleAfter: staleAfter}, log)
 
+	draining := new(atomic.Bool)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter}, log),
+		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter, Draining: draining}, log),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
@@ -103,8 +105,14 @@ func main() {
 	// (bug 10). So keep serving for SHUTDOWN_DELAY first, the in-process form of
 	// the usual "preStop: sleep" (the image has no shell). The readiness probe
 	// is unaffected: the endpoint is already gone.
+	// Lame duck (decision 40): past SIGTERM this pod answers but takes no new
+	// initiative. The reaper is already stopped (it runs on the signal
+	// context); the draining flag stops the one other writer, stamp-on-read
+	// in GET /rounds/{id}, so a round can never land its metrics on a process
+	// Prometheus has stopped scraping.
+	draining.Store(true)
 	if shutdownDelay > 0 {
-		log.Info("shutdown requested; serving for the shutdown delay while endpoints update", "delay", shutdownDelay)
+		log.Info("shutdown requested; draining: serving without stamping while endpoints update", "delay", shutdownDelay)
 		time.Sleep(shutdownDelay)
 	}
 	log.Info("shutting down")

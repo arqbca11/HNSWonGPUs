@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 2 is done (2026-10-19). Next: Phase 3, placement policies and experiments.** Phase 3 has not started; read its roadmap section before beginning and start its design doc under `docs/design/`. One open question for the owner remains at the end of `docs/design/phase2-kubernetes.md` (the reaper at SIGTERM); the worker spread rule was decided as decision 39.
+**Phase 2 is done (2026-10-19). Next: Phase 3, placement policies and experiments.** Phase 3 has not started; read its roadmap section before beginning and start its design doc under `docs/design/`. Both post-close open questions were decided by the owner: the worker spread rule (decision 39) and the draining scheduler that never stamps a round after SIGTERM (decision 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture
