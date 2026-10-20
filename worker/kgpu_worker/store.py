@@ -91,14 +91,14 @@ class Store:
         """Remove this worker on a clean exit so pool state stops counting it at once (decision 49)."""
         self._exec("DELETE FROM workers WHERE worker_id = %s", (worker_id,))
 
-    def heartbeat(self, worker_id: str, mem_bytes: int) -> None:
+    def heartbeat(self, worker_id: str, mem_bytes: int, node: str = "") -> None:
         self._exec(
             """
-            INSERT INTO workers (worker_id, mem_bytes, last_seen)
-            VALUES (%s, %s, now())
+            INSERT INTO workers (worker_id, mem_bytes, node, last_seen)
+            VALUES (%s, %s, %s, now())
             ON CONFLICT (worker_id) DO UPDATE
-            SET mem_bytes = EXCLUDED.mem_bytes, last_seen = now()""",
-            (worker_id, mem_bytes),
+            SET mem_bytes = EXCLUDED.mem_bytes, node = EXCLUDED.node, last_seen = now()""",
+            (worker_id, mem_bytes, node),
         )
 
     # ---- the four operations ----------------------------------------------------

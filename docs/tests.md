@@ -496,3 +496,22 @@ Written from the docs and `go doc` alone; found bug 11 and the F2–F6 / probe f
 | PolicySpec/Clairvoyant_ShardWithNoFuture | An empty stream, a missing map entry, nil futures. | All three treated alike, as no queries. |
 | PolicySpec/Clairvoyant_UnsortedStreamSameAsSorted | A permuted query stream. | Same decision; the caller's slice is untouched. |
 | PolicySpec/Clairvoyant_NotDeployable | ByName of the oracle's name; its Reconsider. | Unreachable from config (decision 1a); no reconsider actions. |
+
+## Phase 3, step 2: the GPU finish estimator, queue replay (Go, `scheduler/policy` pure plus `scheduler/store` and `scheduler/api` with the database). Log: `phase3/step2-estimator.log`
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| TestReplayRoadmapExample | The roadmap's worked example: w1 busy 4 s, w2 free; a 6 s job outranking a 3 s one. | j1 starts at 0 and finishes at 6, j2 at 4 and 7 — list scheduling over remaining times, by hand. |
+| TestReplayTransferSharingOneNode | Two idle workers run two 10 s transfers, first on one node, then on two. | On one node the link is shared (both transfers end at 20, builds at 25); on two nodes they run at full rate (done at 15) — decision 12's fluid sharing. |
+| TestReplayTransferSharingStaggered | One worker claims at 0, its node-mate at 4; both transfer 10 s. | The rates change as transfers join and leave: j1 done at 21, j2 at 25, replayed by hand in the narration. |
+| TestReplayClaimIsMemoryAware | A small idle worker, a big busy one, a high-priority big job and a low-priority small one. | The small worker claims the small job at once instead of waiting behind a job it could never take — the claim's own per-worker memory filter (decision 12). |
+| TestReplayFitsNowhereIsInfinite | A job bigger than every worker, beside a normal one; then zero workers. | Fits-nowhere estimates +Inf without blocking the rest (the truth bug 11 hid); an empty pool is +Inf for everything. |
+| TestReplayFIFOWithinEqualPriority | Two priority-0 jobs enqueued in order. | Equal priority falls back to enqueued order, the claim's tiebreak. |
+| TestReplayBusyWorkerIsOpaque | A busy node-mate while a 10 s transfer runs. | BusyRemainingS is one lump: an in-flight build's own transfer does not contend (decision 12's pinned approximation). |
+| TestReplayUnknownNodesDoNotContend | Two workers with empty Node, two 10 s transfers. | Unknown nodes get private links: "unknown" never invents contention (decision 11). |
+| TestReplayDeterministicUnderPermutation | Workers and queue permuted. | The replay is a pure function of the set, not the order (invariant 8). |
+| TestNewJobWaitJoinsAtTheBack | One worker, a 10 s queue, then an empty pool. | The submit-time scalar joins at priority 0 behind the queue (decision 13); an empty pool says +Inf and the host applies the cold-start rule. |
+| TestGetQueueSnapshot (store) | Two workers heartbeat with nodes; three queued builds; one claimed. | The snapshot returns workers with nodes, the queue in claim order (priority DESC), and the leased build with its elapsed-since-claim. |
+| TestHeartbeatAndPoolState (store, extended) | Heartbeats now carry a node. | `workers.node` round-trips through Heartbeat and ListWorkers (decision 11). |
+| TestSubmitQueueWaitEstimate (api) | Four submits against one worker: empty queue, one ahead, one leased plus one queued, and a build too big for the pool. | `gpu_queue_wait_ms` reads 0, one GPU total, between one and two totals (the lease's elapsed time already counts), and -1 for fits-nowhere. |
+| TestSubmitQueueWaitColdStart (api) | A submit with no workers at all. | The wait stays 0 and always_gpu still queues: the cold-start rule is the host's (decision 13, G1). |

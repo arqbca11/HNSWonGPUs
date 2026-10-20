@@ -777,6 +777,7 @@ func (s *Store) ListShardStatus(ctx context.Context, roundID int64) ([]ShardStat
 
 type Worker struct {
 	WorkerID     string    `json:"worker_id"`
+	Node         string    `json:"node"` // which machine; "" means unknown (decision 11)
 	MemBytes     int64     `json:"mem_bytes"`
 	LastSeen     time.Time `json:"last_seen"`
 	RegisteredAt time.Time `json:"registered_at"`
@@ -788,14 +789,15 @@ type PoolState struct {
 	LargestMem  int64 `json:"largest_mem_bytes"`
 }
 
-// Heartbeat registers a worker or refreshes its last_seen.
-func (s *Store) Heartbeat(ctx context.Context, workerID string, memBytes int64) error {
+// Heartbeat registers a worker or refreshes its last_seen. node is the
+// machine it runs on ("" = unknown), for the per-node transfer term.
+func (s *Store) Heartbeat(ctx context.Context, workerID string, memBytes int64, node string) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO workers (worker_id, mem_bytes, last_seen)
-		VALUES ($1, $2, now())
+		INSERT INTO workers (worker_id, mem_bytes, node, last_seen)
+		VALUES ($1, $2, $3, now())
 		ON CONFLICT (worker_id) DO UPDATE
-		SET mem_bytes = EXCLUDED.mem_bytes, last_seen = now()`,
-		workerID, memBytes)
+		SET mem_bytes = EXCLUDED.mem_bytes, node = EXCLUDED.node, last_seen = now()`,
+		workerID, memBytes, node)
 	return err
 }
 
@@ -818,7 +820,7 @@ func (s *Store) Pool(ctx context.Context, maxAge time.Duration) (PoolState, erro
 
 func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT worker_id, mem_bytes, last_seen, registered_at FROM workers ORDER BY worker_id`)
+		`SELECT worker_id, node, mem_bytes, last_seen, registered_at FROM workers ORDER BY worker_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -826,12 +828,107 @@ func (s *Store) ListWorkers(ctx context.Context) ([]Worker, error) {
 	var out []Worker
 	for rows.Next() {
 		var w Worker
-		if err := rows.Scan(&w.WorkerID, &w.MemBytes, &w.LastSeen, &w.RegisteredAt); err != nil {
+		if err := rows.Scan(&w.WorkerID, &w.Node, &w.MemBytes, &w.LastSeen, &w.RegisteredAt); err != nil {
 			return nil, err
 		}
 		out = append(out, w)
 	}
 	return out, rows.Err()
+}
+
+// ---- queue snapshot -------------------------------------------------------
+
+// SnapshotWorker, SnapshotQueued and SnapshotLeased are the estimator's raw
+// inputs (Phase 3 step 2): the host turns them into policy.WorkerView and
+// policy.QueuedJob with the cost model (decision 9 — the store returns rows,
+// the host computes every second a policy sees).
+type SnapshotWorker struct {
+	WorkerID string
+	Node     string
+	MemBytes int64
+}
+
+type SnapshotQueued struct {
+	BuildID  string
+	Priority float64
+	NVectors int64
+	Dim      int32
+	MemBytes int64
+}
+
+type SnapshotLeased struct {
+	BuildID    string
+	LeaseOwner string
+	NVectors   int64
+	Dim        int32
+	ElapsedS   float64 // since started_at, which the claim stamps
+}
+
+type QueueSnapshot struct {
+	Workers []SnapshotWorker // live within maxAge, by worker_id
+	Queued  []SnapshotQueued // claim order: priority DESC, enqueued_at
+	Leased  []SnapshotLeased // by build_id
+}
+
+// GetQueueSnapshot reads everything the queue-replay estimator needs in one
+// call. Three reads, no transaction: an estimate taken across a concurrent
+// claim is momentarily stale, which an estimate is allowed to be.
+func (s *Store) GetQueueSnapshot(ctx context.Context, maxAge time.Duration) (QueueSnapshot, error) {
+	var snap QueueSnapshot
+	rows, err := s.pool.Query(ctx, `
+		SELECT worker_id, node, mem_bytes FROM workers
+		WHERE last_seen > now() - make_interval(secs => $1) ORDER BY worker_id`,
+		maxAge.Seconds())
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var w SnapshotWorker
+		if err := rows.Scan(&w.WorkerID, &w.Node, &w.MemBytes); err != nil {
+			return snap, err
+		}
+		snap.Workers = append(snap.Workers, w)
+	}
+	if err := rows.Err(); err != nil {
+		return snap, err
+	}
+
+	rows, err = s.pool.Query(ctx, `
+		SELECT build_id, priority, n_vectors, dim, mem_bytes FROM builds
+		WHERE state = 'queued' AND placement = 'gpu'
+		ORDER BY priority DESC, enqueued_at`)
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var q SnapshotQueued
+		if err := rows.Scan(&q.BuildID, &q.Priority, &q.NVectors, &q.Dim, &q.MemBytes); err != nil {
+			return snap, err
+		}
+		snap.Queued = append(snap.Queued, q)
+	}
+	if err := rows.Err(); err != nil {
+		return snap, err
+	}
+
+	rows, err = s.pool.Query(ctx, `
+		SELECT build_id, lease_owner, n_vectors, dim,
+		       EXTRACT(EPOCH FROM (now() - started_at))::float8
+		FROM builds WHERE state = 'leased' ORDER BY build_id`)
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var l SnapshotLeased
+		if err := rows.Scan(&l.BuildID, &l.LeaseOwner, &l.NVectors, &l.Dim, &l.ElapsedS); err != nil {
+			return snap, err
+		}
+		snap.Leased = append(snap.Leased, l)
+	}
+	return snap, rows.Err()
 }
 
 func (s *Store) guarded(ctx context.Context, sql string, args ...any) (bool, error) {

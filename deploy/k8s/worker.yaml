@@ -94,6 +94,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: WORKER_NODE        # the machine it landed on, same mechanism:
+              valueFrom:               # workers on one node share its network link,
+                fieldRef:              # so transfer estimates group by it (decision 11)
+                  fieldPath: spec.nodeName
           ports:
             - name: health
               containerPort: 8081

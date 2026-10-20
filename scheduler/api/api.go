@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -188,6 +189,12 @@ type SubmitBuildResponse struct {
 	// Cost model estimates, so the shard can sleep for the right time on a local build.
 	CPUBuildMs int64 `json:"cpu_build_ms"`
 	GPUTotalMs int64 `json:"gpu_total_ms"`
+	// The step 2 queue replay: how long a newly queued build would wait before
+	// a worker starts it (decision 13). 0 with an empty pool (the cold-start
+	// rule); -1 when no live worker's memory could ever take this build.
+	// Absent on a duplicate: the estimate describes this moment's queue, and a
+	// duplicate's answer is the original decision, not a fresh estimate.
+	GPUQueueWaitMs int64 `json:"gpu_queue_wait_ms"`
 }
 
 func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
@@ -236,14 +243,31 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := policy.BuildSpec{ShardID: req.ShardID, RoundID: req.RoundID, NVectors: req.NVectors, Dim: req.Dim, MemBytes: mem}
-	// The host computes every estimate the policy sees (Phase 3 decision 9);
-	// QueueWaitS stays 0 until the step 2 queue-replay estimator lands.
+	// The host computes every estimate the policy sees (Phase 3 decision 9).
 	est := policy.Estimates{
 		LocalBuildS: s.cm.CPUBuild(req.NVectors, req.Dim).Seconds(),
 		GPUBuildS:   s.cm.GPUBuild(req.NVectors, req.Dim).Seconds(),
 		TransferS:   s.cm.Transfer(req.NVectors, req.Dim).Seconds(),
 	}
-	dec := s.pol.Decide(policy.Input{Build: spec, Est: est, Pool: policy.PoolState{LiveWorkers: pool.LiveWorkers, LargestMem: pool.LargestMem}})
+	// The step 2 queue replay fills QueueWaitS: with an empty pool it stays 0
+	// (the cold-start rule, phase 3 doc G1 — "no workers yet" must not scare
+	// a policy off the queue), otherwise it is the wait this build would join
+	// at (+Inf when its memory fits no live worker, the estimator's truth).
+	queueWaitS := 0.0
+	if pool.LiveWorkers > 0 {
+		snap, err := s.st.GetQueueSnapshot(ctx, s.cfg.WorkerStaleAfter)
+		if err != nil {
+			s.internal(w, "queue snapshot", err)
+			return
+		}
+		queueWaitS = s.queueWait(snap, buildID, mem, est)
+	}
+	dec := s.pol.Decide(policy.Input{Build: spec, Est: est,
+		Pool: policy.PoolState{LiveWorkers: pool.LiveWorkers, LargestMem: pool.LargestMem, QueueWaitS: queueWaitS}})
+	resp.GPUQueueWaitMs = int64(queueWaitS * 1000)
+	if math.IsInf(queueWaitS, 1) {
+		resp.GPUQueueWaitMs = -1
+	}
 
 	inserted, err := s.st.SubmitBuild(ctx, store.Build{
 		BuildID: buildID, RoundID: req.RoundID, ShardID: req.ShardID, NVectors: req.NVectors,
@@ -273,8 +297,43 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("build placed", "build_id", buildID, "round_id", req.RoundID, "attempt", 0,
 		"shard_id", req.ShardID, "placement", dec.Placement, "priority", dec.Priority, "policy", s.pol.Name(),
 		"reason", dec.Reason, "n_vectors", req.NVectors, "dim", req.Dim, "mem_bytes", mem,
-		"live_workers", pool.LiveWorkers)
+		"live_workers", pool.LiveWorkers, "gpu_queue_wait_s", queueWaitS)
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+// queueWait turns a store snapshot into the estimator's inputs and asks what
+// a newly queued build of memBytes would wait (decision 13: it joins at
+// priority 0 behind the whole queue — exact for the FCFS baseline, an upper
+// bound for a policy that would rank it higher). Per decision 9 the host
+// computes every second here: a leased build's remaining time is its cost
+// model total minus the time since its claim, floored at 0 (an overdue lease
+// means "about to free or be reaped", either way soon).
+func (s *Server) queueWait(snap store.QueueSnapshot, buildID string, memBytes int64, est policy.Estimates) float64 {
+	busy := map[string]float64{}
+	for _, l := range snap.Leased {
+		rem := s.cm.GPUTotal(l.NVectors, l.Dim).Seconds() - l.ElapsedS
+		if rem < 0 {
+			rem = 0
+		}
+		if rem > busy[l.LeaseOwner] {
+			busy[l.LeaseOwner] = rem
+		}
+	}
+	workers := make([]policy.WorkerView, 0, len(snap.Workers))
+	for _, w := range snap.Workers {
+		workers = append(workers, policy.WorkerView{ID: w.WorkerID, Node: w.Node, MemBytes: w.MemBytes, BusyRemainingS: busy[w.WorkerID]})
+	}
+	queue := make([]policy.QueuedJob, 0, len(snap.Queued))
+	for i, q := range snap.Queued { // snapshot is already in claim order
+		queue = append(queue, policy.QueuedJob{
+			BuildID: q.BuildID, Priority: q.Priority, Seq: i, MemBytes: q.MemBytes,
+			GPUBuildS: s.cm.GPUBuild(q.NVectors, q.Dim).Seconds(),
+			TransferS: s.cm.Transfer(q.NVectors, q.Dim).Seconds(),
+		})
+	}
+	return policy.NewJobWait(workers, queue, policy.QueuedJob{
+		BuildID: buildID, MemBytes: memBytes, GPUBuildS: est.GPUBuildS, TransferS: est.TransferS,
+	})
 }
 
 // writeDuplicate answers a resubmit: 200, created=false, and every estimate

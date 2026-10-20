@@ -18,7 +18,7 @@ from kgpu_worker.worker import Worker
 def make_worker(dsn: str, worker_id: str, *, time_scale: float = 50.0, lease_s: float = 2.0,
                 renew_s: float = 0.2, budget_s: float = 5.0, fail_ids: frozenset[str] = frozenset()) -> Worker:
     cfg = Config(
-        database_url=dsn, worker_id=worker_id, mem_bytes=8 << 30, lease_s=lease_s,
+        database_url=dsn, worker_id=worker_id, node="testnode", mem_bytes=8 << 30, lease_s=lease_s,
         renew_interval_s=renew_s, heartbeat_interval_s=0.5, poll_interval_s=0.05,
         builder="fake", fake_time_scale=time_scale, shutdown_finish_budget_s=budget_s,
         fake_fail_build_ids=fail_ids, health_addr="", log_format="text", model=Model(),

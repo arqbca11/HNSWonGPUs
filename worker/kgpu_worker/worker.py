@@ -96,7 +96,7 @@ class Worker:
         if self.cfg.health_addr:
             self.health.serve(self.cfg.health_addr)   # before connecting: liveness answers from the start
         self.store.connect()
-        log.info("worker starting", extra={"worker_id": self.cfg.worker_id, "mem_bytes": self.cfg.mem_bytes,
+        log.info("worker starting", extra={"worker_id": self.cfg.worker_id, "node": self.cfg.node, "mem_bytes": self.cfg.mem_bytes,
                                           "builder": self.builder.name, "lease_s": self.cfg.lease_s,
                                           "renew_interval_s": self.cfg.renew_interval_s})
         self._register()
@@ -293,7 +293,7 @@ class Worker:
         wait = 0.5
         while True:
             try:
-                self.store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes)
+                self.store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes, self.cfg.node)
                 self.health.heartbeat_ok()
                 return
             except psycopg.errors.UndefinedTable as e:
@@ -314,7 +314,7 @@ class Worker:
         try:
             while True:
                 try:
-                    store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes)
+                    store.heartbeat(self.cfg.worker_id, self.cfg.mem_bytes, self.cfg.node)
                     self.health.heartbeat_ok()
                 except Exception as e:  # noqa: BLE001
                     if is_connection_error(e):

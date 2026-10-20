@@ -97,7 +97,7 @@ func TestEndToEndRoundOverHTTP(t *testing.T) {
 	ctx := context.Background()
 
 	t.Log("--- a worker with 8 GiB registers by heartbeat (workers use SQL, not HTTP)")
-	if err := h.st.Heartbeat(ctx, "gpu-1", 8<<30); err != nil {
+	if err := h.st.Heartbeat(ctx, "gpu-1", 8<<30, "node-1"); err != nil {
 		t.Fatal(err)
 	}
 	var ws WorkersResponse
@@ -234,7 +234,7 @@ func TestReportReflectsPreemption(t *testing.T) {
 	var cr CreateRoundResponse
 	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "test", Seed: 1, NShards: 1}, &cr)
 	r := cr.RoundID
-	h.st.Heartbeat(ctx, "small", 1) //nolint:errcheck
+	h.st.Heartbeat(ctx, "small", 1, "node-1") //nolint:errcheck
 	var b SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 0, NVectors: 100_000, Dim: 128}, &b)
 	if b.Placement != "local" {
@@ -457,7 +457,7 @@ func TestDrainingServesWithoutStamping(t *testing.T) {
 	// A 1-byte worker: every build exceeds its memory, so placement is local
 	// and the shard itself can finish the build (same trick as the preemption
 	// test; a GPU build would sit queued with nobody to run it here).
-	h.st.Heartbeat(ctx, "small", 1) //nolint:errcheck
+	h.st.Heartbeat(ctx, "small", 1, "node-1") //nolint:errcheck
 
 	// completeRound makes a one-shard round whose work is all done but whose
 	// finished_at nobody has stamped yet (no reaper runs in this test).
@@ -511,4 +511,65 @@ func TestDrainingServesWithoutStamping(t *testing.T) {
 	}
 	t.Logf("    round %d now shows finished_at %s: the cost of draining is at most one reaper interval",
 		b, rs.Round.FinishedAt.Format(time.RFC3339Nano))
+}
+
+func TestSubmitQueueWaitEstimate(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if err := h.st.Heartbeat(ctx, "gpu-1", 8<<30, "node-1"); err != nil {
+		t.Fatal(err)
+	}
+	var cr CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "test", Seed: 1, NShards: 4}, &cr)
+	r := cr.RoundID
+
+	t.Log("--- idle worker, empty queue: the first build should see a 0 wait")
+	var a SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 1, NVectors: 100_000, Dim: 128}, &a)
+	if a.GPUQueueWaitMs != 0 {
+		t.Fatalf("first build on an idle pool: want wait 0, got %d ms", a.GPUQueueWaitMs)
+	}
+	t.Logf("    build 1 placed %s, gpu_queue_wait_ms %d", a.Placement, a.GPUQueueWaitMs)
+
+	t.Log("--- a second identical build joins behind the first: its wait is the first's whole gpu total")
+	var b SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 2, NVectors: 100_000, Dim: 128}, &b)
+	if diff := b.GPUQueueWaitMs - a.GPUTotalMs; diff < -5 || diff > 5 {
+		t.Fatalf("second build: want wait ~= %d ms (one gpu total ahead), got %d ms", a.GPUTotalMs, b.GPUQueueWaitMs)
+	}
+	t.Logf("    build 2 waits %d ms behind build 1 (gpu total %d ms): the replay queues them on the one worker", b.GPUQueueWaitMs, a.GPUTotalMs)
+
+	t.Log("--- the worker claims build 1; a third build sees: leased remaining + build 2's total")
+	if _, ok, err := h.st.Claim(ctx, "gpu-1", 8<<30, time.Minute); err != nil || !ok {
+		t.Fatalf("claim: %v %v", err, ok)
+	}
+	var c SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 3, NVectors: 100_000, Dim: 128}, &c)
+	if c.GPUQueueWaitMs <= b.GPUQueueWaitMs || c.GPUQueueWaitMs > 2*a.GPUTotalMs+5 {
+		t.Fatalf("third build: want a wait in (one, two] gpu totals (%d..%d ms], got %d ms",
+			b.GPUQueueWaitMs, 2*a.GPUTotalMs, c.GPUQueueWaitMs)
+	}
+	t.Logf("    build 3 waits %d ms: the lease's elapsed time already counts toward build 1", c.GPUQueueWaitMs)
+
+	t.Log("--- a build too big for every live worker reports -1: no wait would ever end (bug 11's truth)")
+	var huge SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 4, NVectors: 20_000_000, Dim: 128}, &huge)
+	if huge.Placement != "local" || huge.GPUQueueWaitMs != -1 {
+		t.Fatalf("huge build: want local and wait -1, got %+v", huge)
+	}
+	t.Logf("    placed %s, gpu_queue_wait_ms %d", huge.Placement, huge.GPUQueueWaitMs)
+}
+
+func TestSubmitQueueWaitColdStart(t *testing.T) {
+	h := newHarness(t)
+	var cr CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "test", Seed: 1, NShards: 1}, &cr)
+
+	t.Log("--- no workers at all: the cold-start rule keeps the wait at 0, and always_gpu still queues")
+	var b SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 100_000, Dim: 128}, &b)
+	if b.Placement != "gpu" || b.GPUQueueWaitMs != 0 {
+		t.Fatalf("cold start: want gpu with wait 0, got %+v", b)
+	}
+	t.Logf("    placed %s, gpu_queue_wait_ms %d: an empty pool may be about to fill (G1)", b.Placement, b.GPUQueueWaitMs)
 }

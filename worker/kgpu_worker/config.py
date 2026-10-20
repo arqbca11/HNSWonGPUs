@@ -2,6 +2,10 @@
 
     DATABASE_URL              required
     WORKER_ID                 default: hostname
+    WORKER_NODE               which machine this worker runs on (K8s: the node
+                              name via the downward API); default empty = unknown.
+                              Workers sharing a node share its network link, so
+                              the scheduler's transfer estimates group by it.
     WORKER_MEM_BYTES          modeled GPU memory capacity; default 8 GiB
     LEASE_SECONDS             default 30
     RENEW_INTERVAL_SECONDS    default 10
@@ -39,6 +43,7 @@ class ConfigError(Exception):
 class Config:
     database_url: str
     worker_id: str
+    node: str
     mem_bytes: int
     lease_s: float
     renew_interval_s: float
@@ -98,6 +103,7 @@ class Config:
         cfg = cls(
             database_url=url,
             worker_id=env.get("WORKER_ID") or socket.gethostname(),
+            node=env.get("WORKER_NODE") or "",
             mem_bytes=int(f("WORKER_MEM_BYTES", 8 << 30)),
             lease_s=f("LEASE_SECONDS", 30),
             renew_interval_s=f("RENEW_INTERVAL_SECONDS", 10),

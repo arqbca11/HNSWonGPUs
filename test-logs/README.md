@@ -39,6 +39,7 @@ Narrated test output, kept so what was checked and what happened can be read wit
 | `phase2/amendment-crosscheck-kind-lameduck.log` | The cross-check agent's 3 lame-duck scenarios over 8 scheduler replacements: the dying pod polled through the pod proxy never stamps and keeps recording writes; exactly-once observation in three timing modes; the residual race's real width measured. |
 | `phase3/step1-policies.log` | Phase 3 step 1: the five placement policies as pure functions — threshold placement, preemption with sunk cost, the memory guard (bug 11) and the flapping guard, recovery-based reneging, reprioritizing, speculation's no-go cases, the oracle's exact replays, the strict config names. |
 | `phase3/step1-crosscheck-policies.log` | The cross-check agent's 40 pure subtests of the policy package, written from the docs and `go doc` alone: purity under permutation, hand-computed boundaries, both flapping directions, three replayed oracle streams; found bug 11 and the F2–F6 findings. |
+| `phase3/step2-estimator.log` | Phase 3 step 2: the queue-replay estimator — hand-replayed fluid transfer sharing on one node and two, the memory-aware claim mirror, fits-nowhere as +Inf, the node column round-tripping through heartbeats, and the submit response's `gpu_queue_wait_ms` against a live queue. |
 
 Per-step logs are the state of the tests at the end of that step, including any fixes from the step's cross-check round, regenerated whenever the step's code changes. `history/` (local only, not committed) keeps every timestamped run.
 

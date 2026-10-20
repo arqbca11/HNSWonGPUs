@@ -50,8 +50,12 @@ type ShardStatus struct {
 }
 
 // PoolState is what the scheduler knows about live GPU workers at submit.
-// QueueWaitS is the host's estimate of how long a newly queued build waits
-// before a worker starts it (0 until the step 2 queue replay provides it).
+// QueueWaitS is the host's estimate of how long this build would wait in the
+// GPU queue before a worker starts it, from the step 2 queue replay
+// (NewJobWait, decision 13): joined at priority 0 behind every queued job, so
+// exact for the FCFS baseline and an upper bound under a policy that would
+// rank it higher. 0 with an empty pool (the cold-start rule); +Inf when the
+// build's memory fits no live worker.
 type PoolState struct {
 	LiveWorkers int
 	LargestMem  int64 // biggest memory capacity among live workers; 0 if none

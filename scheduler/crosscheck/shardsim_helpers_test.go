@@ -169,7 +169,7 @@ func startFakeGPU(t *testing.T, e *simEnv, id string, heartMem, claimMem int64, 
 	if open {
 		close(g.gate)
 	}
-	if err := e.st.Heartbeat(e.ctx, id, heartMem); err != nil {
+	if err := e.st.Heartbeat(e.ctx, id, heartMem, ""); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -184,7 +184,7 @@ func startFakeGPU(t *testing.T, e *simEnv, id string, heartMem, claimMem int64, 
 			case <-ctx.Done():
 				return
 			case <-tk.C:
-				_ = e.st.Heartbeat(ctx, id, heartMem)
+				_ = e.st.Heartbeat(ctx, id, heartMem, "")
 			}
 		}
 	}()

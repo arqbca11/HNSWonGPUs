@@ -405,8 +405,8 @@ func TestHeartbeatAndPoolState(t *testing.T) {
 		t.Fatalf("no workers, got %+v", p)
 	}
 	t.Log("no workers registered -> pool is empty")
-	s.Heartbeat(ctx, "a", 8<<30)  //nolint:errcheck
-	s.Heartbeat(ctx, "b", 24<<30) //nolint:errcheck
+	s.Heartbeat(ctx, "a", 8<<30, "node-a")  //nolint:errcheck
+	s.Heartbeat(ctx, "b", 24<<30, "node-b") //nolint:errcheck
 	t.Log("workers a (8 GiB) and b (24 GiB) heartbeat")
 	p, _ = s.Pool(ctx, time.Minute)
 	if p.LiveWorkers != 2 || p.LargestMem != 24<<30 {
@@ -422,13 +422,60 @@ func TestHeartbeatAndPoolState(t *testing.T) {
 	}
 	t.Logf("pool within 1 minute -> %d live, largest 8 GiB (b no longer counts)", p.LiveWorkers)
 	// Heartbeat is an upsert.
-	if err := s.Heartbeat(ctx, "a", 8<<30); err != nil {
+	if err := s.Heartbeat(ctx, "a", 8<<30, "node-a"); err != nil {
 		t.Fatal(err)
 	}
 	ws, _ := s.ListWorkers(ctx)
 	if len(ws) != 2 {
 		t.Fatalf("ListWorkers = %d rows", len(ws))
 	}
+	if ws[0].WorkerID != "a" || ws[0].Node != "node-a" {
+		t.Fatalf("worker a should carry its node (decision 11), got %+v", ws[0])
+	}
+	t.Logf("ListWorkers round-trips the node: a on %q, b on %q", ws[0].Node, ws[1].Node)
+}
+
+func TestGetQueueSnapshot(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRound(ctx, "test", 1, 3)
+	s.Heartbeat(ctx, "w1", 8<<30, "node-1") //nolint:errcheck
+	s.Heartbeat(ctx, "w2", 8<<30, "node-1") //nolint:errcheck
+	t.Log("two live workers on node-1; three gpu builds submitted: low (pri 1), high (pri 9), mid (pri 5)")
+	for _, b := range []struct {
+		shard int32
+		pri   float64
+	}{{1, 1}, {2, 9}, {3, 5}} {
+		if _, err := s.SubmitBuild(ctx, Build{BuildID: BuildID(b.shard, r), RoundID: r, ShardID: b.shard,
+			NVectors: 100, Dim: 4, MemBytes: 1 << 20, Placement: "gpu", Priority: b.pri}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, ok, err := s.Claim(ctx, "w1", 8<<30, time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim: %v %v", err, ok)
+	}
+	t.Logf("w1 claims the highest-priority build %s; the snapshot must show it leased with its elapsed time", c.BuildID)
+
+	snap, err := s.GetQueueSnapshot(ctx, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Workers) != 2 || snap.Workers[0].Node != "node-1" {
+		t.Fatalf("workers = %+v", snap.Workers)
+	}
+	if len(snap.Queued) != 2 || snap.Queued[0].BuildID != BuildID(3, r) || snap.Queued[1].BuildID != BuildID(1, r) {
+		t.Fatalf("queued must be in claim order (priority DESC), got %+v", snap.Queued)
+	}
+	t.Logf("queued in claim order: %s (pri %.0f) then %s (pri %.0f)",
+		snap.Queued[0].BuildID, snap.Queued[0].Priority, snap.Queued[1].BuildID, snap.Queued[1].Priority)
+	if len(snap.Leased) != 1 || snap.Leased[0].BuildID != c.BuildID || snap.Leased[0].LeaseOwner != "w1" {
+		t.Fatalf("leased = %+v", snap.Leased)
+	}
+	if snap.Leased[0].ElapsedS < 0 || snap.Leased[0].ElapsedS > 60 {
+		t.Fatalf("elapsed since claim should be a small non-negative number, got %f", snap.Leased[0].ElapsedS)
+	}
+	t.Logf("leased: %s by %s, %.3fs since its claim stamped started_at", snap.Leased[0].BuildID, snap.Leased[0].LeaseOwner, snap.Leased[0].ElapsedS)
 }
 
 func TestRoundFinishesOnlyWhenEveryShardIsDone(t *testing.T) {

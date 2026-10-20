@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 3 (placement policies and experiments) is in progress; step 1 (the policy interface and the five policies) is done (2026-10-19).** Next: step 2, the GPU finish estimator (queue replay) — blocked on an owner question first (a `node` column on `workers`, see the open questions in `docs/design/phase3-policies.md`). Phase 2 is done (2026-10-19), including its two post-close amendments (decisions 39, 40).
+**Phase 3 (placement policies and experiments) is in progress; step 2 (the GPU finish estimator, queue replay) is done (2026-10-20).** Next: step 3, wiring preemption, reneging and speculation into a reconsider timer. Phase 2 is done (2026-10-19), including its two post-close amendments (decisions 39, 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture

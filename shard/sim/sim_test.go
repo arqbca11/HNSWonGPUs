@@ -92,7 +92,7 @@ func (h *harness) fakeWorker(id string, memCap int64, timeScale float64) {
 				return
 			default:
 			}
-			h.st.Heartbeat(ctx, id, memCap) //nolint:errcheck
+			h.st.Heartbeat(ctx, id, memCap, "") //nolint:errcheck
 			c, ok, err := h.st.Claim(ctx, id, memCap, 10*time.Second)
 			if err != nil || !ok {
 				time.Sleep(50 * time.Millisecond)
