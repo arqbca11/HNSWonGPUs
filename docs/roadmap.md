@@ -1,4 +1,4 @@
-# Shard-to-GPU index build scheduler: roadmap
+# HNSWonGPUs roadmap
 
 ## The question and the metric
 

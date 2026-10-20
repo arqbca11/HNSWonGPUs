@@ -1,4 +1,4 @@
-module github.com/arqbca11/KubernetesGPU
+module github.com/arqbca11/HNSWonGPUs
 
 go 1.27.1
 

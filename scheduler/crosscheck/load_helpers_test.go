@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
 )
 
 // The environment the task prescribes for this run.

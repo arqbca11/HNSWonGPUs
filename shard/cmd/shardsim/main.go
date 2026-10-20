@@ -31,9 +31,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/experiments/workload"
-	"github.com/arqbca11/KubernetesGPU/shard/client"
-	"github.com/arqbca11/KubernetesGPU/shard/sim"
+	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/shard/client"
+	"github.com/arqbca11/HNSWonGPUs/shard/sim"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 

@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/arqbca11/KubernetesGPU/db"
+	"github.com/arqbca11/HNSWonGPUs/db"
 )
 
 // Integration tests. Skipped unless TEST_DATABASE_URL points at a Postgres

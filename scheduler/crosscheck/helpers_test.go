@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/db"
-	"github.com/arqbca11/KubernetesGPU/scheduler/api"
-	"github.com/arqbca11/KubernetesGPU/scheduler/costmodel"
-	"github.com/arqbca11/KubernetesGPU/scheduler/policy"
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/db"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/api"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/costmodel"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/policy"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

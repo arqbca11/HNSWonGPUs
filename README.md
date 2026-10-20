@@ -1,8 +1,8 @@
-# Shard-to-GPU index build scheduler
+# HNSWonGPUs
 
 A scheduler that places HNSW vector index builds from many database shards onto a small shared pool of GPU workers, or back onto each shard's own CPU, and measures which placement policy gets the whole cluster back to normal fastest.
 
-**Status: Phase 1 in progress.** The lease-based scheduler, the Postgres schema and the GPU worker are built and tested under failure (worker killed mid-build, worker paused past its lease, concurrent claims, duplicate submits). Next: Docker Compose, the shard simulator, and the full failure suite at 6 and then 50 shards. The [roadmap](docs/roadmap.md) has all six phases.
+**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is next.** Phase 1 (done 2026-10-06) built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 (done 2026-10-19) moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
 
 ## The problem
 
@@ -21,42 +21,48 @@ The scheduler knows only what a real system could know: the build's size, the po
 
 ```mermaid
 flowchart LR
-    subgraph shards["shards (×6, then ×50)"]
+    subgraph shards["shards (×6, then ×50) — outside the cluster"]
         S["CPU: local build + arriving queries<br/>reports load every poll interval"]
     end
-    subgraph sched["scheduler (Go)"]
-        API["HTTP API"] --> POL["placement policy<br/>(pure function)"]
-        REAP["reaper: expired leases → queue,<br/>retry budget, round completion"]
-    end
-    PG[("Postgres<br/>the only source of truth")]
-    subgraph workers["GPU workers (Python)"]
-        W["claim → renew lease → build → complete<br/>build(job) → artifact behind one interface"]
+    subgraph k8s["kind cluster"]
+        subgraph sched["scheduler (Go)"]
+            API["HTTP API"] --> POL["placement policy<br/>(pure function)"]
+            REAP["reaper: expired leases → queue,<br/>retry budget, round completion"]
+        end
+        PG[("Postgres<br/>the only source of truth")]
+        subgraph workers["GPU workers (Python, on GPU nodes)"]
+            W["claim → renew lease → build → complete<br/>build(job) → artifact behind one interface"]
+        end
+        MON["Prometheus + Grafana<br/>round dashboard"]
     end
     S -- "submit build, report load,<br/>reply: current placement" --> API
     API --> PG
     REAP --> PG
     W -- "SQL only; no one pushes to a worker" --> PG
+    MON -. scrapes all three sides .- S
 ```
 
 The properties the design is built around:
 
-- **All shared state is in Postgres.** Every other process is stateless and can be killed at any time.
-- **Workers pull.** A claim is one `UPDATE … FOR UPDATE SKIP LOCKED`. Nothing tracks which GPU is idle; an idle GPU announces itself by asking.
+- **All shared state is in Postgres.** Every other process is stateless and can be killed at any time — and is, routinely, by the failure tests.
+- **Workers pull.** A claim is one `UPDATE … FOR UPDATE SKIP LOCKED`. Nothing tracks which GPU is idle; an idle GPU announces itself by asking. The pool is capped by a countable per-node GPU-card resource, not by replica arithmetic.
 - **Leases with a fencing token.** Every claim increments `attempt`. Every later write is guarded by `build_id` and `attempt`, so a worker that was paused past its lease and wakes up cannot overwrite the result of the worker that replaced it.
 - **An idempotent reaper.** Expired leases go back to the queue; running it twice changes nothing; a build whose lease keeps expiring is parked as failed after a retry budget instead of poisoning the pool.
+- **Graceful shutdown is designed, not assumed.** A deleted scheduler pod keeps answering while the cluster's routing catches up, but never stamps a round after SIGTERM, so a round's metrics can't die with the pod that recorded them; a deleted worker finishes or releases its build inside its grace period.
 - **Placement can change in flight.** A local build whose shard's backlog is growing can be preempted to the GPU queue with rising priority; a queued GPU build can be moved back to local. Shards learn of changes in the reply to their own report, never by push.
-- **Policies are pure functions** of the state they are given, so the live scheduler and the discrete-event simulator run the same code.
+- **Policies are pure functions** of the state they are given, so the live scheduler and the discrete-event simulator run the same code (Phase 3 builds the real ones; today's placeholder sends everything to the GPU queue).
 
 ## Repository
 
 | Path | What |
 | --- | --- |
-| `scheduler/` | Go: HTTP API, placement policy, cost model, reaper, the store (every statement that touches the queue and leases) |
+| `scheduler/` | Go: HTTP API, placement policy, cost model, reaper, metrics, the store (every statement that touches the queue and leases), and the cross-check agent's black-box tests |
 | `worker/` | Python: the GPU worker; `builder.py` is the one interface the fake, hnswlib and cuVS builders implement |
 | `db/migrations/` | Postgres schema, applied in order on scheduler start |
-| `shard/` | Go: the shard simulator (Phase 1, in progress) |
-| `experiments/` | Seeded scenarios, discrete-event simulator, results (Phase 3) |
-| `deploy/` | Docker Compose now; kind and Kubernetes manifests from Phase 2 |
+| `shard/` | Go: the shard simulator — seeded workloads, local builds that block the CPU, query streams |
+| `experiments/` | Seeded workload generator; the discrete-event simulator and results arrive in Phase 3 |
+| `deploy/` | Docker Compose (Phase 1); kind cluster config, Kubernetes manifests and monitoring (Phase 2) |
+| `scripts/` | One command per step: bring the cluster up, run rounds, inject failures, run every check |
 | `docs/roadmap.md` | The plan: six phases, schema, policies, scenarios, failure tests |
 | `docs/design/` | The design as built, one doc per phase: diagrams, flows, and an append-only table of every decision with the alternatives considered |
 | `docs/bugs.md` | Significant bugs: symptom, cause, fix, what it would have looked like in production, lesson |
@@ -72,17 +78,19 @@ scripts/test-db.sh          # Go, then Python
 scripts/test-db.sh --go     # or --py
 ```
 
-Every step is also tested by an **independent cross-check agent** that reads the design docs and writes black-box tests without reading the implementation. Its tests live in `scheduler/crosscheck/` and run with the rest. Three of the five entries in the bug log were found that way, including a concurrency race in the per-round cap and a configuration error that crashed a worker with its lease held.
+The Kubernetes checks are scripted the same way (`scripts/k8s-check-*.sh`, `KGPU_KIND=1` for the Go suites) and leave their logs in `test-logs/phase2/`.
+
+Every step is also tested by an **independent cross-check agent** that reads the design docs and writes black-box tests without reading the implementation. Its tests live in `scheduler/crosscheck/` and run with the rest. Eight of the ten entries in the bug log were found that way — including a concurrency race in the per-round cap, a 10-second shard stall hidden inside pod deletion, and a worker that crashed with its lease held — and its findings that weren't bugs became documented design decisions.
 
 ## Roadmap in one line each
 
-1. **Scheduler with fake jobs** on Docker Compose; correct under `kill -9`, SIGSTOP, restart and duplicate submit. *(in progress)*
-2. **Kubernetes on kind** with a stand-in GPU node, probes, graceful shutdown, Prometheus and Grafana.
-3. **Placement policies and experiments:** always-GPU, static threshold, reactive migration, speculation, and a clairvoyant oracle, compared across six seeded scenarios in a discrete-event simulator.
+1. **Scheduler with fake jobs** on Docker Compose; correct under `kill -9`, SIGSTOP, restart and duplicate submit, at 6 and 50 shards. *(done)*
+2. **Kubernetes on kind** with stand-in GPU nodes and countable fake GPU cards, probes, graceful shutdown, Prometheus and Grafana; shards outside the cluster; failure injections proven on the dashboard. *(done)*
+3. **Placement policies and experiments:** always-GPU, static threshold, reactive migration, speculation, and a clairvoyant oracle, compared across seeded scenarios in a discrete-event simulator. *(next)*
 4. **Real CPU builds with hnswlib**, an object store for vectors and artifacts, and a measured cost model.
 5. **Real GPUs with cuVS** on a small cloud node pool: cold start, spot preemption, measured GPU numbers.
 6. **Kubernetes-native dispatch** with a custom resource, an operator and Kueue, compared against the hand-built scheduler.
 
 ## Toolchain
 
-Go 1.27, Python 3.12 with uv, Postgres 17, Docker. See the Commands section of `CLAUDE.md` for the exact commands.
+Go 1.27, Python 3.12 with uv, Postgres 17, Docker, kind, kubectl, Helm. See the Commands section of `CLAUDE.md` for the exact commands.

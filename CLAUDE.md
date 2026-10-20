@@ -1,4 +1,4 @@
-# Shard-to-GPU index build scheduler
+# HNSWonGPUs: a shard-to-GPU index build scheduler
 
 A scheduler that schedules HNSW vector index builds from ~50 database shards onto a small shared pool of GPU workers, with the option to build locally on the shard's CPU instead. The goal is to minimize **round completion time**: how long until every shard has built its index and drained the queries the build held up. One slow shard holds up the whole round.
 
@@ -97,4 +97,4 @@ Toolchain (macOS, Homebrew): `brew install go python@3.12 uv libpq kind kubectl 
 | Run the scheduler locally | `DATABASE_URL=postgres://postgres:test@127.0.0.1:5432/kgpu?sslmode=disable LOG_FORMAT=text go run ./scheduler/cmd/scheduler` (env vars documented at the top of `scheduler/cmd/scheduler/main.go`) |
 | Build the scheduler image | `docker build -f scheduler/Dockerfile -t kgpu-scheduler .` (context is the repo root) |
 
-The Go module is `github.com/arqbca11/KubernetesGPU`, one module at the repo root covering `db/`, `scheduler/`, `shard/` and the Go parts of `experiments/`.
+The Go module is `github.com/arqbca11/HNSWonGPUs`, one module at the repo root covering `db/`, `scheduler/`, `shard/` and the Go parts of `experiments/`.

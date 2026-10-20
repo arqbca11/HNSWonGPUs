@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/scheduler/metrics"
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/metrics"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 )
 
 // Config for the sweep.

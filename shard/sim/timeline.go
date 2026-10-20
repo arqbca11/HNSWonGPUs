@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/experiments/workload"
-	"github.com/arqbca11/KubernetesGPU/shard/client"
+	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/shard/client"
 )
 
 // Timeline is the per-round record the roadmap asks for: for each shard, its

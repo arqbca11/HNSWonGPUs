@@ -15,7 +15,7 @@
 package metrics
 
 import (
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )

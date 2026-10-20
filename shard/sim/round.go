@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/experiments/workload"
-	"github.com/arqbca11/KubernetesGPU/shard/client"
+	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/shard/client"
 )
 
 // RoundConfig drives one round.

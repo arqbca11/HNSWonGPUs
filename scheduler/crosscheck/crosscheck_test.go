@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/scheduler/api"
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/api"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 )
 
 // API table: POST /shards/{round}/{shard}/report upserts shard_status and

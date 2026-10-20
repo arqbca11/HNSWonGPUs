@@ -9,7 +9,7 @@ package sim
 import (
 	"strconv"
 
-	"github.com/arqbca11/KubernetesGPU/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )

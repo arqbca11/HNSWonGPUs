@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/scheduler/costmodel"
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/costmodel"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 )
 
 // syncBuffer is a goroutine-safe bytes.Buffer.

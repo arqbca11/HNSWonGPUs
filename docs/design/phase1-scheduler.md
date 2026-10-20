@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress.** Started 2026-10-01.
+**Done (2026-10-06).** Started 2026-10-01; the step 7 cross-check at 50 shards closed it.
 
 Build a scheduler that stays correct under failures, using builds that only sleep. Everything runs locally under Docker Compose. Default configuration: 6 shards, 2 GPU workers. The policy is the trivial one: every build goes to the GPU queue unless it does not fit in any worker's memory.
 

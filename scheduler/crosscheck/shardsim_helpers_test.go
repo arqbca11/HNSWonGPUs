@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arqbca11/KubernetesGPU/scheduler/costmodel"
-	"github.com/arqbca11/KubernetesGPU/scheduler/reaper"
-	"github.com/arqbca11/KubernetesGPU/scheduler/store"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/costmodel"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/reaper"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 )
 
 var (
