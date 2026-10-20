@@ -429,3 +429,11 @@ Every number is read through Grafana's datasource proxy, so the log records what
 | Test | Scenario | Proves |
 | --- | --- | --- |
 | TestDrainingServesWithoutStamping | Two complete-but-unstamped one-shard rounds. The first is polled by a healthy pod; the draining flag (what main sets at SIGTERM) is flipped and the second is polled three times, a shard report is posted, and the reaper ticks. | A healthy poll stamps on read (decision 31); a draining poll answers the full, truthful status without stamping, three times; a shard report still writes while draining (bug 10 must not come back); the reaper's next tick stamps and the draining pod serves it (decision 40). |
+
+## Phase 2, amendment, cross-check of the draining scheduler (Go, `scheduler/crosscheck`, `TestKindLameDuck` subtests; need `KGPU_KIND=1`). Log: `phase2/amendment-crosscheck-kind-lameduck.log`
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| KindLameDuck/DyingPodAnswersOpenAndNeverStamps | A round's build is done; the scheduler pod is deleted; after SIGTERM the shard's `stream_done` report goes to the dying pod, which is polled every ~230 ms through the pod proxy until it stops serving. | A draining scheduler records the report, answers the complete-but-unstamped round as open (truthfully, matching Postgres at every poll), never stamps and never observes; the replacement stamps with `finished_at` equal to the build's finish and its round count exactly 1; Prometheus's last scrape of the dying pod equals its final value (decisions 18, 31, 40). |
+| KindLameDuck/DyingPodStillRecordsWrites | After SIGTERM, a build submit, a query arrival and a shard report are sent to the dying pod. | Every endpoint except stamp-on-read keeps writing in the 3 s window (201/201/200 with the rows in Postgres), and the replacement serves them — bug 10's stall cannot return through the drain (decision 40, invariant 1). |
+| KindLameDuck/ExactlyOnceAcrossReplacements | Six scheduler replacements: rounds completing inside the window, just before the delete, or stamped by the healthy pod and the pod deleted at once. | Each round is observed exactly once summed over dying and new pod, never zero, never twice (decisions 31, 40) — and a round stamped within one scrape interval before a deletion is observed but never scraped, the residual race's measured width. |

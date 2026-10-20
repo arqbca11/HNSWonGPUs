@@ -1,0 +1,309 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-19 21:17:48 PDT
+commit:    7c0c08f 
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-77533, port 29109)
+go:        go test -p 1 -count=1 -v -run TestKindLameDuck -timeout 30m ./scheduler/crosscheck/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestKindLameDuck
+    kindlameduck_test.go:469: [kubectl proxy] on 127.0.0.1:28197; a pod is reached at /api/v1/namespaces/kgpu/pods/<pod>:8080/proxy/<path>
+    kindlameduck_test.go:470: [port-forward] monitoring/svc/kps-grafana:80 on 127.0.0.1:29310
+    kindlameduck_test.go:470: [grafana] Prometheus datasource uid="prometheus" default=true url=http://kps-kube-prometheus-stack-prometheus.monitoring:9090/; every number below is read through /api/datasources/proxy/uid/prometheus (decision 36)
+    kindlameduck_test.go:471: [k8s] 1 pod(s) app=scheduler ready after 0.1s: [scheduler-bd5b65bc5-24zt2(uid=99f5eb40 node=kgpu-worker2 phase=Running ready=true restarts=0 ip=10.244.5.49)]
+=== RUN   TestKindLameDuck/DyingPodAnswersOpenAndNeverStamps
+    kindlameduck_test.go:474: Decision 40: a round that becomes complete inside the dying pod's window is answered as open (finished_at null, truthful) and not stamped by that pod; the replacement stamps it and its round_duration_seconds_count is exactly 1
+    kindlameduck_test.go:475: [pre] scheduler-bd5b65bc5-24zt2 round_duration_seconds_count=0, stable over 2.5 s; rounds with finished_at NULL in Postgres: 2 (abandoned or ours, never complete)
+    kindlameduck_test.go:475: [api] POST /rounds {scenario:xcheck-lameduck-in-window n_shards:1} -> 201 round_id=171
+    kindlameduck_test.go:475: [api] POST /builds {round:171 shard:0 n:20000} -> 201 build_id=0:171 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:475: [api] build 0:171 state=done after 0.4s: build_id=0:171 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:17:54.987
+    kindlameduck_test.go:475: [pg] round 171: its only build is done (finished_at 04:17:54.987393) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:475: [kubectl 21:17:55.646] delete pod scheduler-bd5b65bc5-24zt2 (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:475: [log +79ms] dying pod: {"time":"2026-10-20T04:17:55.712044379Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 +86ms] POST /shards/171/0/report {stream_done:true} -> 200 {"build":{"build_id":"0:171","placement":"gpu","state":"done","attempt":1}} err=<nil>
+    kindlameduck_test.go:475: [pg] shard_status(171,0).stream_done=t: the dying pod recorded the report; the round is now complete in Postgres
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 +  157ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 +  370ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 +  603ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 +  823ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 1065ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 1305ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 1541ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 1777ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 2022ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 2272ms] GET /rounds/171 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 2516ms] GET /rounds/171 -> 200 finished_at=04:17:54.987393 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 2760ms] GET /rounds/171 -> 200 finished_at=04:17:54.987393 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 3009ms] GET /rounds/171 -> 200 finished_at=04:17:54.987393 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 5255ms] GET /rounds/171 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-24zt2:8080/proxy/rounds/171": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 5512ms] GET /rounds/171 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-24zt2\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-24zt2","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying scheduler-bd5b65bc5-24zt2 + 5741ms] GET /rounds/171 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-24zt2\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-24zt2","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:17:54.987393
+    kindlameduck_test.go:475: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:475: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:475: [dying] served 13 of 16 GETs; last 200 at +3009ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=0 (was 0)
+    kindlameduck_test.go:475: [k8s] scheduler scheduler-bd5b65bc5-24zt2 replaced by scheduler-bd5b65bc5-qzn6m, Ready after 0.1s
+    kindlameduck_test.go:475: [pg] round 171 finished_at=04:17:54.987393, stamped 0.1s after scheduler-bd5b65bc5-qzn6m became Ready (reaper interval 2 s)
+    kindlameduck_test.go:475: [metrics] old scheduler-bd5b65bc5-24zt2 observed 0 round(s) in this cycle; new scheduler-bd5b65bc5-qzn6m round_duration_seconds_count=1; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:475: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:475: [grafana proxy] the dying scheduler-bd5b65bc5-24zt2's last scrape (0) equals its final value: nothing it observed was lost
+    kindlameduck_test.go:476: [result] round 171: dying scheduler-bd5b65bc5-24zt2 observed 0, replacement scheduler-bd5b65bc5-qzn6m observed 1
+=== RUN   TestKindLameDuck/DyingPodStillRecordsWrites
+    kindlameduck_test.go:480: Decision 40: every endpoint other than stamp-on-read keeps writing while draining (POST /builds, POST /jobs, POST /shards/.../report), or bug 10's stall would return
+    kindlameduck_test.go:482: [api] POST /rounds {scenario:xcheck-lameduck-writes n_shards:2} -> 201 round_id=172
+    kindlameduck_test.go:483: [api] POST /builds {round:172 shard:0 n:20000} -> 201 build_id=0:172 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:485: [kubectl 21:18:15.434] delete pod scheduler-bd5b65bc5-qzn6m (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:486: [log +82ms] dying pod: {"time":"2026-10-20T04:18:15.498941013Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:501: [dying scheduler-bd5b65bc5-qzn6m +87ms] POST /builds -> 201 {"build_id":"1:172","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":20480000,"created":true,"cpu_build_ms":3549,"gpu_total_ms":2470} err=<nil> (API table wants 201)
+    kindlameduck_test.go:501: [dying scheduler-bd5b65bc5-qzn6m +90ms] POST /jobs/172/0 -> 201 {"created":true,"round_id":172,"seq":1,"shard_id":0} err=<nil> (API table wants 201)
+    kindlameduck_test.go:501: [dying scheduler-bd5b65bc5-qzn6m +93ms] POST /shards/172/0/report -> 200 {"build":{"build_id":"0:172","placement":"gpu","state":"done","attempt":1}} err=<nil> (API table wants 200)
+    kindlameduck_test.go:509: [pg] builds(shard 1)="1:172 gpu queued"; shard_jobs(shard 0, seq 1) rows=1; shard_status(shard 0)="1 5 false" (queue_depth oldest_wait_ms stream_done)
+    kindlameduck_test.go:519: [k8s] scheduler scheduler-bd5b65bc5-qzn6m replaced by scheduler-bd5b65bc5-mbmj7, Ready after 3.9s
+    kindlameduck_test.go:523: [new scheduler-bd5b65bc5-mbmj7] GET /rounds/172 -> 200 err=<nil>: 2 builds, 1 jobs, 1 shard statuses, finished_at=<nil> (shard 0 still has a queued query and no stream_done, so open is right)
+=== RUN   TestKindLameDuck/ExactlyOnceAcrossReplacements
+    kindlameduck_test.go:535: Decision 31 through decision 40: over several replacements, each with a round completing in or right before the window, every round is observed exactly once (never zero, never twice) summed over the dying and the new pod
+    kindlameduck_test.go:539: ---- repetition 1/6, mode in-window ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-mbmj7 round_duration_seconds_count=0, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-in-window n_shards:1} -> 201 round_id=173
+    kindlameduck_test.go:540: [api] POST /builds {round:173 shard:0 n:20000} -> 201 build_id=0:173 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:173 state=done after 0.4s: build_id=0:173 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:18:22.576
+    kindlameduck_test.go:540: [pg] round 173: its only build is done (finished_at 04:18:22.576490) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [kubectl 21:18:23.347] delete pod scheduler-bd5b65bc5-mbmj7 (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +88ms] dying pod: {"time":"2026-10-20T04:18:23.419436836Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 +91ms] POST /shards/173/0/report {stream_done:true} -> 200 {"build":{"build_id":"0:173","placement":"gpu","state":"done","attempt":1}} err=<nil>
+    kindlameduck_test.go:540: [pg] shard_status(173,0).stream_done=t: the dying pod recorded the report; the round is now complete in Postgres
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 +  162ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 +  378ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 +  606ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 +  839ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 1086ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 1330ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 1570ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 1787ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 2029ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 2273ms] GET /rounds/173 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 2530ms] GET /rounds/173 -> 200 finished_at=04:18:22.576490 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 2784ms] GET /rounds/173 -> 200 finished_at=04:18:22.576490 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 3021ms] GET /rounds/173 -> 200 finished_at=04:18:22.576490 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 5247ms] GET /rounds/173 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-mbmj7:8080/proxy/rounds/173": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 5523ms] GET /rounds/173 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-mbmj7\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-mbmj7","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-mbmj7 + 5757ms] GET /rounds/173 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-mbmj7\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-mbmj7","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:22.576490
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +3021ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=0 (was 0)
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-mbmj7 replaced by scheduler-bd5b65bc5-gz5wv, Ready after 0.1s
+    kindlameduck_test.go:540: [pg] round 173 finished_at=04:18:22.576490, stamped 0.1s after scheduler-bd5b65bc5-gz5wv became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-mbmj7 observed 0 round(s) in this cycle; new scheduler-bd5b65bc5-gz5wv round_duration_seconds_count=1; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [grafana proxy] the dying scheduler-bd5b65bc5-mbmj7's last scrape (0) equals its final value: nothing it observed was lost
+    kindlameduck_test.go:539: ---- repetition 2/6, mode before-delete ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-gz5wv round_duration_seconds_count=1, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-before-delete n_shards:1} -> 201 round_id=174
+    kindlameduck_test.go:540: [api] POST /builds {round:174 shard:0 n:20000} -> 201 build_id=0:174 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:174 state=done after 0.6s: build_id=0:174 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:18:45.787
+    kindlameduck_test.go:540: [pg] round 174: its only build is done (finished_at 04:18:45.787822) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [api] POST /shards/174/0/report {stream_done:true} via NodePort -> 200 {"build":{"build_id":"0:174","placement":"gpu","state":"done","attempt":1}}; the round is complete now; deleting at once
+    kindlameduck_test.go:540: [kubectl 21:18:46.466] delete pod scheduler-bd5b65bc5-gz5wv (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +85ms] dying pod: {"time":"2026-10-20T04:18:46.534763805Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv +   89ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv +  310ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv +  531ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv +  745ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv +  979ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 1223ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 1478ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 1717ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 1957ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 2213ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 2462ms] GET /rounds/174 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 2708ms] GET /rounds/174 -> 200 finished_at=04:18:45.787822 (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 2961ms] GET /rounds/174 -> 200 finished_at=04:18:45.787822 (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 5213ms] GET /rounds/174 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-gz5wv:8080/proxy/rounds/174": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 5460ms] GET /rounds/174 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-gz5wv\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-gz5wv","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-gz5wv + 5693ms] GET /rounds/174 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-gz5wv\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-gz5wv","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:18:45.787822
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +2961ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=1 (was 1)
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-gz5wv replaced by scheduler-bd5b65bc5-j9ghs, Ready after 0.1s
+    kindlameduck_test.go:540: [pg] round 174 finished_at=04:18:45.787822, stamped 0.1s after scheduler-bd5b65bc5-j9ghs became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-gz5wv observed 0 round(s) in this cycle; new scheduler-bd5b65bc5-j9ghs round_duration_seconds_count=1; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-j9ghs=1 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [grafana proxy] the dying scheduler-bd5b65bc5-gz5wv's last scrape (1) equals its final value: nothing it observed was lost
+    kindlameduck_test.go:539: ---- repetition 3/6, mode stamped-before-delete ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-j9ghs round_duration_seconds_count=1, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-stamped-before-delete n_shards:1} -> 201 round_id=175
+    kindlameduck_test.go:540: [api] POST /builds {round:175 shard:0 n:20000} -> 201 build_id=0:175 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:175 state=done after 0.4s: build_id=0:175 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:19:08.598
+    kindlameduck_test.go:540: [pg] round 175: its only build is done (finished_at 04:19:08.598708) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [api] POST /shards/175/0/report {stream_done:true} via NodePort -> 200 {"build":{"build_id":"0:175","placement":"gpu","state":"done","attempt":1}}; waiting for the healthy pod's reaper to stamp it, then deleting at once
+    kindlameduck_test.go:540: [pg] round 175 stamped 1.73s after the report, by the still-healthy scheduler-bd5b65bc5-j9ghs; deleting it now, inside the 5 s scrape interval: decision 40's accepted residual race
+    kindlameduck_test.go:540: [kubectl 21:19:11.060] delete pod scheduler-bd5b65bc5-j9ghs (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +53ms] dying pod: {"time":"2026-10-20T04:19:11.09737972Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs +   55ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs +  267ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs +  496ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs +  725ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs +  966ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 1210ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 1449ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 1689ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 1935ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 2177ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 2462ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 2695ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 2944ms] GET /rounds/175 -> 200 finished_at=04:19:08.598708 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 5183ms] GET /rounds/175 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-j9ghs:8080/proxy/rounds/175": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 5406ms] GET /rounds/175 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-j9ghs\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-j9ghs","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-j9ghs + 5644ms] GET /rounds/175 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-j9ghs\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-j9ghs","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:08.598708
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +2944ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=2 (was 1)
+    kindlameduck_test.go:540: [log] dying pod lines mentioning 175: [{"time":"2026-10-20T04:19:10.966524386Z","level":"INFO","msg":"round finished","round_id":175,"duration":296000000,"straggler_lag":0,"gpu_builds_claimed":1}]
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-j9ghs replaced by scheduler-bd5b65bc5-bv7mf, Ready after 0.0s
+    kindlameduck_test.go:540: [pg] round 175 finished_at=04:19:08.598708, stamped 0.1s after scheduler-bd5b65bc5-bv7mf became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-j9ghs observed 1 round(s) in this cycle; new scheduler-bd5b65bc5-bv7mf round_duration_seconds_count=0; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-bv7mf=0 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-j9ghs=1 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [note] Prometheus's last scrape of the dying scheduler-bd5b65bc5-j9ghs saw 1, the pod's final value was 2: 1 observation(s) never scraped
+    kindlameduck_test.go:539: ---- repetition 4/6, mode in-window ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-bv7mf round_duration_seconds_count=0, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-in-window n_shards:1} -> 201 round_id=176
+    kindlameduck_test.go:540: [api] POST /builds {round:176 shard:0 n:20000} -> 201 build_id=0:176 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:176 state=done after 0.6s: build_id=0:176 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:19:33.416
+    kindlameduck_test.go:540: [pg] round 176: its only build is done (finished_at 04:19:33.416657) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [kubectl 21:19:34.082] delete pod scheduler-bd5b65bc5-bv7mf (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +85ms] dying pod: {"time":"2026-10-20T04:19:34.157508008Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf +90ms] POST /shards/176/0/report {stream_done:true} -> 200 {"build":{"build_id":"0:176","placement":"gpu","state":"done","attempt":1}} err=<nil>
+    kindlameduck_test.go:540: [pg] shard_status(176,0).stream_done=t: the dying pod recorded the report; the round is now complete in Postgres
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf +  163ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf +  376ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf +  608ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf +  845ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 1085ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 1323ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 1561ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 1813ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 2079ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 2312ms] GET /rounds/176 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 2546ms] GET /rounds/176 -> 200 finished_at=04:19:33.416657 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 2783ms] GET /rounds/176 -> 200 finished_at=04:19:33.416657 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 3016ms] GET /rounds/176 -> 200 finished_at=04:19:33.416657 (err=<nil>); its round_duration_seconds_count=0; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 5266ms] GET /rounds/176 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-bv7mf:8080/proxy/rounds/176": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 5530ms] GET /rounds/176 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-bv7mf\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-bv7mf","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-bv7mf + 5801ms] GET /rounds/176 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-bv7mf\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-bv7mf","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:33.416657
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +3016ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=0 (was 0)
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-bv7mf replaced by scheduler-bd5b65bc5-jgk2b, Ready after 0.1s
+    kindlameduck_test.go:540: [pg] round 176 finished_at=04:19:33.416657, stamped 0.1s after scheduler-bd5b65bc5-jgk2b became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-bv7mf observed 0 round(s) in this cycle; new scheduler-bd5b65bc5-jgk2b round_duration_seconds_count=1; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-bv7mf=0 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-j9ghs=1 scheduler-bd5b65bc5-jgk2b=1 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [grafana proxy] the dying scheduler-bd5b65bc5-bv7mf's last scrape (0) equals its final value: nothing it observed was lost
+    kindlameduck_test.go:539: ---- repetition 5/6, mode before-delete ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-jgk2b round_duration_seconds_count=1, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-before-delete n_shards:1} -> 201 round_id=177
+    kindlameduck_test.go:540: [api] POST /builds {round:177 shard:0 n:20000} -> 201 build_id=0:177 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:177 state=done after 0.6s: build_id=0:177 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:19:56.586
+    kindlameduck_test.go:540: [pg] round 177: its only build is done (finished_at 04:19:56.586544) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [api] POST /shards/177/0/report {stream_done:true} via NodePort -> 200 {"build":{"build_id":"0:177","placement":"gpu","state":"done","attempt":1}}; the round is complete now; deleting at once
+    kindlameduck_test.go:540: [kubectl 21:19:57.299] delete pod scheduler-bd5b65bc5-jgk2b (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +86ms] dying pod: {"time":"2026-10-20T04:19:57.372005463Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b +   94ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b +  325ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b +  568ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b +  806ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 1067ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 1302ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 1547ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 1812ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 2058ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 2291ms] GET /rounds/177 -> 200 finished_at=null (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=NULL
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 2530ms] GET /rounds/177 -> 200 finished_at=04:19:56.586544 (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 2778ms] GET /rounds/177 -> 200 finished_at=04:19:56.586544 (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 3024ms] GET /rounds/177 -> 200 finished_at=04:19:56.586544 (err=<nil>); its round_duration_seconds_count=1; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 5270ms] GET /rounds/177 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-jgk2b:8080/proxy/rounds/177": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 5517ms] GET /rounds/177 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-jgk2b\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-jgk2b","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-jgk2b + 5757ms] GET /rounds/177 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-jgk2b\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-jgk2b","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:19:56.586544
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +3024ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=1 (was 1)
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-jgk2b replaced by scheduler-bd5b65bc5-p9b4w, Ready after 0.1s
+    kindlameduck_test.go:540: [pg] round 177 finished_at=04:19:56.586544, stamped 0.1s after scheduler-bd5b65bc5-p9b4w became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-jgk2b observed 0 round(s) in this cycle; new scheduler-bd5b65bc5-p9b4w round_duration_seconds_count=1; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-bv7mf=0 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-j9ghs=1 scheduler-bd5b65bc5-jgk2b=1 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-p9b4w=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [grafana proxy] the dying scheduler-bd5b65bc5-jgk2b's last scrape (1) equals its final value: nothing it observed was lost
+    kindlameduck_test.go:539: ---- repetition 6/6, mode stamped-before-delete ----
+    kindlameduck_test.go:540: [pre] scheduler-bd5b65bc5-p9b4w round_duration_seconds_count=1, stable over 2.5 s; rounds with finished_at NULL in Postgres: 3 (abandoned or ours, never complete)
+    kindlameduck_test.go:540: [api] POST /rounds {scenario:xcheck-lameduck-stamped-before-delete n_shards:1} -> 201 round_id=178
+    kindlameduck_test.go:540: [api] POST /builds {round:178 shard:0 n:20000} -> 201 build_id=0:178 placement=gpu gpu_total_ms=2470
+    kindlameduck_test.go:540: [api] build 0:178 state=done after 0.6s: build_id=0:178 placement=gpu state=done attempt=1 lease_owner=<nil> finished_at=04:20:19.787
+    kindlameduck_test.go:540: [pg] round 178: its only build is done (finished_at 04:20:19.787732) but finished_at is NULL: the shard has not reported stream_done (decision 30)
+    kindlameduck_test.go:540: [api] POST /shards/178/0/report {stream_done:true} via NodePort -> 200 {"build":{"build_id":"0:178","placement":"gpu","state":"done","attempt":1}}; waiting for the healthy pod's reaper to stamp it, then deleting at once
+    kindlameduck_test.go:540: [pg] round 178 stamped 1.44s after the report, by the still-healthy scheduler-bd5b65bc5-p9b4w; deleting it now, inside the 5 s scrape interval: decision 40's accepted residual race
+    kindlameduck_test.go:540: [kubectl 21:20:21.853] delete pod scheduler-bd5b65bc5-p9b4w (graceful, SIGTERM; decision 29 says it keeps serving ~3 s)
+    kindlameduck_test.go:540: [log +52ms] dying pod: {"time":"2026-10-20T04:20:21.889574127Z","level":"INFO","msg":"shutdown requested; draining: serving without stamping while endpoints update","delay":3000000000}
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w +   55ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w +  264ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w +  504ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w +  729ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w +  964ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 1209ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 1454ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 1693ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 1924ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 2167ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 2408ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 2651ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 2882ms] GET /rounds/178 -> 200 finished_at=04:20:19.787732 (err=<nil>); its round_duration_seconds_count=2; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 5117ms] GET /rounds/178 -> 0 finished_at=null (err=Get "http://127.0.0.1:28197/api/v1/namespaces/kgpu/pods/scheduler-bd5b65bc5-p9b4w:8080/proxy/rounds/178": context deadline exceeded (Client.Timeout exceeded while awaiting headers)); its round_duration_seconds_count=unreachable; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 5359ms] GET /rounds/178 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-p9b4w\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-p9b4w","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying scheduler-bd5b65bc5-p9b4w + 5607ms] GET /rounds/178 -> 404 finished_at={"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods \"scheduler-bd5b65bc5-p9b4w\" not found","reason":"NotFound","details":{"name":"scheduler-bd5b65bc5-p9b4w","kind":"pods"},"code":404} (err=<nil>); its round_duration_seconds_count=unreachable; Postgres finished_at=04:20:19.787732
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] non-200 404 (the pod is shutting down)
+    kindlameduck_test.go:540: [dying] served 13 of 16 GETs; last 200 at +2882ms after the delete (decision 29: ~3 s after SIGTERM); its final round_duration_seconds_count=2 (was 1)
+    kindlameduck_test.go:540: [log] dying pod lines mentioning 178: [{"time":"2026-10-20T04:20:21.803548669Z","level":"INFO","msg":"round finished","round_id":178,"duration":603000000,"straggler_lag":0,"gpu_builds_claimed":1}]
+    kindlameduck_test.go:540: [k8s] scheduler scheduler-bd5b65bc5-p9b4w replaced by scheduler-bd5b65bc5-6qmf2, Ready after 0.1s
+    kindlameduck_test.go:540: [pg] round 178 finished_at=04:20:19.787732, stamped 0.1s after scheduler-bd5b65bc5-6qmf2 became Ready (reaper interval 2 s)
+    kindlameduck_test.go:540: [metrics] old scheduler-bd5b65bc5-p9b4w observed 1 round(s) in this cycle; new scheduler-bd5b65bc5-6qmf2 round_duration_seconds_count=0; sum=1, decision 31 wants exactly 1
+    kindfail_helpers_test.go:152: [wait] 12 s for two 5 s scrapes: the new pod's count to reach Prometheus
+    kindlameduck_test.go:540: [grafana proxy] max_over_time(round_duration_seconds_count[10m]) by pod: {scheduler-bd5b65bc5-24zt2=0 scheduler-bd5b65bc5-4hw54=0 scheduler-bd5b65bc5-5vcsj=0 scheduler-bd5b65bc5-6qmf2=0 scheduler-bd5b65bc5-7nd79=1 scheduler-bd5b65bc5-bv7mf=0 scheduler-bd5b65bc5-fwjxs=1 scheduler-bd5b65bc5-gz5wv=1 scheduler-bd5b65bc5-hrs6v=1 scheduler-bd5b65bc5-hwdb9=0 scheduler-bd5b65bc5-j9ghs=1 scheduler-bd5b65bc5-jgk2b=1 scheduler-bd5b65bc5-mbmj7=0 scheduler-bd5b65bc5-mphjk=1 scheduler-bd5b65bc5-n5rcm=1 scheduler-bd5b65bc5-nrb5s=1 scheduler-bd5b65bc5-p9b4w=1 scheduler-bd5b65bc5-pwl99=1 scheduler-bd5b65bc5-q6trq=1 scheduler-bd5b65bc5-qzn6m=1 scheduler-bd5b65bc5-xqlpr=1 scheduler-bd5b65bc5-z5vxj=0 scheduler-bd5b65bc5-zvs8m=1}
+    kindlameduck_test.go:540: [note] Prometheus's last scrape of the dying scheduler-bd5b65bc5-p9b4w saw 1, the pod's final value was 2: 1 observation(s) never scraped
+    kindlameduck_test.go:543: [summary]
+        rep 1 in-window             round 173: dying scheduler-bd5b65bc5-mbmj7 +0, new scheduler-bd5b65bc5-gz5wv 1
+        rep 2 before-delete         round 174: dying scheduler-bd5b65bc5-gz5wv +0, new scheduler-bd5b65bc5-j9ghs 1
+        rep 3 stamped-before-delete round 175: dying scheduler-bd5b65bc5-j9ghs +1, new scheduler-bd5b65bc5-bv7mf 0
+        rep 4 in-window             round 176: dying scheduler-bd5b65bc5-bv7mf +0, new scheduler-bd5b65bc5-jgk2b 1
+        rep 5 before-delete         round 177: dying scheduler-bd5b65bc5-jgk2b +0, new scheduler-bd5b65bc5-p9b4w 1
+        rep 6 stamped-before-delete round 178: dying scheduler-bd5b65bc5-p9b4w +1, new scheduler-bd5b65bc5-6qmf2 0
+=== NAME  TestKindLameDuck
+    kindlameduck_test.go:547: [k8s] 1 pod(s) app=scheduler ready after 0.1s: [scheduler-bd5b65bc5-6qmf2(uid=24c8102e node=kgpu-worker2 phase=Running ready=true restarts=0 ip=10.244.5.56)]
+    kindlameduck_test.go:549: [cleanup] workers untouched: [worker-64dc68f95c-hzgvv worker-64dc68f95c-s6f4k]
+    kindlameduck_test.go:467: [cleanup] namespace kgpu after the test:
+        NAME                        READY   STATUS    RESTARTS   AGE    IP            NODE           NOMINATED NODE   READINESS GATES
+        postgres-0                  1/1     Running   0          45h    10.244.1.3    kgpu-worker    <none>           <none>
+        scheduler-bd5b65bc5-6qmf2   1/1     Running   0          20s    10.244.5.56   kgpu-worker2   <none>           <none>
+        worker-64dc68f95c-hzgvv     1/1     Running   0          106m   10.244.2.79   kgpu-worker4   <none>           <none>
+        worker-64dc68f95c-s6f4k     1/1     Running   0          106m   10.244.4.75   kgpu-worker3   <none>           <none>
+--- PASS: TestKindLameDuck (169.65s)
+    --- PASS: TestKindLameDuck/DyingPodAnswersOpenAndNeverStamps (22.85s)
+    --- PASS: TestKindLameDuck/DyingPodStillRecordsWrites (4.80s)
+    --- PASS: TestKindLameDuck/ExactlyOnceAcrossReplacements (141.25s)
+PASS
+ok  	github.com/arqbca11/KubernetesGPU/scheduler/crosscheck	170.379s
+
+== Docker events for container kgpu-test-pg-77533
+  21:17:47  create
+  21:17:47  start
+  21:20:41  kill
+  21:20:41  die
+  21:20:41  destroy
+
+== Result: PASS

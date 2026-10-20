@@ -36,6 +36,7 @@ Narrated test output, kept so what was checked and what happened can be read wit
 | `phase2/step6-crosscheck-kind-failures.log` | The cross-check agent's 21 checks in 5 scenarios: release vs expiry told apart by the build row, two kills on one build, the scheduler deleted at the moment a round closes (4 trials), one-node drains at 4 and 2 replicas; found F1-F3 (decisions 37, 38). |
 | `phase2/amendment-crosscheck-kind-spread.log` | The cross-check agent's 6 placement scenarios for the worker soft spread (decision 39): replacements to the emptier node, scale-up from 0 and 1, cordoned and card-full nodes packing without Pending, 4 replicas unchanged, the 5th Pending for cards only. |
 | `phase2/amendment-draining-scheduler.log` | The draining scheduler (decision 40): a healthy poll stamps a round, a draining poll answers without stamping, shard reports still write, the reaper's tick stamps and the draining pod serves it. |
+| `phase2/amendment-crosscheck-kind-lameduck.log` | The cross-check agent's 3 lame-duck scenarios over 8 scheduler replacements: the dying pod polled through the pod proxy never stamps and keeps recording writes; exactly-once observation in three timing modes; the residual race's real width measured. |
 
 Per-step logs are the state of the tests at the end of that step, including any fixes from the step's cross-check round, regenerated whenever the step's code changes. `history/` (local only, not committed) keeps every timestamped run.
 
