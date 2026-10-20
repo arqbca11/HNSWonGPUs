@@ -316,6 +316,18 @@ The owner answered the first open question: add the soft spread (decision 39).
 
 Observed on the live cluster: the rollout that applied it packed both new workers onto one node (the terminating old pods still held the other node's cards — the spread is evaluated only at scheduling time, decision 39's caveat); a fresh replacement after a single pod deletion landed on the emptier node, restoring one per node; with one node cordoned, a replacement scheduled anyway onto the remaining node, nothing Pending; after uncordon, the next fresh scheduling rebalanced.
 
+### Cross-check of the amendment, the worker soft spread (2026-10-19)
+
+A fresh agent wrote 6 black-box subtests (`TestKindSpread`, judging only by where pods land and their `PodScheduled` condition, never reading the manifests; saved as `test-logs/phase2/amendment-crosscheck-kind-spread.log`). All 6 passed in two full runs: a deleted worker's replacement went to the emptier node 3 of 3 times on alternating nodes; scale-up from 0 and from 1 landed balanced; a cordoned or card-full node made the replacement pack with nothing ever Pending, and the next fresh scheduling after the block cleared rebalanced; 4 replicas sat 2 per node and a 5th stayed Pending citing only `Insufficient kgpu.io/gpu-card`, never the spread. No implementation bug. Its caveats, all documentation:
+
+| Caveat | Resolution |
+| --- | --- |
+| Black-box tests cannot prove *which* mechanism balances the pods — kube-scheduler ships its own weak default spread — and the doc did not say why decision 38 saw packing 3 of 3 times before the rule existed. | Documented here: the default spread for Deployment pods is `maxSkew: 3` per hostname, `ScheduleAnyway` — a 2-on-1-node pack does not even violate it; decision 39's `maxSkew: 1` is the binding preference. Decision 38's packed placements are what drains manufacture: evicting one node's workers forces every replacement onto the survivor, and after uncordon nothing moves back, so a cluster that has been through kill-and-drain testing ends up packed and stays packed. |
+| "Fresh scheduling" was undefined; scale-up from 0 or 1 was untested territory, and scale-down's victim choice is unspecified. | Defined here: fresh scheduling is any pod newly bound by the kube-scheduler — a replacement or any scale-up — and the cross-check confirmed balance for all of them. Which pod a scale-down removes is the ReplicaSet controller's heuristic (not placement-aware) and stays out of the spec; both observed 4→2 runs happened to end one per node. |
+| A replacement for a *busy* worker (old pod holding its card through up to 30 s of grace) was barely exercised; idle workers terminate in ~1 s. | That is exactly decision 39's rollout caveat, restated: while a terminating pod holds a card, the replacement may pack. Accepted; no stronger promise is made. |
+| 3 replicas under a one-node drain is undescribed. | Documented here: the spread places 3 as 2+1, so a one-node drain leaves 1 or 2 workers depending on which node is drained. Decision 24's "halves the pool" remains an even-replica statement. |
+| Namespace scope of the spread is unstated. | Documented here: a spread constraint's `labelSelector` counts only pods in the pod's own namespace, so the cross-check's `kgpu-xcheck` stack never skews `kgpu`'s balance — the test relied on this and it held. |
+
 ## Open questions
 
 - How long should `terminationGracePeriodSeconds` be relative to the modeled build times? Long enough to finish a typical fake build, short enough that a drain is not slow. (Workers: 30 s with a 5 s finish budget; the real-build answer is "release", see decision 19 and the published-figures section.)
