@@ -790,7 +790,8 @@ type PoolState struct {
 }
 
 // Heartbeat registers a worker or refreshes its last_seen. node is the
-// machine it runs on ("" = unknown), for the per-node transfer term.
+// machine it runs on ("" = unknown), for the per-node transfer term; the
+// latest heartbeat wins, so a rescheduled worker's new node replaces the old.
 func (s *Store) Heartbeat(ctx context.Context, workerID string, memBytes int64, node string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO workers (worker_id, mem_bytes, node, last_seen)

@@ -513,6 +513,16 @@ func TestDrainingServesWithoutStamping(t *testing.T) {
 		b, rs.Round.FinishedAt.Format(time.RFC3339Nano))
 }
 
+// waitMs asserts the estimate is present (a fresh submit always carries one,
+// even the cold-start 0) and returns it.
+func waitMs(t *testing.T, r SubmitBuildResponse) int64 {
+	t.Helper()
+	if r.GPUQueueWaitMs == nil {
+		t.Fatalf("gpu_queue_wait_ms absent where an estimate was expected: %+v", r)
+	}
+	return *r.GPUQueueWaitMs
+}
+
 func TestSubmitQueueWaitEstimate(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -526,18 +536,26 @@ func TestSubmitQueueWaitEstimate(t *testing.T) {
 	t.Log("--- idle worker, empty queue: the first build should see a 0 wait")
 	var a SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 1, NVectors: 100_000, Dim: 128}, &a)
-	if a.GPUQueueWaitMs != 0 {
-		t.Fatalf("first build on an idle pool: want wait 0, got %d ms", a.GPUQueueWaitMs)
+	if waitMs(t, a) != 0 {
+		t.Fatalf("first build on an idle pool: want wait 0, got %d ms", waitMs(t, a))
 	}
-	t.Logf("    build 1 placed %s, gpu_queue_wait_ms %d", a.Placement, a.GPUQueueWaitMs)
+	t.Logf("    build 1 placed %s, gpu_queue_wait_ms %d", a.Placement, waitMs(t, a))
 
 	t.Log("--- a second identical build joins behind the first: its wait is the first's whole gpu total")
 	var b SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 2, NVectors: 100_000, Dim: 128}, &b)
-	if diff := b.GPUQueueWaitMs - a.GPUTotalMs; diff < -5 || diff > 5 {
-		t.Fatalf("second build: want wait ~= %d ms (one gpu total ahead), got %d ms", a.GPUTotalMs, b.GPUQueueWaitMs)
+	if diff := waitMs(t, b) - a.GPUTotalMs; diff < -5 || diff > 5 {
+		t.Fatalf("second build: want wait ~= %d ms (one gpu total ahead), got %d ms", a.GPUTotalMs, waitMs(t, b))
 	}
-	t.Logf("    build 2 waits %d ms behind build 1 (gpu total %d ms): the replay queues them on the one worker", b.GPUQueueWaitMs, a.GPUTotalMs)
+	t.Logf("    build 2 waits %d ms behind build 1 (gpu total %d ms): the replay queues them on the one worker", waitMs(t, b), a.GPUTotalMs)
+
+	t.Log("--- a duplicate submit answers the original decision, with no fresh estimate (no gpu_queue_wait_ms at all)")
+	var dup SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 2, NVectors: 100_000, Dim: 128}, &dup)
+	if dup.Created || dup.GPUQueueWaitMs != nil {
+		t.Fatalf("duplicate: want created=false and gpu_queue_wait_ms absent, got %+v", dup)
+	}
+	t.Log("    created=false, gpu_queue_wait_ms omitted (cross-check F1: a plain int64 served 0 for both)")
 
 	t.Log("--- the worker claims build 1; a third build sees: leased remaining + build 2's total")
 	if _, ok, err := h.st.Claim(ctx, "gpu-1", 8<<30, time.Minute); err != nil || !ok {
@@ -545,19 +563,19 @@ func TestSubmitQueueWaitEstimate(t *testing.T) {
 	}
 	var c SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 3, NVectors: 100_000, Dim: 128}, &c)
-	if c.GPUQueueWaitMs <= b.GPUQueueWaitMs || c.GPUQueueWaitMs > 2*a.GPUTotalMs+5 {
+	if waitMs(t, c) <= waitMs(t, b) || waitMs(t, c) > 2*a.GPUTotalMs+5 {
 		t.Fatalf("third build: want a wait in (one, two] gpu totals (%d..%d ms], got %d ms",
-			b.GPUQueueWaitMs, 2*a.GPUTotalMs, c.GPUQueueWaitMs)
+			waitMs(t, b), 2*a.GPUTotalMs, waitMs(t, c))
 	}
-	t.Logf("    build 3 waits %d ms: the lease's elapsed time already counts toward build 1", c.GPUQueueWaitMs)
+	t.Logf("    build 3 waits %d ms: the lease's elapsed time already counts toward build 1", waitMs(t, c))
 
 	t.Log("--- a build too big for every live worker reports -1: no wait would ever end (bug 11's truth)")
 	var huge SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: r, ShardID: 4, NVectors: 20_000_000, Dim: 128}, &huge)
-	if huge.Placement != "local" || huge.GPUQueueWaitMs != -1 {
+	if huge.Placement != "local" || waitMs(t, huge) != -1 {
 		t.Fatalf("huge build: want local and wait -1, got %+v", huge)
 	}
-	t.Logf("    placed %s, gpu_queue_wait_ms %d", huge.Placement, huge.GPUQueueWaitMs)
+	t.Logf("    placed %s, gpu_queue_wait_ms %d", huge.Placement, waitMs(t, huge))
 }
 
 func TestSubmitQueueWaitColdStart(t *testing.T) {
@@ -568,8 +586,8 @@ func TestSubmitQueueWaitColdStart(t *testing.T) {
 	t.Log("--- no workers at all: the cold-start rule keeps the wait at 0, and always_gpu still queues")
 	var b SubmitBuildResponse
 	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 100_000, Dim: 128}, &b)
-	if b.Placement != "gpu" || b.GPUQueueWaitMs != 0 {
+	if b.Placement != "gpu" || waitMs(t, b) != 0 {
 		t.Fatalf("cold start: want gpu with wait 0, got %+v", b)
 	}
-	t.Logf("    placed %s, gpu_queue_wait_ms %d: an empty pool may be about to fill (G1)", b.Placement, b.GPUQueueWaitMs)
+	t.Logf("    placed %s, gpu_queue_wait_ms %d: an empty pool may be about to fill (G1)", b.Placement, waitMs(t, b))
 }

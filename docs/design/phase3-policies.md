@@ -164,6 +164,21 @@ A fresh agent wrote 40 pure subtests (`TestPolicySpec` in `scheduler/crosscheck/
 
 `BuildView.QueueWaitS` on reconsider is step 3's wiring: the host will call `ReplayQueue` once per tick and read each queued build's start (and each local build's would-be wait) from it.
 
+### Cross-check of step 2, the estimator (2026-10-20)
+
+A fresh agent wrote 44 subtests (`TestEstimatorSpec`, 33 pure; `TestEstimatorDB`, 11 against Postgres and the API; saved as `test-logs/phase3/step2-crosscheck-estimator.log`) from the docs and `go doc` alone. 43 passed first time — every fluid-sharing shape by hand (joins, departures, a worker's second claim joining mid-transfer), the claim mirror under mixed memory, a four-worker six-job scenario replayed entirely by hand, the snapshot's claim order agreed with by a real claim, and the per-node term visible end to end through `gpu_queue_wait_ms`. One failed, and seven gaps were pinned. Triage:
+
+| Finding | Kind | Resolution |
+| --- | --- | --- |
+| **F1: a duplicate submit's response carried `gpu_queue_wait_ms: 0`** where decision 13 says absent — the field was a plain `int64`, which Go always serializes, so "no estimate was made" was indistinguishable from "a worker is free right now". | Implementation bug | The field is now `*int64` with omitempty: nil (omitted) on a duplicate, a real pointer otherwise, so the empty pool's genuine 0 still serializes. Pinned in the implementer's test too. |
+| **G1: "at priority 0" vs "behind every queued job"** — the two readings differ if a queued job had negative priority (the new job would go ahead of it). | Spec gap | `NewJobWait`'s doc now says literally: priority 0, Seq after everyone; every shipped policy writes non-negative priorities. |
+| **G2: the simultaneous-free tiebreak's direction** was unstated; under mixed memory it changes estimates. | Spec gap | Pinned: ascending worker ID (any one coherent order approximates the real claim's race). |
+| **G3: duplicate BuildIDs** in `ReplayQueue`'s input were undefined. | Spec gap | Doc: BuildIDs are the idempotency key and expected unique; duplicates collapse to one entry, value unspecified. |
+| **G4: a worker's node changing between heartbeats.** | Spec gap | Doc on `Heartbeat`: the latest heartbeat wins. |
+| **G5: a fits-nowhere submit lands local while reporting -1.** | Spec gap | The response doc now says the field describes the GPU path whatever placement was chosen. |
+| **G6: the millisecond rounding** was unspecified (observed: truncation). | Spec gap | Doc: whole milliseconds, truncated. |
+| **G7: a zero-transfer job** did not count toward the link's k; plausible, undocumented. | Spec gap | Doc on `ReplayQueue`: a job moving no bytes takes no share of the link. |
+
 ## What the published build-time figures change here (2026-10-06)
 
 The Phase 1 doc's "Cost model v0 against published numbers" section collects the data: CPU HNSW builds of 8 minutes for 1M x 128 on 8 vCPUs and 2.6 hours for 10M; GPU builds 10 to 50x faster for the build step; 61 GB of vectors to move for 10M x 1536; 24 GB GPUs that hold 5M x 1536 but not 10M.

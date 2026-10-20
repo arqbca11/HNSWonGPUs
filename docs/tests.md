@@ -515,3 +515,53 @@ Written from the docs and `go doc` alone; found bug 11 and the F2–F6 / probe f
 | TestHeartbeatAndPoolState (store, extended) | Heartbeats now carry a node. | `workers.node` round-trips through Heartbeat and ListWorkers (decision 11). |
 | TestSubmitQueueWaitEstimate (api) | Four submits against one worker: empty queue, one ahead, one leased plus one queued, and a build too big for the pool. | `gpu_queue_wait_ms` reads 0, one GPU total, between one and two totals (the lease's elapsed time already counts), and -1 for fits-nowhere. |
 | TestSubmitQueueWaitColdStart (api) | A submit with no workers at all. | The wait stays 0 and always_gpu still queues: the cold-start rule is the host's (decision 13, G1). |
+
+## Phase 3, step 2, cross-check of the estimator (Go, `scheduler/crosscheck`, `TestEstimatorSpec` pure and `TestEstimatorDB` with the database). Log: `phase3/step2-crosscheck-estimator.log`
+
+Written from the docs and `go doc` alone; found F1 (the duplicate response's `gpu_queue_wait_ms`) and the G1–G7 gaps triaged in the design doc.
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| EstimatorSpec/RoadmapExample | w1 busy 4 s, w2 free, jobs of 6 s and 3 s, then a new build. | The roadmap's worked example: 0–6 on w2, 4–7 on w1, the next build waits 6. |
+| EstimatorSpec/TwoTransfersOneNodeShareTheLink | Two idle workers on one node take two 10 s transfers. | Each runs at half the link; both finish at 20 (decision 12's own example). |
+| EstimatorSpec/ThreeTransfersOneNodeEachAtOneThird | Three workers on one node, three 6 s transfers. | k transfers each run at 1/k: all finish at 18. |
+| EstimatorSpec/UnequalConcurrentTransfersRateRisesWhenOneEnds | Transfers of 4 s and 10 s start together on one node. | The short one ends at 8; the long one speeds up and ends at 14; a build does not hold the link. |
+| EstimatorSpec/StaggeredJoinSlowsTheEarlierTransfer | A second worker on the node frees at 4 s and joins mid-transfer. | The earlier transfer slows from the join (16), the later ends at 20. |
+| EstimatorSpec/SeparateNodesRunAtFullRate | Two workers on different nodes. | Sharing is per node; each transfer runs at full rate. |
+| EstimatorSpec/EmptyNodeIsAPrivateLink | Workers with unknown node, alone and mixed with a shared node. | An unknown node never invents contention (decision 11). |
+| EstimatorSpec/BusyWorkerIsOpaqueNoContention | A busy worker and an idle one on the same node. | An in-flight build's transfer does not slow a new claim. |
+| EstimatorSpec/TransferOfLaterJobOnSameWorkerSharesWithNeighbour | A worker finishes and claims a second job while its neighbour is still transferring. | The second claim shares the link from its claim moment. |
+| EstimatorSpec/SmallIdleWorkerDoesNotWaitBehindBigJob | A big job queued first, only a small worker idle. | The small worker takes the job it fits; the big job waits for the big worker. |
+| EstimatorSpec/PriorityOrderUnderPerWorkerMemoryFilter | Three jobs, a small idle worker and a big busy one. | Each free worker takes the highest-priority job that fits its own memory. |
+| EstimatorSpec/PriorityDescThenSeqTiebreak | Jobs given out of order with a priority tie. | Order is priority descending, then enqueue order. |
+| EstimatorSpec/SimultaneousFreeResolvedByWorkerID | Two idle workers of different memory and a job only one can take. | Ties between workers are resolved one coherent way (ascending ID, G2), the same for any input order. |
+| EstimatorSpec/MemoryExactlyEqualFits | Jobs needing exactly the worker's memory and one byte more. | Equal fits; one byte over is +Inf. |
+| EstimatorSpec/FitsNowhereIsInfAndDoesNotBlock | A huge job at top priority ahead of small ones. | The huge job is +Inf and the rest run as if it were absent. |
+| EstimatorSpec/EmptyPoolEveryJobInf | A queue and no workers. | Every job is +Inf and still has an entry. |
+| EstimatorSpec/EmptyQueueEmptyMap | A worker and no queue. | The result is empty. |
+| EstimatorSpec/EveryBuildIDGetsAnEstimate | A queue that includes a job fitting nowhere. | Every queued build gets an estimate. |
+| EstimatorSpec/ZeroTransferAndZeroBuild | A zero-cost job ahead of a normal one on one worker. | It finishes at its start and frees the worker at once. |
+| EstimatorSpec/ZeroTransferDoesNotSlowANeighbour | A no-transfer job and a 10 s transfer on one node. | A job with no transfer takes no share of the link (G7 pinned). |
+| EstimatorSpec/ManyJobsOneWorkerSerialSum | Four equal jobs on one worker busy 2 s. | Starts and finishes are the running sum. |
+| EstimatorSpec/BusyRemainingTie | Two workers freeing at the same moment, on separate and on shared nodes. | Both claim at once; on a shared node they split the link. |
+| EstimatorSpec/DeterministicAcrossRepeatedCalls | The same rich input 20 times. | Identical answers (invariant 8). |
+| EstimatorSpec/PermutedInputsSameAnswer | 24 reorderings of the workers and the queue. | Input order never changes the answer, for ReplayQueue and NewJobWait. |
+| EstimatorSpec/InputsNotMutated | Both functions called on copies. | The caller's slices are unchanged. |
+| EstimatorSpec/RichScenarioByHand | Four workers of mixed memory and node, six jobs. | Every start and finish matches a hand replay of the claim and link sharing. |
+| EstimatorSpec/NewJobWaitJoinsAtPriorityZeroBehindEveryone | A new job passed in with a huge priority. | It still joins at the back at priority 0 (decision 13). |
+| EstimatorSpec/NewJobWaitExactForFCFS | An all-priority-0 queue on two workers sharing a node. | NewJobWait equals the full replay's start for the appended job. |
+| EstimatorSpec/NewJobWaitEmptyPoolIsInf | No workers. | +Inf; the host owns the cold-start 0. |
+| EstimatorSpec/NewJobWaitFitsNowhereIsInf | A new job larger than the only worker. | +Inf. |
+| EstimatorSpec/NewJobWaitIdlePoolIsZeroBusyPoolIsRemaining | Empty queue with an idle pool, then with a busy one. | 0 when idle, otherwise the earliest free time. |
+| EstimatorSpec/NewJobWaitRespectsMemoryFilter | A big new job, a small idle worker and a big busy one. | It waits for the worker it fits, not the idle one. |
+| EstimatorSpec/NewJobWaitBehindNegativePriorityProbe | A queued job at priority -5. | Records that the new job goes ahead of negative priorities (G1 probe). |
+| EstimatorDB/HeartbeatRoundTripsNode | Workers heartbeat with a node and with "", then one changes node. | Node is stored, read back by ListWorkers, the snapshot and GET /workers, and updated by the latest heartbeat (G4). |
+| EstimatorDB/SnapshotExcludesStaleWorkers | One worker's heartbeat is older than maxAge. | The snapshot lists only live workers. |
+| EstimatorDB/SnapshotQueuedInClaimOrderAndLeased | Five builds of mixed priority and placement, then two claims. | Queued comes in claim order with local builds left out, the real claim agrees, leased rows carry owner and time since claim. |
+| EstimatorDB/APIQueueWaitEmptyPoolIsZero | Submit with no workers. | `gpu_queue_wait_ms` is present and 0. |
+| EstimatorDB/APIQueueWaitFitsNowhereIsMinusOne | Submit larger than the only worker's memory. | `gpu_queue_wait_ms` is -1. |
+| EstimatorDB/APIQueueWaitSameNodeSharesLink | Two idle workers on one node, three equal submits. | The third waits 2T+B: link sharing reaches the API. |
+| EstimatorDB/APIQueueWaitSeparateNodesFullRate | The same on separate nodes. | The third waits T+B. |
+| EstimatorDB/APIQueueWaitUnknownNodesPrivateLinks | The same with unknown nodes. | The third waits T+B: unknown nodes do not contend. |
+| EstimatorDB/APIQueueWaitCountsLeasedRemaining | One worker holds a lease, then two more submits. | A leased build counts as its GPU total minus time since claim. |
+| EstimatorDB/APIDuplicateOmitsQueueWait | Resubmit an existing build. | The duplicate response leaves out `gpu_queue_wait_ms` (found F1: a plain int64 served 0 for both meanings). |

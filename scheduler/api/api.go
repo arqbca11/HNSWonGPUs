@@ -190,11 +190,14 @@ type SubmitBuildResponse struct {
 	CPUBuildMs int64 `json:"cpu_build_ms"`
 	GPUTotalMs int64 `json:"gpu_total_ms"`
 	// The step 2 queue replay: how long a newly queued build would wait before
-	// a worker starts it (decision 13). 0 with an empty pool (the cold-start
-	// rule); -1 when no live worker's memory could ever take this build.
-	// Absent on a duplicate: the estimate describes this moment's queue, and a
-	// duplicate's answer is the original decision, not a fresh estimate.
-	GPUQueueWaitMs int64 `json:"gpu_queue_wait_ms"`
+	// a worker starts it (decision 13), in whole milliseconds (truncated). It
+	// describes the GPU path whatever placement was chosen. 0 with an empty
+	// pool (the cold-start rule); -1 when no live worker's memory could ever
+	// take this build. A pointer so a duplicate can omit it entirely (its
+	// answer is the original decision, not a fresh estimate) while an empty
+	// pool's genuine 0 still serializes — the cross-check caught the plain
+	// int64 serving 0 for both.
+	GPUQueueWaitMs *int64 `json:"gpu_queue_wait_ms,omitempty"`
 }
 
 func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
@@ -264,10 +267,11 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 	}
 	dec := s.pol.Decide(policy.Input{Build: spec, Est: est,
 		Pool: policy.PoolState{LiveWorkers: pool.LiveWorkers, LargestMem: pool.LargestMem, QueueWaitS: queueWaitS}})
-	resp.GPUQueueWaitMs = int64(queueWaitS * 1000)
+	waitMs := int64(queueWaitS * 1000)
 	if math.IsInf(queueWaitS, 1) {
-		resp.GPUQueueWaitMs = -1
+		waitMs = -1
 	}
+	resp.GPUQueueWaitMs = &waitMs
 
 	inserted, err := s.st.SubmitBuild(ctx, store.Build{
 		BuildID: buildID, RoundID: req.RoundID, ShardID: req.ShardID, NVectors: req.NVectors,

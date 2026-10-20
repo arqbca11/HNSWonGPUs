@@ -54,8 +54,12 @@ type JobEstimate struct {
 
 // ReplayQueue replays the whole queue over the pool and returns an estimate
 // per BuildID. It is deterministic: input order never matters (jobs are
-// sorted by priority DESC then Seq; simultaneous worker frees are resolved by
-// worker ID).
+// sorted by priority DESC then Seq; simultaneous worker frees are resolved in
+// ascending worker ID — the real claim is a race, so any one coherent order
+// is an approximation, and this one is pinned). BuildIDs are expected unique,
+// as they are the system's idempotency key; duplicates collapse into one map
+// entry with an unspecified value. A job whose TransferS is zero (or
+// negative) moves no bytes and takes no share of its node's link.
 func ReplayQueue(workers []WorkerView, queue []QueuedJob) map[string]JobEstimate {
 	out := make(map[string]JobEstimate, len(queue))
 	if len(workers) == 0 {
@@ -266,10 +270,13 @@ func ReplayQueue(workers []WorkerView, queue []QueuedJob) map[string]JobEstimate
 
 // NewJobWait is the submit-time question (decision 13): how long would this
 // not-yet-queued build wait before a worker starts it? The build joins at
-// priority 0 behind every queued job — exact for the FCFS baseline, an upper
-// bound for a policy that would grant it higher priority. With an empty pool
-// it returns +Inf; the host applies the cold-start rule (keep 0) itself,
-// because "no workers yet" is the host's knowledge, not the replay's.
+// literally priority 0, with a Seq after every queued job — so it sits behind
+// the whole queue when priorities are non-negative, which every shipped
+// policy's are; a hypothetical negative-priority job would rank below it.
+// Exact for the FCFS baseline, an upper bound for a policy that would grant
+// the build higher priority. With an empty pool it returns +Inf; the host
+// applies the cold-start rule (keep 0) itself, because "no workers yet" is
+// the host's knowledge, not the replay's.
 func NewJobWait(workers []WorkerView, queue []QueuedJob, job QueuedJob) float64 {
 	job.Priority = 0
 	job.Seq = len(queue)

@@ -1,0 +1,344 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-20 01:50:31 PDT
+commit:    0bae828 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-88771, port 38729)
+go:        go test -p 1 -count=1 -v -run TestEstimatorSpec|TestEstimatorDB ./scheduler/crosscheck/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestEstimatorDB
+=== RUN   TestEstimatorDB/HeartbeatRoundTripsNode
+    estimator_db_test.go:68: spec: decision 11: workers.node reported in the heartbeat, '' = unknown; go doc Store.Heartbeat
+    estimator_db_test.go:76: [db] workers: w-a node="kind-gpu-1" mem=200
+    estimator_db_test.go:76: [db] workers: w-b node="" mem=100
+    estimator_db_test.go:83: [db] snapshot workers: [{WorkerID:w-a Node:kind-gpu-1 MemBytes:200} {WorkerID:w-b Node: MemBytes:100}]
+    estimator_db_test.go:95: [db] after w-a re-heartbeats with node kind-gpu-2: [{WorkerID:w-a Node:kind-gpu-2 MemBytes:200} {WorkerID:w-b Node: MemBytes:100}]
+    estimator_db_test.go:101: GET /workers -> 200 {"pool":{"live_workers":2,"largest_mem_bytes":200},"workers":[{"worker_id":"w-a","node":"kind-gpu-2","mem_bytes":200,"last_seen":"2026-10-20T01:50:33.853136-07:00","registered_at":"2026-10-20T01:50:33.849611-07:00","live":true},{"worker_id":"w-b","node":"","mem_bytes":100,"last_seen":"2026-10-20T01:50:33.849159-07:00","registered_at":"2026-10-20T01:50:33.849159-07:00","live":true}]}
+=== RUN   TestEstimatorDB/SnapshotExcludesStaleWorkers
+    estimator_db_test.go:109: spec: go doc QueueSnapshot.Workers 'live within maxAge'
+    estimator_db_test.go:115: w-old heartbeat 400 ms before w-new; snapshot(maxAge 200 ms).Workers = [{WorkerID:w-new Node:n MemBytes:100}]; expected only w-new
+=== RUN   TestEstimatorDB/SnapshotQueuedInClaimOrderAndLeased
+    estimator_db_test.go:123: spec: go doc QueueSnapshot: Queued in claim order priority DESC, enqueued_at; Leased by build_id; local builds are not GPU-queued
+    estimator_db_test.go:138: submitted 0:1 placement=gpu priority=1 mem=10000
+    estimator_db_test.go:138: submitted 1:1 placement=gpu priority=5 mem=20000
+    estimator_db_test.go:138: submitted 2:1 placement=gpu priority=5 mem=30000
+    estimator_db_test.go:138: submitted 3:1 placement=gpu priority=0 mem=40000
+    estimator_db_test.go:138: submitted 4:1 placement=local priority=9 mem=50000
+    estimator_db_test.go:144: [db] snapshot queued: [1:1 2:1 0:1 3:1]
+    estimator_db_test.go:163: w1 claimed 1:1 attempt 1; the snapshot's first queued row was 1:1 (the claim and the snapshot must agree)
+    estimator_db_test.go:170: [db] after claim + 300 ms: queued [2:1 0:1 3:1] leased [{BuildID:1:1 LeaseOwner:w1 NVectors:2000 Dim:64 ElapsedS:0.30252}]
+    estimator_db_test.go:188: w-small (cap 15000) claimed 0:1: head 2:1 needs 30000, next 0:1 needs 10000 (decision 12 mirrors this filter)
+    estimator_db_test.go:194: [db] leased now [{BuildID:0:1 LeaseOwner:w-small NVectors:1000 Dim:64 ElapsedS:0.00111} {BuildID:1:1 LeaseOwner:w1 NVectors:2000 Dim:64 ElapsedS:0.304566}] (by build_id)
+=== RUN   TestEstimatorDB/APIQueueWaitEmptyPoolIsZero
+    estimator_db_test.go:202: spec: decision 13 / go doc SubmitBuildResponse: '0 with an empty pool (the cold-start rule)'
+    estimator_db_test.go:204: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567587424 (key present: true)
+=== RUN   TestEstimatorDB/APIQueueWaitFitsNowhereIsMinusOne
+    estimator_db_test.go:215: spec: decision 13 '-1 for +Inf'; go doc: '-1 when no live worker's memory could ever take this build'
+    estimator_db_test.go:218: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=local created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567256496 (key present: true)
+    estimator_db_test.go:219: worker mem 1 byte, build needs 614400000 -> expected -1
+=== RUN   TestEstimatorDB/APIQueueWaitSameNodeSharesLink
+    estimator_db_test.go:248: spec: decisions 11, 12, 13: two builds claimed together on one node share its link, so both finish at 2T+B and the third waits that long
+    estimator_db_test.go:229: workers w1 node="nodeA" w2 node="nodeA", both idle, mem 9830400000; each build: transfer T=3104.000 ms, GPU build B=13633.426 ms, mem 614400000
+    estimator_db_test.go:231: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565084864 (key present: true)
+    estimator_db_test.go:232: POST /builds shard 1 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565085320 (key present: true)
+    estimator_db_test.go:233: POST /builds shard 2 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565085680 (key present: true)
+    estimator_db_test.go:241: third build: gpu_queue_wait_ms = 19841; hand: 2T + B = 19841.426 ms
+=== RUN   TestEstimatorDB/APIQueueWaitSeparateNodesFullRate
+    estimator_db_test.go:253: spec: decisions 11, 12, 13: separate nodes, each build finishes at T+B
+    estimator_db_test.go:229: workers w1 node="nodeA" w2 node="nodeB", both idle, mem 9830400000; each build: transfer T=3104.000 ms, GPU build B=13633.426 ms, mem 614400000
+    estimator_db_test.go:231: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565544912 (key present: true)
+    estimator_db_test.go:232: POST /builds shard 1 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565088272 (key present: true)
+    estimator_db_test.go:233: POST /builds shard 2 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567255744 (key present: true)
+    estimator_db_test.go:241: third build: gpu_queue_wait_ms = 16737; hand: T + B = 16737.426 ms
+=== RUN   TestEstimatorDB/APIQueueWaitUnknownNodesPrivateLinks
+    estimator_db_test.go:258: spec: decision 11: node '' = a private link per worker
+    estimator_db_test.go:229: workers w1 node="" w2 node="", both idle, mem 9830400000; each build: transfer T=3104.000 ms, GPU build B=13633.426 ms, mem 614400000
+    estimator_db_test.go:231: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565089888 (key present: true)
+    estimator_db_test.go:232: POST /builds shard 1 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565546128 (key present: true)
+    estimator_db_test.go:233: POST /builds shard 2 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567258176 (key present: true)
+    estimator_db_test.go:241: third build: gpu_queue_wait_ms = 16737; hand: T + B (unknown nodes do not contend) = 16737.426 ms
+=== RUN   TestEstimatorDB/APIQueueWaitCountsLeasedRemaining
+    estimator_db_test.go:264: spec: step 2 notes 'a leased build's remaining time is its GPU total minus the time since its claim, floored at 0'; decision 13 joins at the back
+    estimator_db_test.go:267: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565090720 (key present: true)
+    estimator_db_test.go:272: w1 claimed 0:7 (attempt 1)
+    estimator_db_test.go:274: POST /builds shard 1 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565091144 (key present: true)
+    estimator_db_test.go:277: hand: w1 busy for GPU total 16737.426 ms minus time since claim (< 3.2 ms) -> wait in [16733.2, 16738.4]; response's own gpu_total_ms 16737
+    estimator_db_test.go:282: POST /builds shard 2 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995565091592 (key present: true)
+    estimator_db_test.go:284: hand: the third waits for the leased build's remainder plus the queued second build's T+B: about 33475 ms
+=== RUN   TestEstimatorDB/APIDuplicateOmitsQueueWait
+    estimator_db_test.go:292: spec: decision 13 'absent on a duplicate, whose answer is the original decision'; go doc SubmitBuildResponse 'Absent on a duplicate'
+    estimator_db_test.go:295: POST /builds shard 0 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567260560 (key present: true)
+    estimator_db_test.go:296: POST /builds shard 1 (n=50000 dim=1536) -> 201 placement=gpu created=true gpu_total_ms=16737 gpu_queue_wait_ms=102995567585592 (key present: true)
+    estimator_db_test.go:297: POST /builds shard 0 (n=50000 dim=1536) -> 200 placement=gpu created=false gpu_total_ms=16737 gpu_queue_wait_ms=0 (key present: false)
+    estimator_db_test.go:298: first: created=true body={"build_id":"0:8","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":614400000,"created":true,"cpu_build_ms":116334,"gpu_total_ms":16737,"gpu_queue_wait_ms":0}
+    estimator_db_test.go:299: duplicate: code=200 created=false body={"build_id":"0:8","placement":"gpu","priority":0,"reason":"duplicate submit; existing decision returned","mem_bytes":614400000,"created":false,"cpu_build_ms":116334,"gpu_total_ms":16737}
+    estimator_db_test.go:307: [db] after duplicate: build_id=0:8 placement=gpu state=queued attempt=0 priority=0 lease_owner=<nil> started_at=<nil> finished_at=<nil>
+--- PASS: TestEstimatorDB (0.97s)
+    --- PASS: TestEstimatorDB/HeartbeatRoundTripsNode (0.05s)
+    --- PASS: TestEstimatorDB/SnapshotExcludesStaleWorkers (0.42s)
+    --- PASS: TestEstimatorDB/SnapshotQueuedInClaimOrderAndLeased (0.37s)
+    --- PASS: TestEstimatorDB/APIQueueWaitEmptyPoolIsZero (0.01s)
+    --- PASS: TestEstimatorDB/APIQueueWaitFitsNowhereIsMinusOne (0.01s)
+    --- PASS: TestEstimatorDB/APIQueueWaitSameNodeSharesLink (0.02s)
+    --- PASS: TestEstimatorDB/APIQueueWaitSeparateNodesFullRate (0.02s)
+    --- PASS: TestEstimatorDB/APIQueueWaitUnknownNodesPrivateLinks (0.03s)
+    --- PASS: TestEstimatorDB/APIQueueWaitCountsLeasedRemaining (0.02s)
+    --- PASS: TestEstimatorDB/APIDuplicateOmitsQueueWait (0.02s)
+=== RUN   TestEstimatorSpec
+=== RUN   TestEstimatorSpec/RoadmapExample
+    estimator_test.go:109: spec: design doc flow 'Queue replay': w1 busy 4 s, w2 free; j1 6 s, j2 3 s by priority; j1->w2 done 6, j2->w1 done 7; the next build's earliest free is w2 at 6
+    estimator_test.go:112: input workers: {w1 node="n1" mem=100 busy=4s} {w2 node="n2" mem=100 busy=0s} 
+    estimator_test.go:112: input queue:   {j1 prio=2 seq=0 build=6s transfer=0s mem=1} {j2 prio=1 seq=1 build=3s transfer=0s mem=1} 
+    estimator_test.go:112: ReplayQueue -> j1:start=0 done=6 j2:start=4 done=7 
+    estimator_test.go:113: ok j1: start=0 done=6  [t=0 only w2 is free, it claims j1 (highest prio): 0+0 transfer+6 build = 6]
+    estimator_test.go:114: ok j2: start=4 done=7  [t=4 w1 frees, claims j2: 4+3 = 7]
+    estimator_test.go:116: NewJobWait(new) = 6; hand: w1 busy until 7, w2 free at 6 -> 6 (decision 13: joins behind every queued job)
+=== RUN   TestEstimatorSpec/TwoTransfersOneNodeShareTheLink
+    estimator_test.go:125: spec: decision 12 'two 10 s transfers started together both finish at 20 s'
+    estimator_test.go:128: input workers: {w1 node="nodeA" mem=100 busy=0s} {w2 node="nodeA" mem=100 busy=0s} 
+    estimator_test.go:128: input queue:   {j1 prio=0 seq=0 build=1s transfer=10s mem=1} {j2 prio=0 seq=1 build=1s transfer=10s mem=1} 
+    estimator_test.go:128: ReplayQueue -> j1:start=0 done=21 j2:start=0 done=21 
+    estimator_test.go:129: ok j1: start=0 done=21  [both at 1/2: 10 s of transfer takes 20 s, +1 s build = 21]
+    estimator_test.go:130: ok j2: start=0 done=21  [same as j1]
+=== RUN   TestEstimatorSpec/ThreeTransfersOneNodeEachAtOneThird
+    estimator_test.go:134: spec: decision 12 'k concurrent transfers each proceed at 1/k'
+    estimator_test.go:137: input workers: {w1 node="n" mem=100 busy=0s} {w2 node="n" mem=100 busy=0s} {w3 node="n" mem=100 busy=0s} 
+    estimator_test.go:137: input queue:   {a prio=0 seq=0 build=0s transfer=6s mem=1} {b prio=0 seq=1 build=0s transfer=6s mem=1} {c prio=0 seq=2 build=0s transfer=6s mem=1} 
+    estimator_test.go:137: ReplayQueue -> a:start=0 done=18 b:start=0 done=18 c:start=0 done=18 
+    estimator_test.go:139: ok a: start=0 done=18  [three at 1/3: 6 s of transfer takes 18 s, build 0]
+    estimator_test.go:139: ok b: start=0 done=18  [three at 1/3: 6 s of transfer takes 18 s, build 0]
+    estimator_test.go:139: ok c: start=0 done=18  [three at 1/3: 6 s of transfer takes 18 s, build 0]
+=== RUN   TestEstimatorSpec/UnequalConcurrentTransfersRateRisesWhenOneEnds
+    estimator_test.go:144: spec: decision 12 fluid sharing; the GPU build phase does not use the link
+    estimator_test.go:147: input workers: {w1 node="n" mem=100 busy=0s} {w2 node="n" mem=100 busy=0s} 
+    estimator_test.go:147: input queue:   {short prio=0 seq=0 build=10s transfer=4s mem=1} {long prio=0 seq=1 build=0s transfer=10s mem=1} 
+    estimator_test.go:147: ReplayQueue -> short:start=0 done=18 long:start=0 done=14 
+    estimator_test.go:148: ok short: start=0 done=18  [0..8 both at 1/2: short's 4 s done at 8; then it builds 10 s -> 18]
+    estimator_test.go:149: ok long: start=0 done=14  [0..8 long moves 4 of 10 at 1/2; from 8 it is alone at full rate, 6 more -> 14 (short's build does not hold the link)]
+=== RUN   TestEstimatorSpec/StaggeredJoinSlowsTheEarlierTransfer
+    estimator_test.go:153: spec: decision 12 fluid sharing with a join mid-transfer
+    estimator_test.go:156: input workers: {w1 node="n" mem=100 busy=0s} {w2 node="n" mem=100 busy=4s} 
+    estimator_test.go:156: input queue:   {j1 prio=2 seq=0 build=0s transfer=10s mem=1} {j2 prio=1 seq=1 build=0s transfer=10s mem=1} 
+    estimator_test.go:156: ReplayQueue -> j1:start=0 done=16 j2:start=4 done=20 
+    estimator_test.go:157: ok j1: start=0 done=16  [0..4 alone at full rate: 4 done, 6 left; from 4 at 1/2: 12 s more -> 16]
+    estimator_test.go:158: ok j2: start=4 done=20  [w2 frees at 4 and claims j2; 4..16 at 1/2 moves 6; 16..20 alone moves 4 -> 20]
+=== RUN   TestEstimatorSpec/SeparateNodesRunAtFullRate
+    estimator_test.go:162: spec: decision 11/12: sharing is per node
+    estimator_test.go:165: input workers: {w1 node="nodeA" mem=100 busy=0s} {w2 node="nodeB" mem=100 busy=0s} 
+    estimator_test.go:165: input queue:   {j1 prio=0 seq=0 build=1s transfer=10s mem=1} {j2 prio=0 seq=1 build=1s transfer=10s mem=1} 
+    estimator_test.go:165: ReplayQueue -> j1:start=0 done=11 j2:start=0 done=11 
+    estimator_test.go:166: ok j1: start=0 done=11  [own link: 10 + 1]
+    estimator_test.go:167: ok j2: start=0 done=11  [own link: 10 + 1]
+=== RUN   TestEstimatorSpec/EmptyNodeIsAPrivateLink
+    estimator_test.go:171: spec: decision 11 'The estimator gives an unknown-node worker its own private link, because unknown must not invent contention'
+    estimator_test.go:174: input workers: {w1 node="" mem=100 busy=0s} {w2 node="" mem=100 busy=0s} 
+    estimator_test.go:174: input queue:   {j1 prio=0 seq=0 build=0s transfer=10s mem=1} {j2 prio=0 seq=1 build=0s transfer=10s mem=1} 
+    estimator_test.go:174: ReplayQueue -> j1:start=0 done=10 j2:start=0 done=10 
+    estimator_test.go:175: ok j1: start=0 done=10  [both Node "": no shared link, 10 s each]
+    estimator_test.go:176: ok j2: start=0 done=10  [both Node "": no shared link, 10 s each]
+    estimator_test.go:180: input workers: {w1 node="" mem=100 busy=0s} {w2 node="nodeA" mem=100 busy=0s} {w3 node="nodeA" mem=100 busy=0s} 
+    estimator_test.go:180: input queue:   {k1 prio=0 seq=0 build=0s transfer=10s mem=1} {k2 prio=0 seq=1 build=0s transfer=10s mem=1} {k3 prio=0 seq=2 build=0s transfer=10s mem=1} 
+    estimator_test.go:180: ReplayQueue -> k1:start=0 done=10 k2:start=0 done=20 k3:start=0 done=20 
+    estimator_test.go:197: finishes: 1 at 10 (the private-link worker), 2 at 20 (two sharing nodeA); hand: exactly 1 and 2
+=== RUN   TestEstimatorSpec/BusyWorkerIsOpaqueNoContention
+    estimator_test.go:204: spec: decision 12 pinned approximation 'a busy worker is opaque (... an in-flight build's own transfer does not contend)'
+    estimator_test.go:207: input workers: {w1 node="n" mem=100 busy=5s} {w2 node="n" mem=100 busy=0s} 
+    estimator_test.go:207: input queue:   {j prio=0 seq=0 build=0s transfer=10s mem=1} 
+    estimator_test.go:207: ReplayQueue -> j:start=0 done=10 
+    estimator_test.go:208: ok j: start=0 done=10  [w2 idle claims at 0; w1's in-flight lump does not share the link: 10]
+=== RUN   TestEstimatorSpec/TransferOfLaterJobOnSameWorkerSharesWithNeighbour
+    estimator_test.go:212: spec: decision 12; a worker's second job contends with its node neighbour's transfer if they overlap
+    estimator_test.go:216: input workers: {w1 node="n" mem=100 busy=0s} {w2 node="n" mem=100 busy=0s} 
+    estimator_test.go:216: input queue:   {a prio=3 seq=0 build=0s transfer=2s mem=1} {b prio=2 seq=1 build=0s transfer=10s mem=1} {c prio=1 seq=2 build=0s transfer=2s mem=1} 
+    estimator_test.go:216: ReplayQueue -> a:start=0 done=4 b:start=0 done=14 c:start=4 done=8 
+    estimator_test.go:220: ok a: start=0 done=4  [0..4 at 1/2 moves 2]
+    estimator_test.go:221: ok c: start=4 done=8  [a's worker frees at 4; 4..8 at 1/2 moves 2]
+    estimator_test.go:222: ok b: start=0 done=14  [0..8 at 1/2 moves 4; 8..14 alone moves 6]
+=== RUN   TestEstimatorSpec/SmallIdleWorkerDoesNotWaitBehindBigJob
+    estimator_test.go:228: spec: decision 12 'a small idle worker never waits behind a big job it could never take'; textbook list scheduling would put jBig on the earliest-free (small) worker
+    estimator_test.go:231: input workers: {big node="n1" mem=100 busy=2s} {small node="n2" mem=10 busy=0s} 
+    estimator_test.go:231: input queue:   {jBig prio=10 seq=0 build=5s transfer=0s mem=50} {jSmall prio=1 seq=1 build=3s transfer=0s mem=5} 
+    estimator_test.go:231: ReplayQueue -> jBig:start=2 done=7 jSmall:start=0 done=3 
+    estimator_test.go:232: ok jSmall: start=0 done=3  [t=0 small is free, jBig (50) doesn't fit its 10, so it takes jSmall: 0+3]
+    estimator_test.go:233: ok jBig: start=2 done=7  [t=2 big frees and takes jBig: 2+5]
+=== RUN   TestEstimatorSpec/PriorityOrderUnderPerWorkerMemoryFilter
+    estimator_test.go:237: spec: decision 12: a free worker takes the highest-priority job that fits ITS memory
+    estimator_test.go:240: input workers: {big node="n1" mem=100 busy=4s} {small node="n2" mem=10 busy=0s} 
+    estimator_test.go:240: input queue:   {A prio=9 seq=0 build=2s transfer=0s mem=50} {B prio=5 seq=1 build=3s transfer=0s mem=5} {C prio=1 seq=2 build=1s transfer=0s mem=5} 
+    estimator_test.go:240: ReplayQueue -> A:start=4 done=6 B:start=0 done=3 C:start=3 done=4 
+    estimator_test.go:241: ok B: start=0 done=3  [t=0 small: A doesn't fit, highest fitting is B: 0..3]
+    estimator_test.go:242: ok C: start=3 done=4  [t=3 small free again: A still doesn't fit, takes C: 3..4]
+    estimator_test.go:243: ok A: start=4 done=6  [t=4 big frees: takes A: 4..6]
+=== RUN   TestEstimatorSpec/PriorityDescThenSeqTiebreak
+    estimator_test.go:247: spec: go doc ReplayQueue 'jobs are sorted by priority DESC then Seq'; QueuedJob.Seq 'the claim's tiebreak within equal priority'
+    estimator_test.go:251: input workers: {w node="n" mem=100 busy=0s} 
+    estimator_test.go:251: input queue:   {A prio=1 seq=0 build=1s transfer=0s mem=1} {B prio=5 seq=2 build=1s transfer=0s mem=1} {C prio=5 seq=1 build=1s transfer=0s mem=1} 
+    estimator_test.go:251: ReplayQueue -> A:start=2 done=3 B:start=1 done=2 C:start=0 done=1 
+    estimator_test.go:252: ok C: start=0 done=1  [priority 5 seq 1 is first]
+    estimator_test.go:253: ok B: start=1 done=2  [priority 5 seq 2 second]
+    estimator_test.go:254: ok A: start=2 done=3  [priority 1 last even though seq 0]
+=== RUN   TestEstimatorSpec/SimultaneousFreeResolvedByWorkerID
+    estimator_test.go:258: spec: go doc ReplayQueue 'simultaneous worker frees are resolved by worker ID' (direction unstated; the result must be one coherent outcome and independent of input order)
+    estimator_test.go:261: input workers: {a node="n1" mem=100 busy=0s} {b node="n2" mem=10 busy=0s} 
+    estimator_test.go:261: input queue:   {j1 prio=10 seq=0 build=10s transfer=0s mem=5} {j2 prio=5 seq=1 build=1s transfer=0s mem=50} 
+    estimator_test.go:261: ReplayQueue -> j1:start=0 done=10 j2:start=10 done=11 
+    estimator_test.go:267: outcome: ascending ID order ('a' claims first): j1 on a 0..10, j2 waits for a: 10..11
+    estimator_test.go:273: ok j1: start=0 done=10  [j1 starts at 0 either way]
+=== RUN   TestEstimatorSpec/MemoryExactlyEqualFits
+    estimator_test.go:281: spec: decision 12 'fits its memory'; a job needing exactly the worker's capacity fits (claim filter mem_bytes <= cap)
+    estimator_test.go:284: input workers: {w node="n" mem=64 busy=0s} 
+    estimator_test.go:284: input queue:   {eq prio=0 seq=0 build=2s transfer=1s mem=64} {over prio=0 seq=1 build=2s transfer=1s mem=65} 
+    estimator_test.go:284: ReplayQueue -> eq:start=0 done=3 over:start=+Inf done=+Inf 
+    estimator_test.go:285: ok eq: start=0 done=3  [64 <= 64 fits: 0 + 1 transfer + 2 build]
+    estimator_test.go:286: ok over: start=+Inf done=+Inf  [65 > 64 fits nowhere: +Inf (decision 12)]
+=== RUN   TestEstimatorSpec/FitsNowhereIsInfAndDoesNotBlock
+    estimator_test.go:290: spec: decision 12 'A job that fits no live worker estimates +Inf'; JobEstimate 'Both are +Inf for a job that fits no worker'
+    estimator_test.go:293: input workers: {w1 node="n" mem=10 busy=0s} {w2 node="n" mem=20 busy=1s} 
+    estimator_test.go:293: input queue:   {huge prio=100 seq=0 build=1s transfer=1s mem=1000} {ok1 prio=1 seq=1 build=2s transfer=0s mem=5} {ok2 prio=0 seq=2 build=2s transfer=0s mem=15} 
+    estimator_test.go:293: ReplayQueue -> huge:start=+Inf done=+Inf ok1:start=0 done=2 ok2:start=1 done=3 
+    estimator_test.go:294: ok huge: start=+Inf done=+Inf  [1000 exceeds both 10 and 20]
+    estimator_test.go:295: ok ok1: start=0 done=2  [w1 free at 0; huge is skipped, ok1 (5<=10) next by priority: 0..2]
+    estimator_test.go:296: ok ok2: start=1 done=3  [w2 frees at 1; ok2 (15<=20): 1..3 (does not wait behind huge)]
+=== RUN   TestEstimatorSpec/EmptyPoolEveryJobInf
+    estimator_test.go:300: spec: decision 12/13: with no workers no job fits any live worker -> +Inf; go doc NewJobWait 'With an empty pool it returns +Inf'
+    estimator_test.go:302: input workers: 
+    estimator_test.go:302: input queue:   {a prio=1 seq=0 build=1s transfer=1s mem=1} {b prio=0 seq=1 build=0s transfer=0s mem=0} 
+    estimator_test.go:302: ReplayQueue -> a:start=+Inf done=+Inf b:start=+Inf done=+Inf 
+    estimator_test.go:303: ok a: start=+Inf done=+Inf  [no worker]
+    estimator_test.go:304: ok b: start=+Inf done=+Inf  [no worker, even a zero-size job]
+=== RUN   TestEstimatorSpec/EmptyQueueEmptyMap
+    estimator_test.go:312: ReplayQueue(1 worker, nil queue) -> map[] (len 0); expected empty
+=== RUN   TestEstimatorSpec/EveryBuildIDGetsAnEstimate
+    estimator_test.go:319: spec: go doc ReplayQueue 'returns an estimate per BuildID'
+    estimator_test.go:322: input workers: {w node="n" mem=10 busy=0s} 
+    estimator_test.go:322: input queue:   {a prio=0 seq=0 build=1s transfer=0s mem=1} {b prio=0 seq=1 build=1s transfer=0s mem=100} {c prio=0 seq=2 build=1s transfer=0s mem=1} 
+    estimator_test.go:322: ReplayQueue -> a:start=0 done=1 b:start=+Inf done=+Inf c:start=1 done=2 
+=== RUN   TestEstimatorSpec/ZeroTransferAndZeroBuild
+    estimator_test.go:333: input workers: {w node="n" mem=100 busy=0s} 
+    estimator_test.go:333: input queue:   {zero prio=2 seq=0 build=0s transfer=0s mem=1} {next prio=1 seq=1 build=3s transfer=2s mem=1} 
+    estimator_test.go:333: ReplayQueue -> zero:start=0 done=0 next:start=0 done=5 
+    estimator_test.go:334: ok zero: start=0 done=0  [0 transfer + 0 build: done at its start]
+    estimator_test.go:335: ok next: start=0 done=5  [the worker is free again at 0: 0 + 2 transfer + 3 build]
+=== RUN   TestEstimatorSpec/ZeroTransferDoesNotSlowANeighbour
+    estimator_test.go:341: input workers: {w1 node="n" mem=100 busy=0s} {w2 node="n" mem=100 busy=0s} 
+    estimator_test.go:341: input queue:   {nolink prio=1 seq=0 build=5s transfer=0s mem=1} {link prio=0 seq=1 build=0s transfer=10s mem=1} 
+    estimator_test.go:341: ReplayQueue -> nolink:start=0 done=5 link:start=0 done=10 
+    estimator_test.go:342: ok nolink: start=0 done=5  [no transfer: just the 5 s build]
+    estimator_test.go:343: ok link: start=0 done=10  [the only transfer on the node: full rate, 10]
+=== RUN   TestEstimatorSpec/ManyJobsOneWorkerSerialSum
+    estimator_test.go:352: input workers: {w node="n" mem=100 busy=2s} 
+    estimator_test.go:352: input queue:   {j0 prio=0 seq=0 build=2s transfer=1s mem=1} {j1 prio=0 seq=1 build=2s transfer=1s mem=1} {j2 prio=0 seq=2 build=2s transfer=1s mem=1} {j3 prio=0 seq=3 build=2s transfer=1s mem=1} 
+    estimator_test.go:352: ReplayQueue -> j0:start=2 done=5 j1:start=5 done=8 j2:start=8 done=11 j3:start=11 done=14 
+    estimator_test.go:355: ok j0: start=2 done=5  [busy 2, then 0 earlier jobs of 1+2 = 3 s each]
+    estimator_test.go:355: ok j1: start=5 done=8  [busy 2, then 1 earlier jobs of 1+2 = 3 s each]
+    estimator_test.go:355: ok j2: start=8 done=11  [busy 2, then 2 earlier jobs of 1+2 = 3 s each]
+    estimator_test.go:355: ok j3: start=11 done=14  [busy 2, then 3 earlier jobs of 1+2 = 3 s each]
+=== RUN   TestEstimatorSpec/BusyRemainingTie
+    estimator_test.go:362: input workers: {w1 node="a" mem=100 busy=3s} {w2 node="b" mem=100 busy=3s} 
+    estimator_test.go:362: input queue:   {x prio=1 seq=0 build=1s transfer=0s mem=1} {y prio=0 seq=1 build=1s transfer=0s mem=1} 
+    estimator_test.go:362: ReplayQueue -> x:start=3 done=4 y:start=3 done=4 
+    estimator_test.go:363: ok x: start=3 done=4  [both free at 3: each takes one]
+    estimator_test.go:364: ok y: start=3 done=4  [both free at 3: each takes one]
+    estimator_test.go:368: input workers: {w1 node="n" mem=100 busy=3s} {w2 node="n" mem=100 busy=3s} 
+    estimator_test.go:368: input queue:   {x prio=1 seq=0 build=1s transfer=2s mem=1} {y prio=0 seq=1 build=1s transfer=2s mem=1} 
+    estimator_test.go:368: ReplayQueue -> x:start=3 done=8 y:start=3 done=8 
+    estimator_test.go:369: ok x: start=3 done=8  [same node, both claim at 3: 2 s transfer at 1/2 = 4 -> 7, +1 build = 8]
+    estimator_test.go:370: ok y: start=3 done=8  [same as x]
+=== RUN   TestEstimatorSpec/DeterministicAcrossRepeatedCalls
+    estimator_test.go:382: spec: invariant 8 (pure), go doc ReplayQueue 'It is deterministic'
+    estimator_test.go:383: input workers: {w1 node="n1" mem=100 busy=1.5s} {w2 node="n1" mem=30 busy=0s} {w3 node="" mem=100 busy=0.5s} {w4 node="n2" mem=10 busy=0s} 
+    estimator_test.go:383: input queue:   {a prio=3 seq=0 build=4s transfer=2s mem=80} {b prio=3 seq=1 build=1s transfer=5s mem=20} {c prio=1 seq=2 build=2s transfer=1s mem=5} {d prio=7 seq=3 build=3s transfer=3s mem=30} {e prio=0 seq=4 build=1s transfer=1s mem=500} {f prio=1 seq=5 build=0.5s transfer=4s mem=10} 
+    estimator_test.go:383: ReplayQueue -> a:start=0.5 done=6.5 b:start=1.5 done=9 c:start=0 done=3 d:start=0 done=7.5 e:start=+Inf done=+Inf f:start=3 done=7.5 
+    estimator_test.go:389: 20 repeat calls identical
+=== RUN   TestEstimatorSpec/PermutedInputsSameAnswer
+    estimator_test.go:393: spec: go doc ReplayQueue 'input order never matters'
+    estimator_test.go:395: base: a:start=0.5 done=6.5 b:start=1.5 done=9 c:start=0 done=3 d:start=0 done=7.5 e:start=+Inf done=+Inf f:start=3 done=7.5 
+    estimator_test.go:412: 24 permutations, all identical to base
+=== RUN   TestEstimatorSpec/InputsNotMutated
+    estimator_test.go:424: spec: invariant 8 (pure functions of the state passed in)
+    estimator_test.go:431: worker and queue slices unchanged after both calls
+=== RUN   TestEstimatorSpec/RichScenarioByHand
+    estimator_test.go:436: a mixed case, every number by hand (decisions 11, 12)
+    estimator_test.go:437: input workers: {w1 node="n1" mem=100 busy=1.5s} {w2 node="n1" mem=30 busy=0s} {w3 node="" mem=100 busy=0.5s} {w4 node="n2" mem=10 busy=0s} 
+    estimator_test.go:437: input queue:   {a prio=3 seq=0 build=4s transfer=2s mem=80} {b prio=3 seq=1 build=1s transfer=5s mem=20} {c prio=1 seq=2 build=2s transfer=1s mem=5} {d prio=7 seq=3 build=3s transfer=3s mem=30} {e prio=0 seq=4 build=1s transfer=1s mem=500} {f prio=1 seq=5 build=0.5s transfer=4s mem=10} 
+    estimator_test.go:437: ReplayQueue -> a:start=0.5 done=6.5 b:start=1.5 done=9 c:start=0 done=3 d:start=0 done=7.5 e:start=+Inf done=+Inf f:start=3 done=7.5 
+    estimator_test.go:449: ok d: start=0 done=7.5  [w2: 0..1.5 full (1.5), 1.5..4.5 half (1.5), build 3]
+    estimator_test.go:450: ok c: start=0 done=3  [w4: 1 transfer + 2 build]
+    estimator_test.go:451: ok a: start=0.5 done=6.5  [w3 private link: 0.5+2+4]
+    estimator_test.go:452: ok b: start=1.5 done=9  [w1: 1.5..4.5 half (1.5), 4.5..8 full (3.5), build 1]
+    estimator_test.go:453: ok f: start=3 done=7.5  [w4 again at 3: 4 transfer on n2 alone + 0.5]
+    estimator_test.go:454: ok e: start=+Inf done=+Inf  [500 fits nobody]
+=== RUN   TestEstimatorSpec/NewJobWaitJoinsAtPriorityZeroBehindEveryone
+    estimator_test.go:460: spec: decision 13 'the new build is appended at priority 0 behind every queued job'; the job's own Priority and Seq must not let it jump the queue
+    estimator_test.go:465: queue a(3s), b(4s) on one idle worker; NewJobWait = 7 (prio 0) and 7 (job passed with prio 1e9, seq -1); hand: 3+4 = 7 both
+=== RUN   TestEstimatorSpec/NewJobWaitExactForFCFS
+    estimator_test.go:475: spec: decision 13 'exact for the FCFS baseline': under FCFS (all priority 0) NewJobWait equals the replay of the queue with the new job appended last
+    estimator_test.go:486: NewJobWait = 12; ReplayQueue(queue+new).StartS = 12; hand: 12 (a 0..9 on w2, b 1..12 on w1, c 9..15 on w2, new claimed by w1 at 12)
+    estimator_test.go:487: ok a: start=0 done=9  [w2: 0..1 full (1), 1..7 half (3), build 2]
+    estimator_test.go:488: ok b: start=1 done=12  [w1: 1..7 half (3), 7..9 full (2), 9..11 half (1), build 1]
+    estimator_test.go:489: ok c: start=9 done=15  [w2: 9..11 half (1), 11..12 full (1), build 3]
+=== RUN   TestEstimatorSpec/NewJobWaitEmptyPoolIsInf
+    estimator_test.go:496: spec: go doc NewJobWait 'With an empty pool it returns +Inf; the host applies the cold-start rule (keep 0) itself'
+    estimator_test.go:498: NewJobWait(no workers) = +Inf
+=== RUN   TestEstimatorSpec/NewJobWaitFitsNowhereIsInf
+    estimator_test.go:505: spec: decision 13 'a build fitting no live worker gets +Inf'
+    estimator_test.go:508: one idle worker mem 10, new job mem 11 -> +Inf
+=== RUN   TestEstimatorSpec/NewJobWaitIdlePoolIsZeroBusyPoolIsRemaining
+    estimator_test.go:519: idle worker, empty queue -> 0 (claimed immediately)
+    estimator_test.go:525: busy 2.5 and 4, empty queue -> 2.5 (earliest free)
+=== RUN   TestEstimatorSpec/NewJobWaitRespectsMemoryFilter
+    estimator_test.go:530: spec: decisions 12/13: a new job that fits only the big busy worker waits for it, not for the idle small one
+    estimator_test.go:533: NewJobWait = 5; hand: 5
+    estimator_test.go:540: with a 100 s small job queued ahead (taken by the idle small worker at 0): NewJobWait = 5; hand: 5
+=== RUN   TestEstimatorSpec/NewJobWaitBehindNegativePriorityProbe
+    estimator_test.go:547: PROBE (spec gap): decision 13 says both 'at priority 0' and 'behind every queued job'; these differ only when a queued job has negative priority. No assertion; recorded for the report.
+    estimator_test.go:551: queued 'neg' prio -5 (10 s) on one idle worker; NewJobWait = 0 (0 = joins at priority 0 ahead of it; 10 = behind every queued job)
+--- PASS: TestEstimatorSpec (0.00s)
+    --- PASS: TestEstimatorSpec/RoadmapExample (0.00s)
+    --- PASS: TestEstimatorSpec/TwoTransfersOneNodeShareTheLink (0.00s)
+    --- PASS: TestEstimatorSpec/ThreeTransfersOneNodeEachAtOneThird (0.00s)
+    --- PASS: TestEstimatorSpec/UnequalConcurrentTransfersRateRisesWhenOneEnds (0.00s)
+    --- PASS: TestEstimatorSpec/StaggeredJoinSlowsTheEarlierTransfer (0.00s)
+    --- PASS: TestEstimatorSpec/SeparateNodesRunAtFullRate (0.00s)
+    --- PASS: TestEstimatorSpec/EmptyNodeIsAPrivateLink (0.00s)
+    --- PASS: TestEstimatorSpec/BusyWorkerIsOpaqueNoContention (0.00s)
+    --- PASS: TestEstimatorSpec/TransferOfLaterJobOnSameWorkerSharesWithNeighbour (0.00s)
+    --- PASS: TestEstimatorSpec/SmallIdleWorkerDoesNotWaitBehindBigJob (0.00s)
+    --- PASS: TestEstimatorSpec/PriorityOrderUnderPerWorkerMemoryFilter (0.00s)
+    --- PASS: TestEstimatorSpec/PriorityDescThenSeqTiebreak (0.00s)
+    --- PASS: TestEstimatorSpec/SimultaneousFreeResolvedByWorkerID (0.00s)
+    --- PASS: TestEstimatorSpec/MemoryExactlyEqualFits (0.00s)
+    --- PASS: TestEstimatorSpec/FitsNowhereIsInfAndDoesNotBlock (0.00s)
+    --- PASS: TestEstimatorSpec/EmptyPoolEveryJobInf (0.00s)
+    --- PASS: TestEstimatorSpec/EmptyQueueEmptyMap (0.00s)
+    --- PASS: TestEstimatorSpec/EveryBuildIDGetsAnEstimate (0.00s)
+    --- PASS: TestEstimatorSpec/ZeroTransferAndZeroBuild (0.00s)
+    --- PASS: TestEstimatorSpec/ZeroTransferDoesNotSlowANeighbour (0.00s)
+    --- PASS: TestEstimatorSpec/ManyJobsOneWorkerSerialSum (0.00s)
+    --- PASS: TestEstimatorSpec/BusyRemainingTie (0.00s)
+    --- PASS: TestEstimatorSpec/DeterministicAcrossRepeatedCalls (0.00s)
+    --- PASS: TestEstimatorSpec/PermutedInputsSameAnswer (0.00s)
+    --- PASS: TestEstimatorSpec/InputsNotMutated (0.00s)
+    --- PASS: TestEstimatorSpec/RichScenarioByHand (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitJoinsAtPriorityZeroBehindEveryone (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitExactForFCFS (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitEmptyPoolIsInf (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitFitsNowhereIsInf (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitIdlePoolIsZeroBusyPoolIsRemaining (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitRespectsMemoryFilter (0.00s)
+    --- PASS: TestEstimatorSpec/NewJobWaitBehindNegativePriorityProbe (0.00s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	1.231s
+
+== Docker events for container kgpu-test-pg-88771
+  01:50:31  create
+  01:50:31  start
+  01:50:34  kill
+  01:50:34  die
+  01:50:34  destroy
+
+== Result: PASS
