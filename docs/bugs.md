@@ -6,6 +6,20 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
+## 11. Preemption ignored the memory filter: a hurting build could be parked in a queue nobody can claim
+
+**Found:** 2026-10-19, by the Phase 3 step 1 cross-check agent (`Reactive_MemoryAwarePreempt`): a local build one byte too big for every live worker, with a convincing backlog, was preempted. Fixed in [`86d7099`](https://github.com/arqbca11/HNSWonGPUs/commit/86d7099), `scheduler/policy/reactive.go`. **Related:** entry 5 (the other build that could never finish and what the retry budget does about leases — but a *queued* unclaimable build has no lease to expire, so no reaper or budget ever touches it), entry 1 (also the cross-check's first run against a brand-new piece of the system).
+
+**Symptom.** Pure policy level, caught before any deployment. The reactive policy's `reconsider`, given a local build whose modeled memory exceeded every live worker's capacity (or an empty pool) and a backlog that made migrating look good, returned a preempt action. Had the host applied it: the shard's CPU progress destroyed, the build placed in the GPU queue where `FOR UPDATE SKIP LOCKED` would skip it forever — no lease, no expiry, no reaper, no retry budget — and the round would never complete.
+
+**Cause.** The memory filter ("a build whose modeled memory need exceeds every live worker's capacity must build locally") was implemented at the two *obvious* placement sites, submit (`Decide`) and speculation, and forgotten at the third: preemption. The filter lived as a shared helper for `Decide`'s input shape, and `reconsider`'s different input shape (workers as a slice, not a summarized pool) meant applying it there needed two lines of aggregation that nothing forced anyone to write.
+
+**Fix.** `Reconsider` computes the largest live worker's capacity once per tick and never preempts a build that would fit no one — including when the pool is empty, which is deliberately *stricter* than submit's cold-start rule: a submit that queues on an empty pool has lost nothing if the pool stays cold, but a preemption has destroyed real CPU progress to wait for hardware that may not come.
+
+**In production.** The bimodal and production-size scenarios make over-sized builds routine (10M × 1536 vectors need ~61 GB; 24 GB cards hold 5M). One such shard with a busy query stream would be preempted on the first reconsider tick, and the whole DDL round would hang on a build sitting `queued` forever — the exact "one slow shard holds up the round" failure the scheduler exists to prevent, manufactured by the scheduler itself.
+
+**Lesson.** A constraint that guards a *decision* must be enforced at every site that makes that decision, and placement changes are decisions: the invariant is "no placement may select the GPU for a build that fits no live worker", not "submit checks the memory". When a rule lives in a helper shaped for one call site, every new call site is a chance to forget it — better to make the rule a property of the action (preempt/renege/speculate all route through one placement check) than of the caller. The cross-check found it by attacking the spec's words ("the memory filter is shared") at a site the implementer's own tests never exercised.
+
 ## 10. Deleting the scheduler pod stalled every shard for 10 s, though the replacement was ready in 1 s
 
 **Found:** 2026-10-18, by the step 4 cross-check agent's scheduler-deletion test (36 retry warnings, the last 10.5 s after the delete; the round 3.4 s slower than its twin). Reproduced with `KILL_SCHEDULER=1 scripts/k8s-round.sh`: 56 warnings, 10.5 s stall, replacement ready in 0.9 s. Fixed in [`56e4dbe`](https://github.com/arqbca11/HNSWonGPUs/commit/56e4dbe), `scheduler/cmd/scheduler/main.go`, `shard/client/client.go`. **Related:** entry 7 and entry 9 (the same family: a dependency vanishing for a moment; those two were handled by retrying, this one is about *how long one failed attempt takes* before the retry can happen), entry 8 (another case where a small fixed delay per operation was multiplied by many operations into a visible slowdown).

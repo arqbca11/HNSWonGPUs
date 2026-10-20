@@ -1,0 +1,257 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-19 22:00:39 PDT
+commit:    86d7099 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-80871, port 30245)
+go:        go test -p 1 -v -count=1 -run TestPolicySpec ./scheduler/crosscheck/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestPolicySpec
+=== RUN   TestPolicySpec/Purity_RepeatedDecideIdentical
+    policy_test.go:179: always_gpu.Decide x51 on the same input -> {Placement:gpu Priority:0 Reason:always_gpu} every time (invariant 8: pure, no clock, no randomness)
+    policy_test.go:179: static_threshold:50000.Decide x51 on the same input -> {Placement:gpu Priority:120000 Reason:120000 vectors >= threshold 50000} every time (invariant 8: pure, no clock, no randomness)
+    policy_test.go:179: reactive.Decide x51 on the same input -> {Placement:local Priority:0 Reason:120000 vectors < threshold 200000; reconsider watches the backlog} every time (invariant 8: pure, no clock, no randomness)
+    policy_test.go:179: reactive_spec.Decide x51 on the same input -> {Placement:local Priority:0 Reason:120000 vectors < threshold 200000; reconsider watches the backlog} every time (invariant 8: pure, no clock, no randomness)
+    policy_test.go:179: clairvoyant.Decide x51 on the same input -> {Placement:gpu Priority:15 Reason:oracle: gpu recovers at 7.0s, local at 15.0s; priority = would-be local finish} every time (invariant 8: pure, no clock, no randomness)
+=== RUN   TestPolicySpec/Purity_RepeatedReconsiderIdentical
+    policy_test.go:193: always_gpu.Reconsider x51 on busyWorld -> [] (no actions)
+    policy_test.go:193: static_threshold:50000.Reconsider x51 on busyWorld -> [] (no actions)
+    policy_test.go:193: reactive.Reconsider x51 on busyWorld -> {preempt 1:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} {renege 2:1 prio=0.000 "local recovery 10.0s beats staying queued 502.0s by the margin"} {reprioritize 3:1 prio=40.000 "blocked work now 40.0s, priority was 0.0"} 
+    policy_test.go:193: reactive_spec.Reconsider x51 on busyWorld -> {preempt 1:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} {renege 2:1 prio=0.000 "local recovery 10.0s beats staying queued 502.0s by the margin"} {reprioritize 3:1 prio=40.000 "blocked work now 40.0s, priority was 0.0"} 
+    policy_test.go:193: clairvoyant.Reconsider x51 on busyWorld -> [] (no actions)
+=== RUN   TestPolicySpec/Purity_ReconsiderDoesNotMutateInput
+    policy_test.go:206: always_gpu.Reconsider left the caller's Builds and Workers slices byte-identical
+    policy_test.go:206: static_threshold:50000.Reconsider left the caller's Builds and Workers slices byte-identical
+    policy_test.go:206: reactive.Reconsider left the caller's Builds and Workers slices byte-identical
+    policy_test.go:206: reactive_spec.Reconsider left the caller's Builds and Workers slices byte-identical
+    policy_test.go:206: clairvoyant.Reconsider left the caller's Builds and Workers slices byte-identical
+=== RUN   TestPolicySpec/Purity_ReconsiderPermutationInvariant
+    policy_test.go:237: always_gpu: 10 permutations of builds/workers all give the same action set [] (docs promise no order; set equality is what matters)
+    policy_test.go:237: static_threshold:50000: 10 permutations of builds/workers all give the same action set [] (docs promise no order; set equality is what matters)
+    policy_test.go:237: reactive: 10 permutations of builds/workers all give the same action set [preempt|1:1|10.000000000 renege|2:1|0.000000000 reprioritize|3:1|40.000000000] (docs promise no order; set equality is what matters)
+    policy_test.go:237: reactive_spec: 10 permutations of builds/workers all give the same action set [preempt|1:1|10.000000000 renege|2:1|0.000000000 reprioritize|3:1|40.000000000] (docs promise no order; set equality is what matters)
+    policy_test.go:237: clairvoyant: 10 permutations of builds/workers all give the same action set [] (docs promise no order; set equality is what matters)
+=== RUN   TestPolicySpec/EmptyWorld_NoActionsNoPanic
+    policy_test.go:248: always_gpu.Reconsider on an empty world and on 3 idle workers with no builds -> no actions
+    policy_test.go:248: static_threshold:50000.Reconsider on an empty world and on 3 idle workers with no builds -> no actions
+    policy_test.go:248: reactive.Reconsider on an empty world and on 3 idle workers with no builds -> no actions
+    policy_test.go:248: reactive_spec.Reconsider on an empty world and on 3 idle workers with no builds -> no actions
+    policy_test.go:248: clairvoyant.Reconsider on an empty world and on 3 idle workers with no builds -> no actions
+=== RUN   TestPolicySpec/MemoryFilter_AllPolicies
+    policy_test.go:260: always_gpu: build needs 17179869185 B, largest live worker 17179869184 B, local 100 s vs GPU 1 s -> local ("needs 17179869185 bytes, largest live worker has 17179869184")
+    policy_test.go:265: always_gpu: build needs exactly the largest worker's 17179869184 B -> gpu
+    policy_test.go:260: static_threshold:50000: build needs 17179869185 B, largest live worker 17179869184 B, local 100 s vs GPU 1 s -> local ("needs 17179869185 bytes, largest live worker has 17179869184")
+    policy_test.go:265: static_threshold:50000: build needs exactly the largest worker's 17179869184 B -> gpu
+    policy_test.go:260: reactive: build needs 17179869185 B, largest live worker 17179869184 B, local 100 s vs GPU 1 s -> local ("needs 17179869185 bytes, largest live worker has 17179869184")
+    policy_test.go:265: reactive: build needs exactly the largest worker's 17179869184 B -> gpu
+    policy_test.go:260: reactive_spec: build needs 17179869185 B, largest live worker 17179869184 B, local 100 s vs GPU 1 s -> local ("needs 17179869185 bytes, largest live worker has 17179869184")
+    policy_test.go:265: reactive_spec: build needs exactly the largest worker's 17179869184 B -> gpu
+    policy_test.go:260: clairvoyant: build needs 17179869185 B, largest live worker 17179869184 B, local 100 s vs GPU 1 s -> local ("needs 17179869185 bytes, largest live worker has 17179869184")
+    policy_test.go:265: clairvoyant: build needs exactly the largest worker's 17179869184 B -> gpu
+=== RUN   TestPolicySpec/MemoryFilter_EmptyPoolStillQueues
+    policy_test.go:276: always_gpu: zero live workers, 64 GiB, 10M-vector build -> gpu (phase 1 decision 19: an empty pool may be cold-starting, the memory rule applies only when a worker is live)
+    policy_test.go:276: static_threshold:50000: zero live workers, 64 GiB, 10M-vector build -> gpu (phase 1 decision 19: an empty pool may be cold-starting, the memory rule applies only when a worker is live)
+    policy_test.go:276: reactive: zero live workers, 64 GiB, 10M-vector build -> gpu (phase 1 decision 19: an empty pool may be cold-starting, the memory rule applies only when a worker is live)
+    policy_test.go:276: reactive_spec: zero live workers, 64 GiB, 10M-vector build -> gpu (phase 1 decision 19: an empty pool may be cold-starting, the memory rule applies only when a worker is live)
+    policy_test.go:284: SPEC GAP probe: clairvoyant with zero live workers (local 100 s, GPU 1 s, no queries) -> gpu prio=100.0 ("oracle: gpu recovers at 1.0s, local at 100.0s; priority = would-be local finish"). Neither decision 19 nor 1a says whether the oracle, which runs only in the simulator, honours the cold-start rule
+=== RUN   TestPolicySpec/AlwaysGPU_QueuesEverythingFCFS
+    policy_test.go:293: always_gpu: 1 vectors, local 0.1 s vs GPU 1000 s -> gpu prio=0
+    policy_test.go:293: always_gpu: 1000 vectors, local 0.1 s vs GPU 1000 s -> gpu prio=0
+    policy_test.go:293: always_gpu: 10000000 vectors, local 0.1 s vs GPU 1000 s -> gpu prio=0
+    policy_test.go:301: always_gpu.Reconsider on busyWorld -> no actions
+=== RUN   TestPolicySpec/StaticThreshold_BoundaryPriorityNeverReconsiders
+    policy_test.go:314: static_threshold N=1000: 999 vectors -> local prio=0 (roadmap policy 2: n_vectors >= T to the GPU)
+    policy_test.go:314: static_threshold N=1000: 1000 vectors -> gpu prio=1000 (roadmap policy 2: n_vectors >= T to the GPU)
+    policy_test.go:314: static_threshold N=1000: 1001 vectors -> gpu prio=1001 (roadmap policy 2: n_vectors >= T to the GPU)
+    policy_test.go:314: static_threshold N=1000: 0 vectors -> local prio=0 (roadmap policy 2: n_vectors >= T to the GPU)
+    policy_test.go:327: 2000 vs 9000 vectors -> prio 2000 vs 9000: the bigger claims first
+    policy_test.go:331: static_threshold.Reconsider on busyWorld (a hurting local build, a stuck queue) -> no actions
+=== RUN   TestPolicySpec/ByName_AcceptsDocumentedNames
+    policy_test.go:343: ByName("always_gpu") -> policy.AlwaysGPU, Name()="always_gpu"
+    policy_test.go:343: ByName("static_threshold") -> policy.StaticThreshold, Name()="static_threshold:200000"
+    policy_test.go:343: ByName("static_threshold:500") -> policy.StaticThreshold, Name()="static_threshold:500"
+    policy_test.go:343: ByName("reactive") -> policy.Reactive, Name()="reactive"
+    policy_test.go:343: ByName("reactive_spec") -> policy.ReactiveSpec, Name()="reactive_spec"
+    policy_test.go:352: static_threshold:500: 499 -> local, 500 -> gpu
+=== RUN   TestPolicySpec/ByName_RejectsBadNamesAndTheOracle
+    policy_test.go:367: ByName("bogus") -> error "unknown policy \"bogus\""
+    policy_test.go:367: ByName("clairvoyant") -> error "unknown policy \"clairvoyant\""
+    policy_test.go:367: ByName("clairvoyant") -> error "unknown policy \"clairvoyant\""
+    policy_test.go:367: ByName("static_threshold:") -> error "static_threshold: bad threshold \"\""
+    policy_test.go:367: ByName("static_threshold:abc") -> error "static_threshold: bad threshold \"abc\""
+    policy_test.go:367: ByName("static_threshold:1.5") -> error "static_threshold: bad threshold \"1.5\""
+    policy_test.go:367: ByName("static_threshold:10:20") -> error "static_threshold: bad threshold \"10:20\""
+    policy_test.go:367: ByName("always_gpu:3") -> error "policy \"always_gpu\" takes no argument"
+    policy_test.go:375: SPEC GAP probe: ByName("") -> accepted, policy.AlwaysGPU Name()="always_gpu"
+    policy_test.go:373: SPEC GAP probe: ByName("static_threshold:-5") -> error "static_threshold: bad threshold \"-5\""
+    policy_test.go:373: SPEC GAP probe: ByName("static_threshold:0") -> error "static_threshold: bad threshold \"0\""
+    policy_test.go:373: SPEC GAP probe: ByName("REACTIVE") -> error "unknown policy \"REACTIVE\""
+    policy_test.go:373: SPEC GAP probe: ByName(" reactive") -> error "unknown policy \" reactive\""
+    policy_test.go:373: SPEC GAP probe: ByName("reactive ") -> error "unknown policy \"reactive \""
+    policy_test.go:373: SPEC GAP probe: ByName("reactive:5") -> error "policy \"reactive\" takes no argument"
+    policy_test.go:373: SPEC GAP probe: ByName("reactive_spec:x") -> error "policy \"reactive_spec\" takes no argument"
+    policy_test.go:373: SPEC GAP probe: ByName("always_gpu:") -> error "policy \"always_gpu\" takes no argument"
+=== RUN   TestPolicySpec/ByName_NameRoundTrips
+    policy_test.go:391: ByName("always_gpu").Name()="always_gpu" round-trips to an identical policy
+    policy_test.go:391: ByName("static_threshold").Name()="static_threshold:200000" round-trips to an identical policy
+    policy_test.go:391: ByName("static_threshold:500").Name()="static_threshold:500" round-trips to an identical policy
+    policy_test.go:391: ByName("reactive").Name()="reactive" round-trips to an identical policy
+    policy_test.go:391: ByName("reactive_spec").Name()="reactive_spec" round-trips to an identical policy
+=== RUN   TestPolicySpec/Reactive_DecideLikeThresholdPriorityIsLocalSeconds
+    policy_test.go:402: reactive ThresholdN=1000: 999 -> local; 1000 -> gpu prio=37.5 (LocalBuildS=37.5)
+    policy_test.go:411: SPEC GAP probe: zero ReactiveConfig at DefaultThresholdN (200000) -> gpu, at N-1 -> local. The docs say 'zero value means defaults' but name no ThresholdN default for reactive
+=== RUN   TestPolicySpec/Reactive_PreemptArithmeticAndPriority
+    policy_test.go:422: local build 100 s at 50%, backlog 10 x 1 s (4 need index), GPU 5+1 s, idle pool: stay=60, migrate=max(6,10)=10 -> {preempt 1:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} 
+=== RUN   TestPolicySpec/Reactive_PreemptPriorityIsBacklogOnly
+    policy_test.go:448: local build 100 s at 20%, backlog 10 x 1 s -> {preempt 1:1 prio=10.000 "stay local 90.0s, migrate 10.0s, margin 2.0s"} 
+    policy_test.go:452: decision 10 (corrected): 'after a preemption it is the backlog behind the build' = 10; observed 10
+=== RUN   TestPolicySpec/Reactive_RenegeComparisonProbe
+    policy_test.go:467: SPEC GAP probe: queued build, 10 non-index queries waiting, local 10 s vs GPU 15+2 s -> [] (no actions). Roadmap: renege 'when its GPU estimate has grown past its local estimate'; the go doc says 'local from scratch now beats the queue'. Whether the backlog the local build would block counts is not stated. Recovery view: local 20 vs gpu 17 (stay); build-only view: 10 vs 17 (renege)
+=== RUN   TestPolicySpec/Reactive_MarginBoundaryDefault2s
+    policy_test.go:488: GPU 8 s: stay=12, migrate=10, wins by 2 (default margin 2 s, decision 8 'must win by MarginS') -> preempt=false [] (no actions)
+    policy_test.go:488: GPU 7.5 s: stay=12, migrate=9.5, wins by 2.5 (default margin 2 s, decision 8 'must win by MarginS') -> preempt=true {preempt 1:1 prio=2.000 "stay local 12.0s, migrate 9.5s, margin 2.0s"} 
+    policy_test.go:488: GPU 9 s: stay=12, migrate=11, wins by 1 (default margin 2 s, decision 8 'must win by MarginS') -> preempt=false [] (no actions)
+    policy_test.go:488: GPU 11 s: stay=12, migrate=13, wins by -1 (default margin 2 s, decision 8 'must win by MarginS') -> preempt=false [] (no actions)
+    policy_test.go:498: win by 5 s with MarginS=6 -> preempt=false
+    policy_test.go:498: win by 5 s with MarginS=4 -> preempt=true
+=== RUN   TestPolicySpec/Reactive_SunkCostViaBuildProgress
+    policy_test.go:518: progress 0.00: stay=104, migrate=34 -> preempt=true (decision 1b: sunk cost from build_progress)
+    policy_test.go:518: progress 0.50: stay=54, migrate=34 -> preempt=true (decision 1b: sunk cost from build_progress)
+    policy_test.go:518: progress 0.75: stay=29, migrate=34 -> preempt=false (decision 1b: sunk cost from build_progress)
+    policy_test.go:518: progress 0.90: stay=14, migrate=34 -> preempt=false (decision 1b: sunk cost from build_progress)
+=== RUN   TestPolicySpec/Reactive_NonIndexBacklogFavoursMigration
+    policy_test.go:539: backlog 10 x 1 s, 10 need the index: stay=30, migrate=29 -> preempt=false (flow: non-index queries drain from the moment the CPU frees)
+    policy_test.go:539: backlog 10 x 1 s, 0 need the index: stay=30, migrate=19 -> preempt=true (flow: non-index queries drain from the moment the CPU frees)
+=== RUN   TestPolicySpec/Reactive_QueueWaitOfLocalBuildEntersMigrate
+    policy_test.go:553: same hurting build, BuildView.QueueWaitS=100 and both workers busy 100 s -> [] (no actions)
+=== RUN   TestPolicySpec/Reactive_NoActionWithoutValidReport
+    policy_test.go:565: the hurting build but Status.Valid=false (shard has not reported) -> [] (no actions)
+    policy_test.go:573: preempted queued build at prio 60, invalid (zero) report -> [] (no actions)
+=== RUN   TestPolicySpec/Reactive_MemoryAwarePreempt
+    policy_test.go:584: the hurting build needs 17179869185 B, both live workers have 17179869184 B -> [] (no actions)
+    policy_test.go:589: SPEC GAP probe: same build with zero live workers -> [] (no actions) (decision 19's cold-start rule is stated for submit, not for reconsider)
+=== RUN   TestPolicySpec/Reactive_MovedAtMostOnce_RenegedNeverPreempted
+    policy_test.go:599: a reneged build (Moved, local_running): stay=1050, migrate=11, idle pool -> [] (no actions)
+    policy_test.go:605: control: same build not Moved -> {preempt 1:1 prio=50.000 "stay local 1050.0s, migrate 40.0s, margin 2.0s"} 
+=== RUN   TestPolicySpec/Reactive_MovedAtMostOnce_PreemptedNeverReneges
+    policy_test.go:617: a preempted build (Moved, gpu_queued), local 10 s vs queue 1000+2 s -> [] (no actions)
+    policy_test.go:623: control: same build not Moved -> {renege 1:1 prio=0.000 "local recovery 10.0s beats staying queued 1002.0s by the margin"} 
+=== RUN   TestPolicySpec/Reactive_RenegeOnlyQueuedPastMargin
+    policy_test.go:642: queued build, local 10 s vs GPU wait 0 + 2 s: local wins by -8 (margin 2) -> renege=false [] (no actions)
+    policy_test.go:642: queued build, local 10 s vs GPU wait 6 + 2 s: local wins by -2 (margin 2) -> renege=false [] (no actions)
+    policy_test.go:642: queued build, local 10 s vs GPU wait 10 + 2 s: local wins by 2 (margin 2) -> renege=false [] (no actions)
+    policy_test.go:642: queued build, local 10 s vs GPU wait 10.5 + 2 s: local wins by 2.5 (margin 2) -> renege=true {renege 1:1 prio=0.000 "local recovery 10.0s beats staying queued 12.5s by the margin"} 
+    policy_test.go:642: queued build, local 10 s vs GPU wait 500 + 2 s: local wins by 492 (margin 2) -> renege=true {renege 1:1 prio=0.000 "local recovery 10.0s beats staying queued 502.0s by the margin"} 
+    policy_test.go:650: a LEASED build with the same hopeless numbers -> [] (no actions)
+=== RUN   TestPolicySpec/Reactive_RenegeOfSpeculativeCopyProbe
+    policy_test.go:662: SPEC GAP probe: a speculative GPU copy stuck in the queue (wait 500 s) while its local original runs -> [] (no actions)
+    policy_test.go:669: SPEC GAP probe: reactive_spec, the copy LEASED (running on the only worker), original stay 5 s vs migrate 2 s -> [] (no actions)
+=== RUN   TestPolicySpec/Reactive_ReprioritizeOnlyPastDelta
+    policy_test.go:686: preempted queued build at prio 0, report: 40 waiting x 1 s -> {reprioritize 3:1 prio=40.000 "blocked work now 40.0s, priority was 0.0"} 
+    policy_test.go:691: target blocked work the policy computes: 40 s (the report's backlog is 40 x 1 s = 40 s)
+    policy_test.go:701: stored prio = target+0.0 -> reprioritize=false (decision 10: only past a 1 s churn delta) [] (no actions)
+    policy_test.go:701: stored prio = target+0.5 -> reprioritize=false (decision 10: only past a 1 s churn delta) [] (no actions)
+    policy_test.go:701: stored prio = target-0.5 -> reprioritize=false (decision 10: only past a 1 s churn delta) [] (no actions)
+    policy_test.go:701: stored prio = target+1.0 -> reprioritize=false (decision 10: only past a 1 s churn delta) [] (no actions)
+    policy_test.go:701: stored prio = target-1.0 -> reprioritize=false (decision 10: only past a 1 s churn delta) [] (no actions)
+    policy_test.go:701: stored prio = target+1.5 -> reprioritize=true (decision 10: only past a 1 s churn delta) {reprioritize 3:1 prio=40.000 "blocked work now 40.0s, priority was 41.5"} 
+    policy_test.go:701: stored prio = target-1.5 -> reprioritize=true (decision 10: only past a 1 s churn delta) {reprioritize 3:1 prio=40.000 "blocked work now 40.0s, priority was 38.5"} 
+    policy_test.go:710: an UNMOVED queued build at prio 0 with the same backlog -> [] (no actions)
+=== RUN   TestPolicySpec/Reactive_PreemptThenNextTickDoesNotChurn
+    policy_test.go:726: tick 1: {preempt 1:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} 
+    policy_test.go:735: tick 2, same backlog, build now queued at prio 10 -> [] (no actions)
+=== RUN   TestPolicySpec/Decision10_PrioritiesComparableWithinReactive
+    policy_test.go:749: submit prio for a 10 s local build = 10; preempt prio for a 10 s backlog = {preempt 1:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} 
+    policy_test.go:761: two hurting shards, backlogs 10 s and 40 s -> {preempt 2:1 prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} {preempt 3:1 prio=40.000 "stay local 90.0s, migrate 40.0s, margin 2.0s"} 
+=== RUN   TestPolicySpec/Spec_SpeculatesWorstOncePerTick
+    policy_test.go:785: idle worker, empty queue, stragglers A (stay 10) and B (stay 22), order A,B -> {speculate B prio=2.000 "idle worker, empty queue; worst projected recovery 22.0s"} 
+    policy_test.go:785: idle worker, empty queue, stragglers A (stay 10) and B (stay 22), order B,A -> {speculate B prio=2.000 "idle worker, empty queue; worst projected recovery 22.0s"} 
+    policy_test.go:796: three idle workers, three stragglers -> {speculate B prio=2.000 "idle worker, empty queue; worst projected recovery 22.0s"} 
+    policy_test.go:805: plain reactive on the same world -> [] (no actions) (no speculation)
+=== RUN   TestPolicySpec/Spec_NoGoCases
+    policy_test.go:828: GPU queue non-empty (one queued build, one idle worker) -> [] (no actions)
+    policy_test.go:828: a speculative copy queued -> [] (no actions)
+    policy_test.go:828: a speculative copy leased (one worker busy with it, one idle) -> [] (no actions)
+    policy_test.go:828: every worker busy -> [] (no actions)
+    policy_test.go:828: no workers at all -> [] (no actions)
+=== RUN   TestPolicySpec/Spec_MemoryAware
+    policy_test.go:841: idle worker has 4 GiB; worst straggler B needs 8 GiB (fits only the busy 32 GiB worker); A needs 1 GiB -> {speculate A prio=0.000 "idle worker, empty queue; worst projected recovery 10.0s"} 
+=== RUN   TestPolicySpec/Spec_NeverTargetsBuildPreemptedSameTick
+    policy_test.go:855: H wins migration by 50 s (stay 60) and is also the worst projected recovery; A is mild -> {preempt H prio=10.000 "stay local 60.0s, migrate 10.0s, margin 2.0s"} {speculate A prio=0.000 "idle worker, empty queue; worst projected recovery 10.0s"} 
+    policy_test.go:865: SPEC GAP probe: a speculation was issued in the same tick as a preemption that will fill the GPU queue; the docs test 'queue empty' on the input, not after this tick's own actions
+=== RUN   TestPolicySpec/Spec_StillReactive
+    policy_test.go:875: busyWorld with no idle worker: reactive -> [preempt|1:1|10.000000000 renege|2:1|0.000000000 reprioritize|3:1|40.000000000]; reactive_spec -> [preempt|1:1|10.000000000 renege|2:1|0.000000000 reprioritize|3:1|40.000000000]
+=== RUN   TestPolicySpec/Clairvoyant_ExactReplayWithSkipRule
+    policy_test.go:912: shard 1: local recovery 16 by hand, GPU 7 -> gpu prio=16 "oracle: gpu recovers at 7.0s, local at 16.0s; priority = would-be local finish"
+    policy_test.go:917: shard 2: local 10, GPU 7 with the skip rule (11 without) -> gpu prio=10 "oracle: gpu recovers at 7.0s, local at 10.0s; priority = would-be local finish"
+    policy_test.go:925: shard 3: local 3, GPU 11 -> local "oracle: local recovers at 3.0s, gpu at 11.0s"
+=== RUN   TestPolicySpec/Clairvoyant_QueueWaitAndLPT
+    policy_test.go:935: no queries, local 10 s vs GPU 1 s: queue wait 0 -> gpu prio=10; queue wait 20 -> local
+    policy_test.go:943: would-be local finish 40 s -> prio 40, 10 s -> prio 10
+=== RUN   TestPolicySpec/Clairvoyant_LateArrivalsAfterLocalBuild
+    policy_test.go:953: local build 4 s, queries at 20 and 30 (index); GPU ready at 40: local 33 vs gpu 43 -> local prio=0
+    policy_test.go:959: SPEC GAP probe: equal recovery (33 vs 33) -> local (the flow says 'earlier?' and names no tie-break)
+=== RUN   TestPolicySpec/Clairvoyant_ShardWithNoFuture
+    policy_test.go:968: shard 7 with an empty stream -> {Placement:gpu Priority:10 Reason:oracle: gpu recovers at 4.0s, local at 10.0s; priority = would-be local finish}; absent from the map -> {Placement:gpu Priority:10 Reason:oracle: gpu recovers at 4.0s, local at 10.0s; priority = would-be local finish}; nil futures -> {Placement:gpu Priority:10 Reason:oracle: gpu recovers at 4.0s, local at 10.0s; priority = would-be local finish}
+    policy_test.go:975: SPEC GAP: the docs do not say what the oracle does for a shard missing from its futures (empty stream, error, or panic); observed: treated like an empty stream
+=== RUN   TestPolicySpec/Clairvoyant_UnsortedStreamSameAsSorted
+    policy_test.go:983: shard 1's stream in arrival order -> {Placement:gpu Priority:16 Reason:oracle: gpu recovers at 7.0s, local at 16.0s; priority = would-be local finish}; the same events permuted -> {Placement:gpu Priority:16 Reason:oracle: gpu recovers at 7.0s, local at 16.0s; priority = would-be local finish}
+=== RUN   TestPolicySpec/Clairvoyant_NotDeployable
+    policy_test.go:995: Clairvoyant.Name()="clairvoyant"; ByName of it -> err=unknown policy "clairvoyant" (decision 1a: not reachable from config)
+    policy_test.go:1000: clairvoyant.Reconsider on busyWorld -> [] (no actions) (roadmap: it decides at submit with exact futures)
+--- PASS: TestPolicySpec (0.00s)
+    --- PASS: TestPolicySpec/Purity_RepeatedDecideIdentical (0.00s)
+    --- PASS: TestPolicySpec/Purity_RepeatedReconsiderIdentical (0.00s)
+    --- PASS: TestPolicySpec/Purity_ReconsiderDoesNotMutateInput (0.00s)
+    --- PASS: TestPolicySpec/Purity_ReconsiderPermutationInvariant (0.00s)
+    --- PASS: TestPolicySpec/EmptyWorld_NoActionsNoPanic (0.00s)
+    --- PASS: TestPolicySpec/MemoryFilter_AllPolicies (0.00s)
+    --- PASS: TestPolicySpec/MemoryFilter_EmptyPoolStillQueues (0.00s)
+    --- PASS: TestPolicySpec/AlwaysGPU_QueuesEverythingFCFS (0.00s)
+    --- PASS: TestPolicySpec/StaticThreshold_BoundaryPriorityNeverReconsiders (0.00s)
+    --- PASS: TestPolicySpec/ByName_AcceptsDocumentedNames (0.00s)
+    --- PASS: TestPolicySpec/ByName_RejectsBadNamesAndTheOracle (0.00s)
+    --- PASS: TestPolicySpec/ByName_NameRoundTrips (0.00s)
+    --- PASS: TestPolicySpec/Reactive_DecideLikeThresholdPriorityIsLocalSeconds (0.00s)
+    --- PASS: TestPolicySpec/Reactive_PreemptArithmeticAndPriority (0.00s)
+    --- PASS: TestPolicySpec/Reactive_PreemptPriorityIsBacklogOnly (0.00s)
+    --- PASS: TestPolicySpec/Reactive_RenegeComparisonProbe (0.00s)
+    --- PASS: TestPolicySpec/Reactive_MarginBoundaryDefault2s (0.00s)
+    --- PASS: TestPolicySpec/Reactive_SunkCostViaBuildProgress (0.00s)
+    --- PASS: TestPolicySpec/Reactive_NonIndexBacklogFavoursMigration (0.00s)
+    --- PASS: TestPolicySpec/Reactive_QueueWaitOfLocalBuildEntersMigrate (0.00s)
+    --- PASS: TestPolicySpec/Reactive_NoActionWithoutValidReport (0.00s)
+    --- PASS: TestPolicySpec/Reactive_MemoryAwarePreempt (0.00s)
+    --- PASS: TestPolicySpec/Reactive_MovedAtMostOnce_RenegedNeverPreempted (0.00s)
+    --- PASS: TestPolicySpec/Reactive_MovedAtMostOnce_PreemptedNeverReneges (0.00s)
+    --- PASS: TestPolicySpec/Reactive_RenegeOnlyQueuedPastMargin (0.00s)
+    --- PASS: TestPolicySpec/Reactive_RenegeOfSpeculativeCopyProbe (0.00s)
+    --- PASS: TestPolicySpec/Reactive_ReprioritizeOnlyPastDelta (0.00s)
+    --- PASS: TestPolicySpec/Reactive_PreemptThenNextTickDoesNotChurn (0.00s)
+    --- PASS: TestPolicySpec/Decision10_PrioritiesComparableWithinReactive (0.00s)
+    --- PASS: TestPolicySpec/Spec_SpeculatesWorstOncePerTick (0.00s)
+    --- PASS: TestPolicySpec/Spec_NoGoCases (0.00s)
+    --- PASS: TestPolicySpec/Spec_MemoryAware (0.00s)
+    --- PASS: TestPolicySpec/Spec_NeverTargetsBuildPreemptedSameTick (0.00s)
+    --- PASS: TestPolicySpec/Spec_StillReactive (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_ExactReplayWithSkipRule (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_QueueWaitAndLPT (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_LateArrivalsAfterLocalBuild (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_ShardWithNoFuture (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_UnsortedStreamSameAsSorted (0.00s)
+    --- PASS: TestPolicySpec/Clairvoyant_NotDeployable (0.00s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	0.240s
+
+== Docker events for container kgpu-test-pg-80871
+  22:00:38  create
+  22:00:38  start
+  22:00:41  kill
+  22:00:41  die
+  22:00:41  destroy
+
+== Result: PASS

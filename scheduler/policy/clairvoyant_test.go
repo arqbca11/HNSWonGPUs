@@ -71,12 +71,12 @@ func TestClairvoyant(t *testing.T) {
 }
 
 func TestByName(t *testing.T) {
-	t.Log("--- every deployable policy is reachable by config name; the oracle deliberately is not (decision 1a)")
+	t.Log("--- every deployable policy is reachable by config name and the name round-trips; the oracle deliberately is not (decision 1a)")
 	for name, want := range map[string]string{
 		"":                       "always_gpu",
 		"always_gpu":             "always_gpu",
-		"static_threshold":       "static_threshold",
-		"static_threshold:50000": "static_threshold",
+		"static_threshold":       "static_threshold:200000",
+		"static_threshold:50000": "static_threshold:50000",
 		"reactive":               "reactive",
 		"reactive_spec":          "reactive_spec",
 	} {
@@ -84,17 +84,25 @@ func TestByName(t *testing.T) {
 		if err != nil || p.Name() != want {
 			t.Fatalf("ByName(%q): got %v, %v; want %s", name, p, err, want)
 		}
-		t.Logf("    %-22q -> %s", name, p.Name())
+		again, err := ByName(p.Name())
+		if err != nil || again != p {
+			t.Fatalf("ByName(%q).Name() does not round-trip: %v, %v", name, again, err)
+		}
+		t.Logf("    %-24q -> %s (round-trips)", name, p.Name())
 	}
 	if p, err := ByName("static_threshold:50000"); err != nil {
 		t.Fatal(err)
 	} else if th := p.(StaticThreshold); th.N != 50000 {
 		t.Fatalf("threshold arg not parsed: %+v", th)
 	}
-	for _, bad := range []string{"clairvoyant", "static_threshold:none", "static_threshold:-1", "nonsense"} {
+	t.Log("--- strictness: a typo'd sweep arm errors instead of running as the wrong policy")
+	for _, bad := range []string{
+		"clairvoyant", "static_threshold:none", "static_threshold:-1", "static_threshold:",
+		"always_gpu:3", "reactive:5", "reactive_spec:x", "reactive:margin=5", "nonsense",
+	} {
 		if _, err := ByName(bad); err == nil {
 			t.Fatalf("ByName(%q) should fail", bad)
 		}
-		t.Logf("    %-22q -> rejected, as it must be", bad)
+		t.Logf("    %-24q -> rejected, as it must be", bad)
 	}
 }

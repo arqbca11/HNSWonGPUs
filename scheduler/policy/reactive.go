@@ -7,6 +7,7 @@ type ReactiveConfig struct {
 	// ThresholdN is the submit-time rule: at submit the policy knows only the
 	// build and the pool (the backlog that would justify more does not exist
 	// yet), so it places like a static threshold and lets reconsider correct.
+	// Zero means DefaultThresholdN.
 	ThresholdN int64
 	// MarginS guards against flapping (decision 8): migrating must win by
 	// this many seconds, and reneging must win by it too.
@@ -40,8 +41,8 @@ func (c ReactiveConfig) withDefaults() ReactiveConfig {
 //
 // Priority currency (decision 10): seconds of blocked shard work. At submit
 // that is the build's own local duration (longest-first, the same currency
-// the clairvoyant uses); after a preemption it is the backlog plus the local
-// time thrown away, so the shard hurting most claims first.
+// the clairvoyant uses); after a preemption it is the backlog behind the
+// build, so the shard hurting most claims first.
 type Reactive struct {
 	cfg ReactiveConfig
 }
@@ -66,20 +67,31 @@ func (p Reactive) Decide(in Input) Decision {
 
 func (p Reactive) Reconsider(in ReconsiderInput) []Action {
 	// The memory filter applies to preemption too (bug 11): a build preempted
-	// into a queue no live worker can claim would sit there forever, hanging
-	// the round. With an empty pool a local build keeps its progress — unlike
-	// submit, where queueing costs nothing.
+	// into a queue no live worker can claim would sit there forever. With an
+	// empty pool a local build keeps its progress — unlike submit, where
+	// queueing costs nothing.
 	var largestMem int64
 	for _, w := range in.Workers {
 		if w.MemBytes > largestMem {
 			largestMem = w.MemBytes
 		}
 	}
+	// A build whose speculative copy is in flight is never preempted: the
+	// copy exists precisely so the CPU progress is not lost (decision 5).
+	hasCopy := map[int64]map[int32]bool{}
+	for _, b := range in.Builds {
+		if b.Speculative {
+			if hasCopy[b.Spec.RoundID] == nil {
+				hasCopy[b.Spec.RoundID] = map[int32]bool{}
+			}
+			hasCopy[b.Spec.RoundID][b.Spec.ShardID] = true
+		}
+	}
 	var acts []Action
 	for _, b := range in.Builds {
 		switch b.Phase {
 		case "local_running":
-			if b.Spec.MemBytes > largestMem {
+			if b.Spec.MemBytes > largestMem || hasCopy[b.Spec.RoundID][b.Spec.ShardID] {
 				continue
 			}
 			if a, ok := p.preemptIfWorth(b); ok {
@@ -122,11 +134,12 @@ func migrateS(b BuildView) float64 {
 	return index
 }
 
-// blockedWorkS is the priority of a preempted build: the backlog behind it
-// plus the local build time being abandoned.
+// blockedWorkS is the priority of a preempted build: the backlog behind it,
+// in seconds (the roadmap's "priority that grows with the blocked work
+// behind the build"). The same formula runs at preempt time and on every
+// reprioritize, so an unchanged backlog means an unchanged priority.
 func blockedWorkS(b BuildView) float64 {
-	return float64(b.Status.QueueDepth)*b.Status.MeanQueryS +
-		b.Est.LocalBuildS*(1-clamp01(b.Status.BuildProgress))
+	return float64(b.Status.QueueDepth) * b.Status.MeanQueryS
 }
 
 func (p Reactive) preemptIfWorth(b BuildView) (Action, bool) {
@@ -143,17 +156,24 @@ func (p Reactive) preemptIfWorth(b BuildView) (Action, bool) {
 	}, true
 }
 
+// renegeIfWorth uses the same recovery arithmetic as preemption, with the
+// roles reversed: going local means building from scratch with the backlog
+// queueing behind the build (stayLocalS with progress 0, which is what a
+// gpu_queued shard reports), staying means the migrate projection. The
+// cross-check showed the bare build-time comparison could renege a shard
+// into a worse recovery when a non-index backlog was waiting. Without a
+// report both sides degrade to plain build-vs-queue times.
 func (p Reactive) renegeIfWorth(b BuildView) (Action, bool) {
 	if b.Moved {
 		return Action{}, false // moved at most once (decision 8)
 	}
-	gpuDone := b.QueueWaitS + b.Est.GPUBuildS + b.Est.TransferS
-	if b.Est.LocalBuildS+p.cfg.MarginS >= gpuDone {
+	local, gpu := stayLocalS(b), migrateS(b)
+	if local+p.cfg.MarginS >= gpu {
 		return Action{}, false
 	}
 	return Action{
 		Kind: ActRenege, BuildID: b.BuildID,
-		Reason: fmt.Sprintf("local from scratch %.1fs beats gpu queue %.1fs by the margin", b.Est.LocalBuildS, gpuDone),
+		Reason: fmt.Sprintf("local recovery %.1fs beats staying queued %.1fs by the margin", local, gpu),
 	}, true
 }
 
@@ -162,7 +182,8 @@ func (p Reactive) reprioritizeIfDrifted(b BuildView) (Action, bool) {
 		return Action{}, false // only preempted builds carry blocked-work priority
 	}
 	want := blockedWorkS(b)
-	if diff := want - b.Priority; diff < p.cfg.ReprioritizeDeltaS && diff > -p.cfg.ReprioritizeDeltaS {
+	// "More than" the delta, strictly: a drift of exactly the delta stays put.
+	if diff := want - b.Priority; diff <= p.cfg.ReprioritizeDeltaS && diff >= -p.cfg.ReprioritizeDeltaS {
 		return Action{}, false
 	}
 	return Action{

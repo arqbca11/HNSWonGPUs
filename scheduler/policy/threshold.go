@@ -15,7 +15,9 @@ type StaticThreshold struct {
 	N int64
 }
 
-func (p StaticThreshold) Name() string { return "static_threshold" }
+// Name carries the threshold, so a logged or metric-labelled name tells the
+// sweep's arms apart and ByName(p.Name()) reproduces the policy exactly.
+func (p StaticThreshold) Name() string { return fmt.Sprintf("static_threshold:%d", p.N) }
 
 func (p StaticThreshold) Decide(in Input) Decision {
 	if reason, no := fitsNowhere(in.Build, in.Pool); no {

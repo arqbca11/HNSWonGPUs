@@ -444,8 +444,55 @@ Every number is read through Grafana's datasource proxy, so the log records what
 | --- | --- | --- |
 | TestAlwaysGPU | The baseline's four placements: fits, exactly fits, too big for every worker, empty pool. | Everything queues except what fits no live worker; an empty pool still queues (it may be cold-starting); pure. |
 | TestStaticThreshold | Builds above, at and below the threshold; a too-big build above it; two GPU builds of different sizes. | N or more vectors goes to the GPU with priority = vector count (the skewed giant claims first), the memory filter overrides, and the policy never reconsiders. |
-| TestReactivePreemption | One shard 20% into a 100 s local build with a blocked backlog, then the same shard at 95%, moved, silent, a photo-finish case, and a growing backlog. | Migrating past the margin preempts with priority = blocked work; sunk cost (progress) holds a nearly-done build; a moved build never moves again (decision 8); no report means no action; the margin stops a 1 s win; arrivals during the remaining build count. |
-| TestReactiveRenegeAndReprioritize | A queued GPU build behind a 50 s queue vs a 10 s queue; a preempted build whose backlog grew. | Local-from-scratch past the margin reneges a queued build; a preempted build never reneges back; its priority follows the blocked work but only past the churn delta. |
+| TestReactivePreemption | One shard 20% into a 100 s local build with a blocked backlog, then the same shard at 95%, moved, silent, a photo-finish case, a too-big build, an empty pool, a build with a live speculative copy, and a growing backlog. | Migrating past the margin preempts with priority = the backlog behind the build; sunk cost (progress) holds a nearly-done build; a moved build never moves again (decision 8); no report means no action; the margin stops a 1 s win; a build fitting no live worker — or facing an empty pool — keeps its progress (bug 11); an original with a copy in flight is never preempted; arrivals during the remaining build count. |
+| TestReactiveRenegeAndReprioritize | A queued GPU build behind a 50 s queue vs a 10 s queue; one whose non-index backlog makes going local worse; a preempted build whose backlog grew, drifted exactly the delta, and sat unchanged. | Renege compares recoveries, not bare build times, so it never reneges a shard into a worse recovery; a preempted build never reneges back; its priority follows the backlog strictly past the churn delta and is stable across ticks when the backlog is unchanged. |
 | TestReactiveSpeculation | An idle worker with an empty queue and two mild local stragglers; then a non-empty queue, a copy in flight, all workers busy, a build that fits no idle worker, and a build being preempted the same tick. | Exactly one speculation, on the worst projected recovery, and never in any of the five no-go cases. |
 | TestClairvoyant | No queries; a 20 s GPU queue; a two-query stream replayed on both placements; the skip rule; the memory filter; purity. | The oracle picks the sooner replayed recovery, sets priority to the would-be local finish (15.0 and 13.0 computed by hand), lets a not-ready index query wait without blocking, and never reconsiders. |
-| TestByName | Every config name, the threshold argument, and four bad names. | All four deployable policies are reachable by name, `static_threshold:50000` parses, and the clairvoyant is not deployable (decision 1a). |
+| TestByName | Every config name, the threshold argument, nine bad names, and `ByName(p.Name())` for each. | All four deployable policies are reachable by name and every name round-trips (`static_threshold` carries its N); a typo'd sweep arm errors instead of running as the wrong policy; the clairvoyant is not deployable (decision 1a). |
+
+## Phase 3, step 1, cross-check of the policies (Go, `scheduler/crosscheck`, `TestPolicySpec` subtests, pure, no database). Log: `phase3/step1-crosscheck-policies.log`
+
+Written from the docs and `go doc` alone; found bug 11 and the F2–F6 / probe findings triaged in the design doc.
+
+| Test | Scenario | Proves |
+| --- | --- | --- |
+| PolicySpec/Purity_RepeatedDecideIdentical | Each of the five policies decides the same input 51 times. | Decide is deterministic (invariant 8). |
+| PolicySpec/Purity_RepeatedReconsiderIdentical | Each policy reconsiders a busy world 51 times. | Reconsider is deterministic (invariant 8). |
+| PolicySpec/Purity_ReconsiderDoesNotMutateInput | Input slices compared before and after Reconsider. | No side effects on the caller's state. |
+| PolicySpec/Purity_ReconsiderPermutationInvariant | Builds and workers in 10 rotations and reversals. | The action set does not depend on input order. |
+| PolicySpec/EmptyWorld_NoActionsNoPanic | No builds, then idle workers only. | Every policy returns no actions and does not panic. |
+| PolicySpec/MemoryFilter_AllPolicies | A build one byte too big, and one exactly the largest worker's size, for all five policies. | Too big goes local; exactly fitting fits. |
+| PolicySpec/MemoryFilter_EmptyPoolStillQueues | Zero live workers and a 64 GiB build. | Deployable policies still queue at submit (the cold-start rule); the oracle does the same. |
+| PolicySpec/AlwaysGPU_QueuesEverythingFCFS | Tiny to huge builds, including one where the GPU is much slower. | Always gpu at priority 0; never reconsiders. |
+| PolicySpec/StaticThreshold_BoundaryPriorityNeverReconsiders | N=1000 with 999, 1000, 1001 and 0 vectors; two sizes; a busy world. | The `>=` boundary, priority = vector count, no reconsider. |
+| PolicySpec/ByName_AcceptsDocumentedNames | The five documented spellings. | They resolve; the bare threshold uses the default; `:500` splits at 500. |
+| PolicySpec/ByName_RejectsBadNamesAndTheOracle | Malformed names, suffixes on parameterless policies, `clairvoyant`. | Config errors are rejected (found F5: parsing was lenient) and the oracle is unreachable (decision 1a). |
+| PolicySpec/ByName_NameRoundTrips | `ByName(p.Name())` for each name. | A logged name reproduces the policy (found F6: the threshold was lost). |
+| PolicySpec/Reactive_DecideLikeThresholdPriorityIsLocalSeconds | The ThresholdN boundary; a 37.5 s build. | Submit behaves like a threshold with priority = local seconds (decision 10). |
+| PolicySpec/Reactive_PreemptArithmeticAndPriority | A 100 s build at 50% with a 10-query backlog, by hand: stay 60, migrate 10. | Preempts, with priority = the 10 s backlog behind it (decision 10 as corrected). |
+| PolicySpec/Reactive_PreemptPriorityIsBacklogOnly | The same build at 20% progress, where the old formulas disagree. | Preempt priority is the backlog alone, whatever the progress (found F3: code and doc each said a third thing). |
+| PolicySpec/Reactive_RenegeComparisonProbe | A queued build with a non-index backlog, local 10 s vs GPU 17 s. | Renege counts the backlog the local build would block (found the renege/preempt cost-model asymmetry; recovery 20 vs 17 now stays queued). |
+| PolicySpec/Reactive_MarginBoundaryDefault2s | Wins by exactly 2, by 2.5, by 1 and by -1; custom margins. | Preempt must win by more than MarginS (default 2 s). |
+| PolicySpec/Reactive_SunkCostViaBuildProgress | The same build at progress 0, 0.5, 0.75 and 0.9. | build_progress carries the sunk cost (decision 1b). |
+| PolicySpec/Reactive_NonIndexBacklogFavoursMigration | The same backlog, all needing the index vs none. | Non-index queries drain as soon as the CPU frees. |
+| PolicySpec/Reactive_QueueWaitOfLocalBuildEntersMigrate | A hurting build with a 100 s GPU wait. | The queue wait enters the migrate branch (G2 pinned). |
+| PolicySpec/Reactive_NoActionWithoutValidReport | A hurting build, and a preempted queued build, with Valid=false. | No preempt or reprioritize without a report. |
+| PolicySpec/Reactive_MemoryAwarePreempt | A hurting local build that fits no live worker. | Never preempted into a queue no worker can claim (found F1 = bug 11). |
+| PolicySpec/Reactive_MovedAtMostOnce_RenegedNeverPreempted | A Moved local build with a huge migrate win, plus a control. | A reneged build is never preempted (decision 8). |
+| PolicySpec/Reactive_MovedAtMostOnce_PreemptedNeverReneges | A Moved queued build with a 1000 s wait, plus a control. | A preempted build never reneges (decision 8). |
+| PolicySpec/Reactive_RenegeOnlyQueuedPastMargin | Waits around the 2 s margin; a leased build with hopeless numbers. | Renege only past the margin, and only for queued builds (decision 4). |
+| PolicySpec/Reactive_RenegeOfSpeculativeCopyProbe | A speculative copy stuck in the queue while its original runs. | The copy is not reneged, and the original is no longer preempted (the probe that found it). |
+| PolicySpec/Reactive_ReprioritizeOnlyPastDelta | Stored priority at target +0, ±0.5, ±1 and ±1.5; an unmoved build. | Reprioritize strictly past 1 s, and only for preempted builds (found F2: fired at exactly ±1). |
+| PolicySpec/Reactive_PreemptThenNextTickDoesNotChurn | Preempt, then the next tick with an unchanged backlog. | The priority stays put (found F4: it used to jump by the whole build time). |
+| PolicySpec/Decision10_PrioritiesComparableWithinReactive | A 10 s submit vs a 10 s backlog preemption; two backlogs. | One currency of seconds; the shard hurting most claims first. |
+| PolicySpec/Spec_SpeculatesWorstOncePerTick | Two or three mild stragglers in both orders. | Exactly one speculation, on the worst projected recovery; plain reactive never speculates. |
+| PolicySpec/Spec_NoGoCases | Queue non-empty, a copy queued or leased, all workers busy, no workers. | No speculation in any of them. |
+| PolicySpec/Spec_MemoryAware | The worst straggler doesn't fit the only idle worker. | It is not speculated; a fitting one is chosen instead. |
+| PolicySpec/Spec_NeverTargetsBuildPreemptedSameTick | A hurting build that is also the worst recovery. | Preempted, never speculated in the same tick. |
+| PolicySpec/Spec_StillReactive | A busy world with no idle worker. | reactive_spec acts and decides exactly like reactive. |
+| PolicySpec/Clairvoyant_ExactReplayWithSkipRule | Three hand-replayed streams; one flips on the skip rule (7 vs 11). | Exact replay, the sooner placement wins, priority = would-be local recovery. |
+| PolicySpec/Clairvoyant_QueueWaitAndLPT | Queue wait 0 vs 20; local finish 10 vs 40. | The queue wait enters the GPU finish; longest-first priority. |
+| PolicySpec/Clairvoyant_LateArrivalsAfterLocalBuild | Queries arriving after the build; an equal-recovery tie. | Queries after the build run on arrival; a tie goes local (G4 pinned). |
+| PolicySpec/Clairvoyant_ShardWithNoFuture | An empty stream, a missing map entry, nil futures. | All three treated alike, as no queries. |
+| PolicySpec/Clairvoyant_UnsortedStreamSameAsSorted | A permuted query stream. | Same decision; the caller's slice is untouched. |
+| PolicySpec/Clairvoyant_NotDeployable | ByName of the oracle's name; its Reconsider. | Unreachable from config (decision 1a); no reconsider actions. |

@@ -21,6 +21,11 @@ type QueryEvent struct {
 // cannot declare its future — so ByName never returns it; the simulator
 // constructs it directly. The gap between it and the reactive policies is
 // the measured cost of not knowing the future.
+//
+// Edges, pinned by the cross-check: a shard absent from the futures (or a
+// nil map) is an empty stream; a recovery tie goes local (no transfer, no
+// queue slot spent); an empty pool still queues, the same cold-start rule
+// every deployable policy applies.
 type Clairvoyant struct {
 	futures map[int32][]QueryEvent // by shard, sorted by arrival at construction
 }

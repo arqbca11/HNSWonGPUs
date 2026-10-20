@@ -1,8 +1,8 @@
 == Go tests against a throwaway Postgres
-date:      2026-10-19 21:43:26 PDT
-commit:    3d4c138 (uncommitted changes)
+date:      2026-10-19 22:00:35 PDT
+commit:    86d7099 (uncommitted changes)
 go:        go1.27.1
-postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-79462, port 30871)
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-80804, port 27141)
 go:        go test -p 1 -v -count=1 ./scheduler/policy/
 python:    skipped
 
@@ -23,17 +23,23 @@ Lines tagged [db] are the build row as Postgres had it at that moment.
     clairvoyant_test.go:63: --- pure: the same input twice gives the identical decision, and the oracle never reconsiders
 --- PASS: TestClairvoyant (0.00s)
 === RUN   TestByName
-    clairvoyant_test.go:74: --- every deployable policy is reachable by config name; the oracle deliberately is not (decision 1a)
-    clairvoyant_test.go:87:     ""                     -> always_gpu
-    clairvoyant_test.go:87:     "always_gpu"           -> always_gpu
-    clairvoyant_test.go:87:     "static_threshold"     -> static_threshold
-    clairvoyant_test.go:87:     "static_threshold:50000" -> static_threshold
-    clairvoyant_test.go:87:     "reactive"             -> reactive
-    clairvoyant_test.go:87:     "reactive_spec"        -> reactive_spec
-    clairvoyant_test.go:98:     "clairvoyant"          -> rejected, as it must be
-    clairvoyant_test.go:98:     "static_threshold:none" -> rejected, as it must be
-    clairvoyant_test.go:98:     "static_threshold:-1"  -> rejected, as it must be
-    clairvoyant_test.go:98:     "nonsense"             -> rejected, as it must be
+    clairvoyant_test.go:74: --- every deployable policy is reachable by config name and the name round-trips; the oracle deliberately is not (decision 1a)
+    clairvoyant_test.go:91:     ""                       -> always_gpu (round-trips)
+    clairvoyant_test.go:91:     "always_gpu"             -> always_gpu (round-trips)
+    clairvoyant_test.go:91:     "static_threshold"       -> static_threshold:200000 (round-trips)
+    clairvoyant_test.go:91:     "static_threshold:50000" -> static_threshold:50000 (round-trips)
+    clairvoyant_test.go:91:     "reactive"               -> reactive (round-trips)
+    clairvoyant_test.go:91:     "reactive_spec"          -> reactive_spec (round-trips)
+    clairvoyant_test.go:98: --- strictness: a typo'd sweep arm errors instead of running as the wrong policy
+    clairvoyant_test.go:106:     "clairvoyant"            -> rejected, as it must be
+    clairvoyant_test.go:106:     "static_threshold:none"  -> rejected, as it must be
+    clairvoyant_test.go:106:     "static_threshold:-1"    -> rejected, as it must be
+    clairvoyant_test.go:106:     "static_threshold:"      -> rejected, as it must be
+    clairvoyant_test.go:106:     "always_gpu:3"           -> rejected, as it must be
+    clairvoyant_test.go:106:     "reactive:5"             -> rejected, as it must be
+    clairvoyant_test.go:106:     "reactive_spec:x"        -> rejected, as it must be
+    clairvoyant_test.go:106:     "reactive:margin=5"      -> rejected, as it must be
+    clairvoyant_test.go:106:     "nonsense"               -> rejected, as it must be
 --- PASS: TestByName (0.00s)
 === RUN   TestAlwaysGPU
     policy_test.go:19: fits                                          -> gpu   (always_gpu)
@@ -42,27 +48,32 @@ Lines tagged [db] are the build row as Postgres had it at that moment.
     policy_test.go:19: no live workers: still queue (pool may be cold) -> gpu   (always_gpu)
 --- PASS: TestAlwaysGPU (0.00s)
 === RUN   TestReactivePreemption
-    reactive_test.go:24: --- a shard at 20% with a blocked backlog: migrating recovers at ~20s vs ~85s local, so the build is preempted
-    reactive_test.go:29:     preempt 3:7, priority 85.0 (stay local 85.0s, migrate 20.0s, margin 2.0s)
-    reactive_test.go:34: --- the same shard at 95%: only 5s of build left, the GPU trip cannot beat it — sunk cost holds the preemption back
-    reactive_test.go:39: --- a build that already moved once is never moved again (decision 8)
-    reactive_test.go:46: --- no report yet: nothing to judge by, nothing happens
-    reactive_test.go:53: --- the margin stops a photo-finish migration (stay 21s vs migrate 20s, margin 2s)
-    reactive_test.go:60: --- growth counts: arrivals during the remaining build enlarge the backlog the local branch must drain
+    reactive_test.go:25: --- a shard at 20% with a blocked backlog: migrating recovers at ~20s vs ~85s local, so the build is preempted
+    reactive_test.go:30:     preempt 3:7, priority 5.0 (stay local 85.0s, migrate 20.0s, margin 2.0s)
+    reactive_test.go:35: --- the same shard at 95%: only 5s of build left, the GPU trip cannot beat it — sunk cost holds the preemption back
+    reactive_test.go:40: --- a build that already moved once is never moved again (decision 8)
+    reactive_test.go:47: --- no report yet: nothing to judge by, nothing happens
+    reactive_test.go:54: --- the margin stops a photo-finish migration (stay 21s vs migrate 20s, margin 2s)
+    reactive_test.go:61: --- the memory filter applies to preemption (bug 11): a build fitting no live worker keeps its CPU progress, and so does any build when the pool is empty
+    reactive_test.go:71: --- a build whose speculative copy is in flight is never preempted: the copy exists so the progress is not lost
+    reactive_test.go:78: --- growth counts: arrivals during the remaining build enlarge the backlog the local branch must drain
 --- PASS: TestReactivePreemption (0.00s)
 === RUN   TestReactiveRenegeAndReprioritize
-    reactive_test.go:72: --- a queued GPU build whose queue has grown past its local time reneges back to local
-    reactive_test.go:81:     renege 1:7 (local from scratch 20.0s beats gpu queue 56.0s by the margin)
-    reactive_test.go:83: --- the same build with a short queue stays put; a preempted build never reneges back (decision 8)
-    reactive_test.go:95: --- a preempted build's priority follows the blocked work behind it, but only past the churn delta
-    reactive_test.go:105:     reprioritize 2:7 -> 130 (blocked work now 130.0s, priority was 10.0)
+    reactive_test.go:90: --- a queued GPU build whose queue has grown past its local time reneges back to local
+    reactive_test.go:99:     renege 1:7 (local recovery 20.0s beats staying queued 56.0s by the margin)
+    reactive_test.go:101: --- renege counts the backlog: freeing a queue slot is not worth blocking 10 waiting queries behind a local build (recovery 20s local vs 17s queued)
+    reactive_test.go:111: --- the same build with a short queue stays put; a preempted build never reneges back (decision 8)
+    reactive_test.go:123: --- a preempted build's priority follows the backlog behind it, but only strictly past the churn delta
+    reactive_test.go:133:     reprioritize 2:7 -> 30 (blocked work now 30.0s, priority was 10.0)
+    reactive_test.go:141:     stored 29.5, 29 and 31 all hold: the delta is strict
+    reactive_test.go:143: --- a preempted build's priority is stable across ticks when the backlog is unchanged
 --- PASS: TestReactiveRenegeAndReprioritize (0.00s)
 === RUN   TestReactiveSpeculation
-    reactive_test.go:125: --- idle worker, empty queue: speculate on the worst projected straggler, without killing it
-    reactive_test.go:130:     speculate 2:7, priority 19.0 (idle worker, empty queue; worst projected recovery 19.0s)
-    reactive_test.go:132: --- no speculation while the queue has work, while a copy is in flight, while every worker is busy, or when the build fits no idle worker
-    reactive_test.go:151: --- a build being preempted this very tick is not also speculated on
-    reactive_test.go:161:     actions this tick: [preempt speculate]
+    reactive_test.go:163: --- idle worker, empty queue: speculate on the worst projected straggler, without killing it
+    reactive_test.go:168:     speculate 2:7, priority 5.0 (idle worker, empty queue; worst projected recovery 19.0s)
+    reactive_test.go:170: --- no speculation while the queue has work, while a copy is in flight, while every worker is busy, or when the build fits no idle worker
+    reactive_test.go:189: --- a build being preempted this very tick is not also speculated on
+    reactive_test.go:199:     actions this tick: [preempt speculate]
 --- PASS: TestReactiveSpeculation (0.00s)
 === RUN   TestStaticThreshold
     threshold_test.go:21: above the threshold goes to gpu          -> gpu   prio 500000 (500000 vectors >= threshold 200000)
@@ -73,13 +84,13 @@ Lines tagged [db] are the build row as Postgres had it at that moment.
     threshold_test.go:34: --- a static policy never reconsiders
 --- PASS: TestStaticThreshold (0.00s)
 PASS
-ok  	github.com/arqbca11/HNSWonGPUs/scheduler/policy	0.192s
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/policy	0.226s
 
-== Docker events for container kgpu-test-pg-79462
-  21:43:25  create
-  21:43:25  start
-  21:43:27  kill
-  21:43:27  die
-  21:43:27  destroy
+== Docker events for container kgpu-test-pg-80804
+  22:00:34  create
+  22:00:34  start
+  22:00:36  kill
+  22:00:37  die
+  22:00:37  destroy
 
 == Result: PASS

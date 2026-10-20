@@ -20,47 +20,65 @@ func hurtingBuild(progress float64) BuildView {
 
 func TestReactivePreemption(t *testing.T) {
 	p := NewReactive(ReactiveConfig{})
+	workers := []WorkerView{{ID: "w1", MemBytes: 8 << 30}}
 
 	t.Log("--- a shard at 20% with a blocked backlog: migrating recovers at ~20s vs ~85s local, so the build is preempted")
-	acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{hurtingBuild(0.2)}})
+	acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{hurtingBuild(0.2)}})
 	if len(acts) != 1 || acts[0].Kind != ActPreempt || acts[0].BuildID != "3:7" {
 		t.Fatalf("expected one preempt of 3:7, got %+v", acts)
 	}
 	t.Logf("    preempt %s, priority %.1f (%s)", acts[0].BuildID, acts[0].Priority, acts[0].Reason)
-	if want := 5*1 + 100*0.8; acts[0].Priority != want {
-		t.Fatalf("priority should be the blocked work %.1f, got %.1f", want, acts[0].Priority)
+	if want := 5.0 * 1; acts[0].Priority != want {
+		t.Fatalf("priority should be the backlog behind the build, %.1f, got %.1f", want, acts[0].Priority)
 	}
 
 	t.Log("--- the same shard at 95%: only 5s of build left, the GPU trip cannot beat it — sunk cost holds the preemption back")
-	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{hurtingBuild(0.95)}}); len(acts) != 0 {
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{hurtingBuild(0.95)}}); len(acts) != 0 {
 		t.Fatalf("expected no action at 95%% progress, got %+v", acts)
 	}
 
 	t.Log("--- a build that already moved once is never moved again (decision 8)")
 	moved := hurtingBuild(0.2)
 	moved.Moved = true
-	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{moved}}); len(acts) != 0 {
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{moved}}); len(acts) != 0 {
 		t.Fatalf("expected no action for a moved build, got %+v", acts)
 	}
 
 	t.Log("--- no report yet: nothing to judge by, nothing happens")
 	silent := hurtingBuild(0.2)
 	silent.Status = ShardStatus{}
-	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{silent}}); len(acts) != 0 {
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{silent}}); len(acts) != 0 {
 		t.Fatalf("expected no action without a report, got %+v", acts)
 	}
 
 	t.Log("--- the margin stops a photo-finish migration (stay 21s vs migrate 20s, margin 2s)")
 	close := hurtingBuild(0)
 	close.Est = Estimates{LocalBuildS: 16, GPUBuildS: 12, TransferS: 3} // stay 16+5=21, migrate 15+5=20
-	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{close}}); len(acts) != 0 {
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{close}}); len(acts) != 0 {
 		t.Fatalf("expected the margin to hold, got %+v", acts)
+	}
+
+	t.Log("--- the memory filter applies to preemption (bug 11): a build fitting no live worker keeps its CPU progress, and so does any build when the pool is empty")
+	huge := hurtingBuild(0.2)
+	huge.Spec.MemBytes = 16 << 30
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{huge}}); len(acts) != 0 {
+		t.Fatalf("preempted into a queue no worker can claim: %+v", acts)
+	}
+	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{hurtingBuild(0.2)}}); len(acts) != 0 {
+		t.Fatalf("preempted into an empty pool: %+v", acts)
+	}
+
+	t.Log("--- a build whose speculative copy is in flight is never preempted: the copy exists so the progress is not lost")
+	original := hurtingBuild(0.2)
+	copyRow := BuildView{BuildID: "3:7:spec", Spec: original.Spec, Phase: "gpu_leased", Speculative: true}
+	if acts := p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{original, copyRow}}); len(acts) != 0 {
+		t.Fatalf("preempted an original with a live copy: %+v", acts)
 	}
 
 	t.Log("--- growth counts: arrivals during the remaining build enlarge the backlog the local branch must drain")
 	growing := hurtingBuild(0.2)
 	growing.Status.ArrivalRateQPS = 2 // 80 s remaining -> 160 more queries behind the build
-	acts = p.Reconsider(ReconsiderInput{Builds: []BuildView{growing}})
+	acts = p.Reconsider(ReconsiderInput{Workers: workers, Builds: []BuildView{growing}})
 	if len(acts) != 1 || acts[0].Kind != ActPreempt {
 		t.Fatalf("expected a preempt with a growing backlog, got %+v", acts)
 	}
@@ -80,6 +98,16 @@ func TestReactiveRenegeAndReprioritize(t *testing.T) {
 	}
 	t.Logf("    renege %s (%s)", acts[0].BuildID, acts[0].Reason)
 
+	t.Log("--- renege counts the backlog: freeing a queue slot is not worth blocking 10 waiting queries behind a local build (recovery 20s local vs 17s queued)")
+	probe := BuildView{
+		BuildID: "4:7", Spec: BuildSpec{ShardID: 4, RoundID: 7},
+		Est: Estimates{LocalBuildS: 10, GPUBuildS: 15, TransferS: 2}, Phase: "gpu_queued",
+		Status: ShardStatus{QueueDepth: 10, WaitingNeedsIndex: 0, MeanQueryS: 1, Valid: true},
+	}
+	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{probe}}); len(acts) != 0 {
+		t.Fatalf("reneging would make the shard worse; got %+v", acts)
+	}
+
 	t.Log("--- the same build with a short queue stays put; a preempted build never reneges back (decision 8)")
 	short := stuck
 	short.QueueWaitS = 10 // gpu 16 vs local 20: queue still wins
@@ -92,21 +120,31 @@ func TestReactiveRenegeAndReprioritize(t *testing.T) {
 		t.Fatalf("expected no second move, got %+v", acts)
 	}
 
-	t.Log("--- a preempted build's priority follows the blocked work behind it, but only past the churn delta")
+	t.Log("--- a preempted build's priority follows the backlog behind it, but only strictly past the churn delta")
 	preempted := BuildView{
 		BuildID: "2:7", Spec: BuildSpec{ShardID: 2, RoundID: 7},
 		Est: Estimates{LocalBuildS: 100, GPUBuildS: 12, TransferS: 3}, Phase: "gpu_queued", Moved: true, Priority: 10,
-		Status: ShardStatus{QueueDepth: 30, MeanQueryS: 1, Valid: true}, // blocked work = 30 + 100 = 130
+		Status: ShardStatus{QueueDepth: 30, MeanQueryS: 1, Valid: true}, // blocked work = 30
 	}
 	acts = p.Reconsider(ReconsiderInput{Builds: []BuildView{preempted}})
-	if len(acts) != 1 || acts[0].Kind != ActReprioritize || acts[0].Priority != 130 {
-		t.Fatalf("expected reprioritize to 130, got %+v", acts)
+	if len(acts) != 1 || acts[0].Kind != ActReprioritize || acts[0].Priority != 30 {
+		t.Fatalf("expected reprioritize to 30, got %+v", acts)
 	}
 	t.Logf("    reprioritize %s -> %.0f (%s)", acts[0].BuildID, acts[0].Priority, acts[0].Reason)
-	steady := preempted
-	steady.Priority = 129.5 // within the 1 s delta
-	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{steady}}); len(acts) != 0 {
-		t.Fatalf("expected no churn inside the delta, got %+v", acts)
+	for _, steadyPrio := range []float64{29.5, 29, 31} { // inside and exactly at the 1 s delta
+		steady := preempted
+		steady.Priority = steadyPrio
+		if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{steady}}); len(acts) != 0 {
+			t.Fatalf("stored priority %.1f: expected no churn, got %+v", steadyPrio, acts)
+		}
+	}
+	t.Log("    stored 29.5, 29 and 31 all hold: the delta is strict")
+
+	t.Log("--- a preempted build's priority is stable across ticks when the backlog is unchanged")
+	settled := preempted
+	settled.Priority = 30
+	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{settled}}); len(acts) != 0 {
+		t.Fatalf("unchanged backlog must mean unchanged priority, got %+v", acts)
 	}
 }
 

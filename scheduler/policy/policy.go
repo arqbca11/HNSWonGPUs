@@ -82,10 +82,11 @@ type WorkerView struct {
 
 // BuildView is one non-terminal build as reconsider sees it. Phase is the
 // policy-level state the host maps from its own rows: "local_running",
-// "gpu_queued" or "gpu_leased". QueueWaitS is the host's current estimate of
-// this queued build's wait before a worker starts it (meaningful for
-// gpu_queued). Moved says placement already changed once after submit
-// (Phase 3 decision 8); Speculative marks a decision-5 copy.
+// "gpu_queued" or "gpu_leased". QueueWaitS is the host's estimate of this
+// build's wait in the GPU queue: for gpu_queued its current wait, for
+// local_running the wait it would join at if preempted now. Moved says
+// placement already changed once after submit (Phase 3 decision 8);
+// Speculative marks a decision-5 copy.
 type BuildView struct {
 	BuildID     string
 	Spec        BuildSpec
@@ -162,19 +163,25 @@ func (AlwaysGPU) Decide(in Input) Decision {
 
 func (AlwaysGPU) Reconsider(ReconsiderInput) []Action { return nil }
 
-// ByName returns the deployable policy for a config value. The clairvoyant
+// ByName returns the deployable policy for a config value, strictly: a
+// misspelled or mis-parameterized name is an error, never a silent default,
+// so a typo'd sweep arm cannot run as the wrong policy. The empty string
+// means always_gpu (the deployed default since Phase 1). The clairvoyant
 // oracle is deliberately absent: it exists only in the simulator (decision
 // 1a), constructed with the workload's future streams.
 //
-//	always_gpu | static_threshold[:N] | reactive | reactive_spec
+//	"" | always_gpu | static_threshold[:N] | reactive | reactive_spec
 func ByName(name string) (Policy, error) {
-	base, arg, _ := strings.Cut(name, ":")
+	base, arg, hasArg := strings.Cut(name, ":")
+	if hasArg && base != "static_threshold" {
+		return nil, fmt.Errorf("policy %q takes no argument", base)
+	}
 	switch base {
 	case "", "always_gpu":
 		return AlwaysGPU{}, nil
 	case "static_threshold":
 		t := DefaultThresholdN
-		if arg != "" {
+		if hasArg {
 			v, err := strconv.ParseInt(arg, 10, 64)
 			if err != nil || v <= 0 {
 				return nil, fmt.Errorf("static_threshold: bad threshold %q", arg)
