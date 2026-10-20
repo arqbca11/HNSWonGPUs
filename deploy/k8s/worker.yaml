@@ -58,6 +58,17 @@ spec:
     spec:
       nodeSelector:
         kgpu.io/gpu: "true"
+      # Soft spread (decision 39): prefer balancing workers across GPU nodes so a
+      # one-node drain halves the pool instead of possibly emptying it (decision
+      # 38). ScheduleAnyway keeps it a preference: with one node full or cordoned
+      # the pod still schedules, so packing stays legal and nothing goes Pending.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: worker
       tolerations:
         - key: kgpu.io/gpu
           operator: Equal
