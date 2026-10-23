@@ -2,7 +2,7 @@
 
 A scheduler that places HNSW vector index builds from many database shards onto a small shared pool of GPU workers, or back onto each shard's own CPU, and measures which placement policy gets the whole cluster back to normal fastest.
 
-**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is in progress — the policies, the GPU finish estimator and the reconsider timer that executes preemption, reneging and speculation are built; next is the discrete-event simulator.** Phase 1 (done 2026-10-06) built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 (done 2026-10-19) moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
+**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is in progress — the policies, the GPU finish estimator, the reconsider timer that executes preemption/reneging/speculation, and the experiment pipeline (discrete-event simulator, seeded sweep runner, plots) are built; next is validating the simulator against the live cluster, which closes the phase.** Phase 1 (done 2026-10-06) built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 (done 2026-10-19) moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
 
 ## The problem
 
@@ -73,7 +73,7 @@ The code map is kept current by working agreement (CLAUDE.md): any step that add
 | `worker/` | Python: the GPU worker; `builder.py` is the one interface the fake, hnswlib and cuVS builders implement |
 | `db/migrations/` | Postgres schema, applied in order on scheduler start |
 | `shard/` | Go: the shard simulator — seeded workloads, local builds that block the CPU, query streams |
-| `experiments/` | Seeded workload generator; the discrete-event simulator and results arrive in Phase 3 |
+| `experiments/` | Seeded workload generator, the discrete-event simulator (same policy code as the live scheduler, modeled time), the sweep runner (one CSV row per round) and the matplotlib analysis; `results/demo/` holds the committed reproducible demo sweep |
 | `deploy/` | Docker Compose (Phase 1); kind cluster config, Kubernetes manifests and monitoring (Phase 2) |
 | `scripts/` | One command per step: bring the cluster up, run rounds, inject failures, run every check |
 | `docs/roadmap.md` | The plan: six phases, schema, policies, scenarios, failure tests |

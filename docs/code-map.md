@@ -91,6 +91,11 @@ One entry per action the system takes, pointing at the code that decides it, the
 - Heartbeat/registration: `scheduler/store/store.go` `Heartbeat` (carries the node, decision 11; latest wins), `Deregister` (clean shutdown, decision 49), `Pool` (live = seen within `WORKER_STALE_AFTER`); Python `worker/kgpu_worker/store.py` `heartbeat`.
 - Where a worker learns its node: Kubernetes downward API `spec.nodeName` in `deploy/k8s/worker.yaml`; Compose's one shared `laptop` in `deploy/compose.yaml`.
 
+### The discrete-event simulator and the experiment pipeline
+- One modeled round against one policy: `experiments/sim/sim.go` `Run` — the event loop is `engine.step` (fixed dispatch order for determinism); `submit` mirrors the live API's mapping, `tick` mirrors the reconsider loop's (resolve-then-decide, preempts first), `execute` applies actions with the store's guards, `claims` mirrors the claim statement, `report` is the live shard's publish-and-apply. `Futures` is the one place the oracle gets its streams (decision 1a). Fidelity choices and simplifications: decisions 21–23.
+- The sweep runner (one CSV row per round, byte-identical reruns): `experiments/cmd/sweep/main.go` — the schema is `columns`, a cell's scenario/cost-model overrides are `runCell` (decision 24).
+- The plots: `experiments/analysis/` (`plot_rounds.py`, `plot_sigma.py`, shared `plotlib.py` with the Go side's percentile). The committed demo: `scripts/sim-sweep-demo.sh` → `experiments/results/demo/`.
+
 ### The shard simulator and workload
 - One shard = three goroutines: `shard/sim/shard.go` `Run` (`arrivals`, `cpu`, `reports`); the round driver and timeline are `shard/sim/round.go` and `shard/sim/timeline.go` (`BuildTimeline` skips copies from the per-shard lines, counts them in `Speculations`).
 - Seeded workloads: `experiments/workload/` (scenario presets; `PRINT_WORKLOAD=1` to inspect).

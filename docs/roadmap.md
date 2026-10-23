@@ -315,9 +315,9 @@ A workload is a seeded combination of four knobs: size distribution, query strea
 - [x] Policy interface and the five implementations (clairvoyant runs only in the simulator)
 - [x] GPU finish estimator (queue replay)
 - [x] Preemption, reneging and speculation in `reconsider`, including cancelling the losing copy
-- [ ] Discrete-event simulator using the same policy code
-- [ ] Seeded runner writing one CSV row per round
-- [ ] Plots: p50 and p99 round time per policy; p99 against estimate error per policy
+- [x] Discrete-event simulator using the same policy code
+- [x] Seeded runner writing one CSV row per round
+- [x] Plots: p50 and p99 round time per policy; p99 against estimate error per policy
 - [ ] Validate three or four configurations on the live kind cluster
 
 ## Phase 4: Real CPU builds with hnswlib

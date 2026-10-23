@@ -37,9 +37,13 @@ const (
 	approxGraphBytesPerVector = 2 * 16 * 4
 )
 
-// PresetNames lists the six roadmap scenarios, in roadmap order.
+// PresetNames lists the eight roadmap scenarios, in roadmap order. The last
+// two arrived with Phase 3 step 4: high_dim (transfer rivals the GPU build
+// and memory binds) and production (the sizes the scheduler would meet in
+// production, hour-long CPU builds — simulator only; its builds would sleep
+// for hours on the live stack).
 func PresetNames() []string {
-	return []string{"uniform", "skewed", "bimodal", "downstream_heavy", "staggered", "shrinking_pool"}
+	return []string{"uniform", "skewed", "bimodal", "downstream_heavy", "staggered", "shrinking_pool", "high_dim", "production"}
 }
 
 // Preset returns a named scenario at DefaultShards shards.
@@ -106,6 +110,29 @@ func PresetWithShards(name string, n int) (Scenario, error) {
 		sc.Stream.Horizon = presetStaggerHorizon
 		sc.Stream.ClusterQueryRate = rateForUtil(0.4, sc.Stream, n)
 		sc.DDL = ArrivalPattern{Kind: "staggered", Spread: presetStaggerSpread}
+	case "high_dim":
+		// The skewed sizes at dim 1536 (roadmap: 61 GB of vectors for 10M x
+		// 1536; here the shapes scale down but the RATIOS bind): transfer
+		// grows 12x while the GPU build grows ~12x too, but the fixed
+		// overhead shrinks in relative terms and memory starts refusing
+		// workers. Worker memory is set so the top of the zipf range does
+		// not fit one worker, like bimodal's.
+		sc.Dim = 1536
+		sc.Sizes = SizeDist{Kind: "zipf", Min: 10_000, Max: 200_000, ZipfExponent: 1.0}
+		sc.Stream.ClusterQueryRate = rateForUtil(0.4, sc.Stream, n)
+		sc.Pool.WorkerMemBytes = int64(presetBimodalMemPoint * float64(sc.Sizes.Max) * float64(ApproxBuildMemBytesPerVector(1536)))
+	case "production":
+		// 1M to 10M vectors at dim 1536: hour-long CPU builds make sunk cost
+		// and preemption loss real. Simulator only — on the live stack these
+		// builds would sleep for hours. Queries arrive for 10 modeled
+		// minutes; 80 GB workers (an A100's class) take mid-size builds but
+		// not the 10M monsters, whose vectors alone are ~61 GB.
+		sc.Dim = 1536
+		sc.Sizes = SizeDist{Kind: "zipf", Min: 1_000_000, Max: 10_000_000, ZipfExponent: 1.0}
+		sc.Stream.Horizon = 10 * time.Minute
+		sc.Stream.MeanQueryDuration = 50 * time.Millisecond
+		sc.Stream.ClusterQueryRate = rateForUtil(0.4, sc.Stream, n)
+		sc.Pool.WorkerMemBytes = 80 << 30
 	default:
 		return Scenario{}, fmt.Errorf("workload: unknown preset %q (known: %v)", name, PresetNames())
 	}

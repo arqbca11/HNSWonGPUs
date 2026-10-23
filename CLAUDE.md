@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 3 (placement policies and experiments) is in progress; step 3 (preemption, reneging and speculation executed by the reconsider timer) is done (2026-10-22).** Next: step 4, the discrete-event simulator reusing the same policy code. Phase 2 is done (2026-10-19), including its two post-close amendments (decisions 39, 40).
+**Phase 3 (placement policies and experiments) is in progress; steps 4–6 (the discrete-event simulator, the seeded sweep runner, the plots) are done (2026-10-23).** Next: step 7, validating three or four configurations on the live kind cluster — the simulator-vs-reality comparison that closes the phase; the FULL policy comparison runs after that validation. Phase 2 is done (2026-10-19), including its two post-close amendments (decisions 39, 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture
@@ -83,6 +83,10 @@ Toolchain (macOS, Homebrew): `brew install go python@3.12 uv libpq kind kubectl 
 | Run the worker locally | `cd worker && DATABASE_URL=... LOG_FORMAT=text FAKE_TIME_SCALE=10 uv run python -m kgpu_worker` (env vars in `worker/kgpu_worker/config.py`) |
 | Build the worker image | `docker build -t kgpu-worker worker/` |
 | Workload generator tests (pure, no database) | `go test -v ./experiments/workload/` |
+| Simulator tests (pure, hand-computed, no database) | `go test -v ./experiments/sim/` |
+| Run a simulated sweep (one CSV row per round) | `go run ./experiments/cmd/sweep -scenarios skewed -policies all -rounds 20 -out rounds.csv` (`-h` lists every sweep axis; `-scenarios all` runs the roadmap's eight) |
+| The committed demo sweep and both plots | `scripts/sim-sweep-demo.sh` (regenerates `experiments/results/demo/`; rerun after changing the simulator, policies or cost model and commit the diff) |
+| Plots from any sweep CSV | `cd experiments/analysis && uv run python plot_rounds.py <csv...> -o out.png` (also `plot_sigma.py`) |
 | Print a generated workload | `PRINT_WORKLOAD=1 SCENARIO=skewed N_SHARDS=6 SEED=1 go run ./shard/cmd/shardsim` (presets: uniform, skewed, bimodal, downstream_heavy, staggered, shrinking_pool) |
 | Run the shard simulator against a running scheduler | `SCHEDULER_URL=http://127.0.0.1:8080 TIME_SCALE=10 LOG_FORMAT=text go run ./shard/cmd/shardsim` (env vars at the top of `shard/cmd/shardsim/main.go`) |
 | Run the whole stack | `docker compose -f deploy/compose.yaml up -d --build` (add `--scale worker=3` for three workers); `docker compose -f deploy/compose.yaml logs -f scheduler worker`; `docker compose -f deploy/compose.yaml down -v` to stop and drop the database. API on `127.0.0.1:8080`. Knobs are env vars, see the top of `deploy/compose.yaml`; `FAKE_TIME_SCALE=10` speeds fake builds up. |

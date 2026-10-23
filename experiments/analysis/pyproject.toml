@@ -1,0 +1,6 @@
+[project]
+name = "analysis"
+version = "0.1.0"
+description = "Plots over the sweep runner's CSV (Phase 3 step 6). Owner-approved dependency: matplotlib."
+requires-python = ">=3.12"
+dependencies = ["matplotlib>=3.8"]

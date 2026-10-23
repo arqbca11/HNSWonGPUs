@@ -629,3 +629,19 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | ReconsiderTick/TickRenegeRacingAClaim | 20 races of a tick reneging a fits-nowhere build against an unregistered big worker's claim | Every outcome coherent (leased with moved=false, or local with moved=true); losers skip |
 | ReconsiderWorker/PythonWorkerBuildsCopyAndTickSettlesGPUWin | The real Python worker claims and completes a copy; tick | The unchanged worker builds copies; the tick marks the primary gpu/done at the copy's finish |
 | ReconsiderWorker/PythonWorkerFencedOutByCancelledCopy | The local build wins while the Python worker builds a 3 s copy; tick | The worker logs a lost lease within about 0.1 s, never writes again, and claims the next build |
+
+## Phase 3, steps 4–6: the discrete-event simulator (Go, `experiments/sim`, pure, no database). Log: `phase3/step456-pipeline.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| sim/TestOneShardLocalByHand | One shard builds locally for 20.63 s with a 2 s and a 3 s query behind it. | Round = build + both queries to the millisecond; the CPU ran nothing during the build; no queue wait exists. |
+| sim/TestOneShardGPUByHand | The same shard offloads; one query is free, one needs the index. | The free query runs on arrival; the index query waits for the build AND the shard's next 0.5 s report — the report latency is part of the model; round = 6.0 s by hand. |
+| sim/TestFCFSQueueWaitByHand | One worker, two equal builds. | Second wait = exactly one GPU total; straggler lag = half the round, through the interpolated median. |
+| sim/TestNodeLinkSharingByHand | Two equal builds on two workers: one node, two nodes, sharing off. | Shared: both finish at 2×transfer + build; separate or off: transfer + build — off mimics the live fake worker (decision 22). |
+| sim/TestPreemptionInSim | A 150k local build with 20 index queries dammed behind it, reactive policy. | Preempted exactly once; the round beats the stay-local projection; the queue wait measures from submit (enqueued_at semantics). |
+| sim/TestSpeculationGPUWinsByHand | reactive_spec with an infinite margin: speculation is its only move. | One copy at the first tick; round = copy finish (2 + 6.0677 s, decision 16's backdating); zero wasted seconds; the primary was never claimed. |
+| sim/TestSpeculationLocalWinsByHand | The same with Speedup 1: the copy cannot win. | The local build wins; the copy is cancelled at the next tick; exactly 32 wasted worker-seconds recorded. |
+| sim/TestKilledWorkerAndEmptyPoolHold | The only worker dies mid-lease; then the same kill with a second worker. | Empty pool: the requeued build holds (decision 19) and the hang is visible as Completed=false; second worker: reclaimed after exactly LeaseS, round = 6 + 4.6391 s. |
+| sim/TestDeterminism | skewed seed 7 under noise, run twice; then seed 8. | Byte-identical results including every counter; a different seed differs. |
+| sim/TestNoiseNeverTouchesExecution | always_gpu (which ignores estimates) at sigma 0 and sigma 2. | Identical rounds and waits: noise perturbs only what policies see, never what executes (decision 23). |
+| sim/TestAllFivePoliciesComplete | skewed seed 1, all five policies, the oracle built from the futures. | Every policy completes; the narrated comparison table is the pipeline's first output. |

@@ -9,7 +9,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Experiment outputs
+# Experiment outputs: ad-hoc runs at the top level stay local; the committed,
+# reproducible demo sweep lives in experiments/results/demo/ (scripts/sim-sweep-demo.sh).
 experiments/results/*.csv
 experiments/results/*.png
 
