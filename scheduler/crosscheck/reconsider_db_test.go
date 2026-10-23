@@ -777,12 +777,19 @@ func TestReconsiderDB(t *testing.T) {
 		round := e.createRound(t, 1)
 		ok, err := e.st.SubmitBuild(e.ctx, store.Build{BuildID: "custom-id", RoundID: round, ShardID: 0, NVectors: rxN, Dim: rxDim, MemBytes: 1, Placement: "local"})
 		t.Logf("SubmitBuild(build_id=custom-id, shard 0) -> %v %v", ok, err)
-		if ok {
-			err := e.st.ReportStatus(e.ctx, store.ShardStatus{RoundID: round, ShardID: 0})
-			t.Logf("ReportStatus for shard 0, which HAS a build (custom-id) -> %v", err)
-			if err != nil {
-				t.Logf("NOTE (spec gap): a build under a non-conventional id is accepted, and then its shard's reports fail with %v — before 0006 the FK was (round_id, shard_id) and this worked. The API always uses BuildID(), so only direct store callers can hit it.", err)
-			}
+		// F4's fix (step 3 triage): the store now insists on the convention,
+		// because a build under any other id could never be reported against.
+		if ok || err == nil {
+			t.Errorf("a non-conventional build_id was accepted; its shard's reports would forever fail the generated FK")
+		}
+		conventional := store.BuildID(0, round)
+		ok, err = e.st.SubmitBuild(e.ctx, store.Build{BuildID: conventional, RoundID: round, ShardID: 0, NVectors: rxN, Dim: rxDim, MemBytes: 1, Placement: "local"})
+		t.Logf("SubmitBuild(build_id=%s, shard 0) -> %v %v; ReportStatus must now work", conventional, ok, err)
+		if err != nil || !ok {
+			t.Fatalf("the conventional id must be accepted")
+		}
+		if err := e.st.ReportStatus(e.ctx, store.ShardStatus{RoundID: round, ShardID: 0}); err != nil {
+			t.Errorf("ReportStatus for the conventional build -> %v, want ok", err)
 		}
 	})
 

@@ -55,20 +55,27 @@ func Run(ctx context.Context, st *store.Store, pol policy.Policy, cm costmodel.M
 // Tick runs one reconsider pass. Exposed so tests can drive it on demand.
 func Tick(ctx context.Context, st *store.Store, pol policy.Policy, cm costmodel.Model, cfg Config, log *slog.Logger) {
 	// Settle races first: a copy that already finished (or lost) changes what
-	// the policy should see this tick.
+	// the policy should see this tick. Deliberate consequence: a race settled
+	// here frees its worker and its shard in the snapshot below, so the SAME
+	// tick may already act on that — including starting the next shard's
+	// speculative copy. Resolve-then-decide, not resolve-then-wait-a-tick.
 	resolved, err := st.ResolveSpeculations(ctx)
 	if err != nil {
 		log.Error("resolve speculations failed", "err", err)
 	}
 	for _, r := range resolved {
 		metrics.SpeculationsResolved.WithLabelValues(r.Winner).Inc()
+		// attempt is the primary's (0: it was never claimed); copy_attempt is
+		// the copy's fencing token, the one its worker holds.
 		if r.Winner == "gpu" {
 			log.Info("speculation resolved: the gpu copy won; the local build will be aborted",
-				"build_id", r.BuildID, "round_id", r.RoundID, "attempt", 0, "winner", r.Winner)
+				"build_id", r.BuildID, "round_id", r.RoundID, "attempt", 0, "winner", r.Winner,
+				"copy_attempt", r.CopyAttempt)
 		} else {
 			log.Info("speculation resolved: the local build won; the copy was cancelled",
 				"build_id", r.BuildID, "round_id", r.RoundID, "attempt", 0, "winner", r.Winner,
-				"copy_state_at_cancel", r.CopyState, "gpu_work_wasted", r.CopyState == "leased")
+				"copy_attempt", r.CopyAttempt, "copy_state_at_cancel", r.CopyState,
+				"gpu_work_wasted", r.CopyState == "leased")
 		}
 	}
 

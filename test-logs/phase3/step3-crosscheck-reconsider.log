@@ -1,0 +1,685 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-22 23:50:50 PDT
+commit:    53ad029 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-47150, port 22782)
+go:        go test -p 1 -count=1 -v -run TestReconsider ./scheduler/crosscheck/
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestReconsiderDB
+=== RUN   TestReconsiderDB/PreemptSetsMovedAndOnlyOnce
+    reconsider_db_test.go:29: spec: decision 8 (moved-at-most-once), decision 15 ('moved ... guarded with NOT moved'), go doc PreemptToGPU
+    reconsider_db_test.go:31: submitted 0:1 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:32: [db] before: 0:1 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.174901-07:00 finished_at=<nil>
+    reconsider_db_test.go:37: PreemptToGPU(0:1, 12.5) -> true <nil>
+    reconsider_db_test.go:41: [db] after preempt: 0:1 placement=gpu state=queued attempt=0 priority=12.5 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_db_test.go:46: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:47: w1 claims 0:1 attempt 1
+    reconsider_db_test.go:49: Release(0:1, 1) -> true; the build is queued again with moved still true
+    reconsider_db_test.go:50: [db] after release: 0:1 placement=gpu state=queued attempt=1 priority=12.5 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_db_test.go:59: RenegeToLocal on the preempted (moved) build -> true <nil>; decision 20: the escape door is open at the store
+    reconsider_db_test.go:63: [db] after escape renege: 0:1 placement=local state=running attempt=1 priority=12.5 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.183196-07:00 finished_at=<nil>
+    reconsider_db_test.go:67: PreemptToGPU after the escape -> false <nil> (want false: no flapping loop can form)
+=== RUN   TestReconsiderDB/RenegeSetsMovedAndBlocksPreempt
+    reconsider_db_test.go:75: spec: decision 8 'a reneged build cannot be preempted'; go doc RenegeToLocal 'started_at becomes now ... moved becomes true'
+    reconsider_db_test.go:77: submitted 0:2 n=100000 dim=128 mem=102400000 placement=gpu priority=3
+    reconsider_db_test.go:81: RenegeToLocal(0:2) -> true <nil>
+    reconsider_db_test.go:85: [db] after renege: 0:2 placement=local state=running attempt=0 priority=3 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.250038-07:00 finished_at=<nil>
+    reconsider_db_test.go:93: PreemptToGPU on the reneged (moved) build -> false <nil> (want false)
+    reconsider_db_test.go:101: [db] after refused preempt: 0:2 placement=local state=running attempt=0 priority=3 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.250038-07:00 finished_at=<nil>
+=== RUN   TestReconsiderDB/ReprioritizeOnlyWhileQueued
+    reconsider_db_test.go:109: spec: go doc Reprioritize 'false if the build is no longer queued: a claimed or moved build keeps whatever priority it was claimed at'
+    reconsider_db_test.go:111: submitted 0:3 n=100000 dim=128 mem=102400000 placement=gpu priority=1
+    reconsider_db_test.go:112: submitted 1:3 n=100000 dim=128 mem=102400000 placement=gpu priority=50
+    reconsider_db_test.go:113: submitted 2:3 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:114: submitted 3:3 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:115: submitted 4:3 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_db_test.go:116: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:117: w1 claims 1:3 attempt 1
+    reconsider_db_test.go:142: Reprioritize(0:3 [queued GPU build], 77) -> true <nil>; priority 1 -> 77
+    reconsider_db_test.go:142: Reprioritize(3:3 [preempted build, now queued (decision 10: this is exactly who gets reprioritized)], 77) -> true <nil>; priority 5 -> 77
+    reconsider_db_test.go:142: Reprioritize(1:3 [leased (claimed)], 77) -> false <nil>; priority 50 -> 50
+    reconsider_db_test.go:142: Reprioritize(2:3 [running local], 77) -> false <nil>; priority 0 -> 0
+    reconsider_db_test.go:142: Reprioritize(4:3 [reneged to local], 77) -> false <nil>; priority 0 -> 0
+=== RUN   TestReconsiderDB/SpeculateCopyRowShapeAndOneEver
+    reconsider_db_test.go:171: spec: decision 15 (build_id + ':spec', speculative, GPU-side, one copy ever by primary key); go doc SpeculateCopy
+    reconsider_db_test.go:173: submitted 0:4 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:174: submitted 1:4 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_db_test.go:175: submitted 2:4 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:180: SpeculateCopy(0:4, 6.25) -> true
+    reconsider_db_test.go:181: [db] copy: 0:4:spec placement=gpu state=queued attempt=0 priority=6.25 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_db_test.go:188: [db] primary after copy: 0:4 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.294343-07:00 finished_at=<nil>
+    reconsider_db_test.go:202: SpeculateCopy(0:4) [second copy of the same primary] -> false <nil> (want false)
+    reconsider_db_test.go:202: SpeculateCopy(1:4) [a queued GPU build (not running local)] -> false <nil> (want false)
+    reconsider_db_test.go:202: SpeculateCopy(2:4) [a done local build] -> false <nil> (want false)
+    reconsider_db_test.go:202: SpeculateCopy(0:4:spec) [the copy itself] -> false <nil> (want false)
+    reconsider_db_test.go:202: SpeculateCopy(9:9) [a missing build] -> false <nil> (want false)
+    reconsider_db_test.go:209: [db] builds rows in round: 4 (want 4: three primaries and one copy)
+    reconsider_db_test.go:214: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:216: w1 claimed 0:4:spec (copy at priority 6.25 should beat the priority-0 queued build)
+    reconsider_db_test.go:223: [db] copy after Fail: 0:4:spec placement=gpu state=failed attempt=1 priority=6.25 moved=false speculative=true lease_owner=<nil> fail_reason=crosscheck: GPU gave up started_at=2026-10-22T23:50:52.304277-07:00 finished_at=2026-10-22T23:50:52.304916-07:00
+    reconsider_db_test.go:225: SpeculateCopy(0:4) after its copy failed -> false <nil> (decision 15: 'one copy ever per build ... a second buys nothing')
+=== RUN   TestReconsiderDB/CopyClaimableByOrdinaryClaimSQL
+    reconsider_db_test.go:233: spec: decision 15 'the claim statement, lease fencing, reaper and the Python worker handle it with zero changes'; the claim SQL from roadmap 'The four operations'
+    reconsider_db_test.go:235: submitted 0:5 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:236: submitted 1:5 n=100000 dim=128 mem=102400000 placement=gpu priority=1
+    reconsider_db_test.go:237: SpeculateCopy(0:5, 9) -> true
+    reconsider_db_test.go:241: roadmap claim SQL as py-worker -> 0:5:spec attempt 1 err <nil> (want the copy: priority 9 > 1)
+    reconsider_db_test.go:245: [db] copy after claim: 0:5:spec placement=gpu state=leased attempt=1 priority=9 moved=false speculative=true lease_owner=py-worker fail_reason=<nil> started_at=2026-10-22T23:50:52.319546-07:00 finished_at=<nil>
+    reconsider_db_test.go:256: [db] copy after complete: 0:5:spec placement=gpu state=done attempt=1 priority=9 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.319546-07:00 finished_at=2026-10-22T23:50:52.321593-07:00
+    reconsider_db_test.go:258: second claim -> 1:5 attempt 1 err <nil> (want the ordinary build 1:5)
+    reconsider_db_test.go:263: submitted 2:5 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:264: SpeculateCopy(2:5, 100) -> true
+    reconsider_db_test.go:266: a worker one byte too small claims -> ok=false (want false: copy 2:5:spec needs 102400000)
+=== RUN   TestReconsiderDB/PreemptRefusedWhileCopyInFlight
+    reconsider_db_test.go:274: spec: decision 15 'the store also refuses to preempt a primary whose copy is in flight'; go doc PreemptToGPU 'false if ... has a live copy'
+    reconsider_db_test.go:276: submitted 0:6 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:277: SpeculateCopy(0:6, 1) -> true
+    reconsider_db_test.go:279: PreemptToGPU(primary) with the copy queued -> false <nil> (want false)
+    reconsider_db_test.go:283: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:284: w1 claims 0:6:spec attempt 1
+    reconsider_db_test.go:286: PreemptToGPU(primary) with the copy leased -> false <nil> (want false)
+    reconsider_db_test.go:290: [db] primary: 0:6 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.33795-07:00 finished_at=<nil>
+    reconsider_db_test.go:299: PreemptToGPU(primary) after the copy failed -> true <nil> (doc: refused only while a copy is 'still racing'/'live'; a failed copy is neither)
+    reconsider_db_test.go:303: [db] primary after: 0:6 placement=gpu state=queued attempt=0 priority=5 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderDB/PreemptWhileCopyDoneButUnresolvedKeepsTheWin
+    reconsider_db_test.go:308: probe: a copy that has completed but not yet been settled by ResolveSpeculations. Decision 16: the index exists from the copy's finished_at. Is the race 'live'? If a preempt slips into this window (a tick's resolve runs first, but a worker can complete between resolve and the tick's actions), the won index must not be thrown away.
+    reconsider_db_test.go:310: submitted 0:7 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:311: SpeculateCopy(0:7, 1) -> true
+    reconsider_db_test.go:312: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:313: w1 claims 0:7:spec attempt 1
+    reconsider_db_test.go:317: [db] copy done: 0:7:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.358382-07:00 finished_at=2026-10-22T23:50:52.359181-07:00
+    reconsider_db_test.go:319: PreemptToGPU(primary) with the copy done-but-unresolved -> false <nil>
+    reconsider_db_test.go:322: ResolveSpeculations -> [{BuildID:0:7 RoundID:7 Winner:gpu CopyState: CopyAttempt:1}]
+    reconsider_db_test.go:323: [db] primary after resolve: 0:7 placement=gpu state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.354069-07:00 finished_at=2026-10-22T23:50:52.359181-07:00
+=== RUN   TestReconsiderDB/RenegeRefusedOnCopy
+    reconsider_db_test.go:334: spec: go doc RenegeToLocal 'false if ... a speculative copy (a copy is cancelled, never turned into a second local build)'
+    reconsider_db_test.go:336: submitted 0:8 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:337: SpeculateCopy(0:8, 1) -> true
+    reconsider_db_test.go:339: RenegeToLocal(copy) -> false <nil>
+    reconsider_db_test.go:343: [db] copy: 0:8:spec placement=gpu state=queued attempt=0 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderDB/ResolveGPUWinPrimaryTakesCopyFinish
+    reconsider_db_test.go:353: spec: decision 16 and go doc ResolveSpeculations: copy done while primary runs -> primary gpu/done with the copy's finished_at; the shard's next report reply says done; idempotent
+    reconsider_db_test.go:355: submitted 0:9 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:356: SpeculateCopy(0:9, 1) -> true
+    reconsider_db_test.go:357: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:358: w1 claims 0:9:spec attempt 1
+    reconsider_db_test.go:362: [db] copy done: 0:9:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.389909-07:00 finished_at=2026-10-22T23:50:52.390558-07:00
+    reconsider_db_test.go:366: ResolveSpeculations -> [{BuildID:0:9 RoundID:9 Winner:gpu CopyState: CopyAttempt:1}]
+    reconsider_db_test.go:370: [db] primary after resolve: 0:9 placement=gpu state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.385732-07:00 finished_at=2026-10-22T23:50:52.390558-07:00
+    reconsider_db_test.go:374: unspecified, observed: primary attempt=0 moved=false after a GPU win
+    reconsider_db_test.go:377: second ResolveSpeculations -> [] (want none)
+    reconsider_db_test.go:386: the shard's late CompleteLocal(primary) -> false <nil> (want false: the build is done on the GPU's account)
+    reconsider_db_test.go:392: shard 0 report -> 200 {"build":{"build_id":"0:9","placement":"gpu","state":"done","attempt":0}}
+    reconsider_db_test.go:397: shard's late POST /builds/0:9/done -> 409 {"error":"build is gpu/done, not a running local build"}
+=== RUN   TestReconsiderDB/ResolveLocalWinCancelsLeasedCopyAndFencesWorker
+    reconsider_db_test.go:408: spec: decision 16: primary terminal, copy leased -> copy failed with a cancel reason; the worker's renew/complete then update zero rows; CopyState 'leased' is the wasted GPU work
+    reconsider_db_test.go:410: submitted 0:10 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:411: SpeculateCopy(0:10, 1) -> true
+    reconsider_db_test.go:412: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:413: w1 claims 0:10:spec attempt 1
+    reconsider_db_test.go:417: [db] primary done locally: 0:10 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.436098-07:00 finished_at=2026-10-22T23:50:52.440937-07:00
+    reconsider_db_test.go:420: ResolveSpeculations -> [{BuildID:0:10 RoundID:10 Winner:local CopyState:leased CopyAttempt:1}]
+    reconsider_db_test.go:424: [db] copy after cancel: 0:10:spec placement=gpu state=failed attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:52.440311-07:00 finished_at=2026-10-22T23:50:52.442627-07:00
+    reconsider_db_test.go:438: worker w1's Renew(copy, attempt 1) -> false <nil> (want false: lease ended from outside)
+    reconsider_db_test.go:438: worker w1's Complete(copy, attempt 1) -> false <nil> (want false: lease ended from outside)
+    reconsider_db_test.go:438: worker w1's Fail(copy, attempt 1) -> false <nil> (want false: lease ended from outside)
+    reconsider_db_test.go:438: worker w1's Release(copy, attempt 1) -> false <nil> (want false: lease ended from outside)
+    reconsider_db_test.go:443: [db] copy after the worker's attempts: 0:10:spec placement=gpu state=failed attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:52.440311-07:00 finished_at=2026-10-22T23:50:52.442627-07:00
+    reconsider_db_test.go:449: Reap -> [] (the cancelled copy holds no lease to reap)
+    reconsider_db_test.go:456: second ResolveSpeculations -> [] (want none)
+    reconsider_db_test.go:460: [db] primary: 0:10 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.436098-07:00 finished_at=2026-10-22T23:50:52.440937-07:00
+=== RUN   TestReconsiderDB/ResolveLocalWinCancelsQueuedCopy
+    reconsider_db_test.go:468: spec: decision 16: primary terminal, copy queued -> copy failed; CopyState 'queued'; nothing left to claim
+    reconsider_db_test.go:470: submitted 0:11 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:471: SpeculateCopy(0:11, 1) -> true
+    reconsider_db_test.go:477: ResolveSpeculations -> [{BuildID:0:11 RoundID:11 Winner:local CopyState:queued CopyAttempt:0}]
+    reconsider_db_test.go:481: [db] copy: 0:11:spec placement=gpu state=failed attempt=0 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=<nil> finished_at=2026-10-22T23:50:52.461486-07:00
+    reconsider_db_test.go:486: a worker claims -> ok=false (want false)
+=== RUN   TestReconsiderDB/ResolveBothDoneNeedsNothing
+    reconsider_db_test.go:494: spec: decision 16 'both sides finishing before a tick needs nothing: done is done, built twice'
+    reconsider_db_test.go:496: submitted 0:12 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:497: SpeculateCopy(0:12, 1) -> true
+    reconsider_db_test.go:498: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:499: w1 claims 0:12:spec attempt 1
+    reconsider_db_test.go:506: [db] primary: 0:12 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.472601-07:00 finished_at=2026-10-22T23:50:52.478377-07:00
+    reconsider_db_test.go:507: [db] copy: 0:12:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.477087-07:00 finished_at=2026-10-22T23:50:52.477837-07:00
+    reconsider_db_test.go:510: ResolveSpeculations -> [] (want none)
+    reconsider_db_test.go:514: [db] primary after: 0:12 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.472601-07:00 finished_at=2026-10-22T23:50:52.478377-07:00
+    reconsider_db_test.go:514: [db] copy after: 0:12:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.477087-07:00 finished_at=2026-10-22T23:50:52.477837-07:00
+=== RUN   TestReconsiderDB/ReaperTreatsCopyAsOrdinaryBuild
+    reconsider_db_test.go:522: spec: decision 15 'reaper ... handle it with zero changes'; decision 42 retry budget; decision 15 one copy ever
+    reconsider_db_test.go:524: submitted 0:13 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:525: SpeculateCopy(0:13, 1) -> true
+    reconsider_db_test.go:526: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:527: w1 claims 0:13:spec attempt 1
+    reconsider_db_test.go:531: lease of 10 ms expired; Reap(maxAttempts=1) -> [{BuildID:0:13:spec RoundID:13 Attempt:1 LeaseOwner:w1 Outcome:failed}] (want the copy failed: attempt 1 reached the budget)
+    reconsider_db_test.go:535: [db] copy: 0:13:spec placement=gpu state=failed attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=lease expired on attempt 1 of 1: retry budget exhausted started_at=<nil> finished_at=2026-10-22T23:50:52.548698-07:00
+    reconsider_db_test.go:537: ResolveSpeculations with primary running and copy failed -> [] (want none: no winner yet)
+    reconsider_db_test.go:541: [db] primary: 0:13 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.489795-07:00 finished_at=<nil>
+=== RUN   TestReconsiderDB/RaceClaimVersusRenegeExactlyOneWins
+    reconsider_db_test.go:554: spec: decision 4 'the guard makes it race-free against a concurrent claim'; decision 14 zero rows = skipped
+    reconsider_db_test.go:555: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:583: 30 races: claim won 21, renege won 9, incoherent 0 expected
+=== RUN   TestReconsiderDB/RaceResolveVersusCopyComplete
+    reconsider_db_test.go:588: spec: go doc ResolveSpeculations 'If the copy finishes in the same instant, exactly one side's guard holds'
+    reconsider_db_test.go:589: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:638: 30 races (primary already done locally): copy completed first 29, copy cancelled first 1
+=== RUN   TestReconsiderDB/RaceResolveVersusLocalDone
+    reconsider_db_test.go:643: spec: decision 16 'one guarded statement per direction keeps every interleaving coherent': copy done, then resolve (GPU win) races the shard's CompleteLocal
+    reconsider_db_test.go:644: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:688: 30 races (copy already done): resolve marked the GPU win 9, shard's CompleteLocal first 21
+=== RUN   TestReconsiderDB/Migration0006GeneratedFKColumns
+    reconsider_db_test.go:695: spec: migration 0006: shard_status.build_id and shard_jobs.build_id GENERATED ALWAYS AS (shard_id || ':' || round_id) STORED REFERENCES builds; bug 3's rule survives; never the copy
+    reconsider_db_test.go:697: submitted 0:104 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:698: SpeculateCopy(0:104, 1) -> true
+    reconsider_db_test.go:699: shard 0 reports queue_depth=3 waiting_needs_index=1 build_progress=0.5 stream_done=false (one recorded query of 250 ms)
+    reconsider_db_test.go:703: [db] shard_status.build_id="0:104" shard_jobs.build_id="0:104" (want "0:104", the real build, never the copy)
+    reconsider_db_test.go:708: explicit build_id insert into shard_jobs -> ERROR: cannot insert a non-DEFAULT value into column "build_id" (SQLSTATE 428C9) (code 428C9; want 428C9, generated always)
+    reconsider_db_test.go:717: raw-inserted an orphan copy 1:104:spec (no primary)
+    reconsider_db_test.go:719: ReportStatus for shard 1 (only a copy) -> this shard has no build in this round (want ErrNoBuild: decision 33 / bug 3)
+    reconsider_db_test.go:724: RecordArrival for shard 1 -> this shard has no build in this round (want ErrNoBuild)
+    reconsider_db_test.go:729: POST /shards/104/1/report -> 404 {"error":"this shard has no build in this round; submit first"}
+         (want 404, as for any shard without a build)
+=== RUN   TestReconsiderDB/Migration0006PartialUniqueAndCheck
+    reconsider_db_test.go:737: spec: migration 0006: builds_one_real_per_shard, builds_one_copy_per_shard (partial unique), builds_speculative_gpu CHECK; builds_round_shard_unique dropped
+    reconsider_db_test.go:739: submitted 0:105 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:741: second real build for (round, shard 0) under another id -> ERROR: duplicate key value violates unique constraint "builds_one_real_per_shard" (SQLSTATE 23505) (code 23505, want 23505)
+    reconsider_db_test.go:746: one copy beside the real build -> <nil> (want ok)
+    reconsider_db_test.go:751: a second copy for (round, shard 0) -> ERROR: duplicate key value violates unique constraint "builds_one_copy_per_shard" (SQLSTATE 23505) (code 23505, want 23505)
+    reconsider_db_test.go:756: a local speculative row -> ERROR: new row for relation "builds" violates check constraint "builds_speculative_gpu" (SQLSTATE 23514) (code 23514, want 23514 check violation)
+    reconsider_db_test.go:761: UPDATE the copy to local/running -> ERROR: new row for relation "builds" violates check constraint "builds_speculative_gpu" (SQLSTATE 23514) (code 23514, want 23514)
+    reconsider_db_test.go:768: [db] old 0004 constraints remaining: 0 (want 0); new partial unique indexes: 2 (want 2)
+=== RUN   TestReconsiderDB/SubmitBuildWithNonConventionalIDProbe
+    reconsider_db_test.go:776: probe: migration 0006 re-anchors the report FK on build_id = shard_id:round_id. Store.SubmitBuild takes the build_id from the caller; does it insist on the convention, or can a build exist that its own shard can never report against?
+    reconsider_db_test.go:779: SubmitBuild(build_id=custom-id, shard 0) -> false submit custom-id: build_id must be "0:106" (shard_id:round_id, the idempotency key)
+    reconsider_db_test.go:787: SubmitBuild(build_id=0:106, shard 0) -> true <nil>; ReportStatus must now work
+=== RUN   TestReconsiderDB/RoundClosesWithUnresolvedCopy
+    reconsider_db_test.go:800: spec: decision 17 'a round may close while a losing copy is still being cancelled'; go doc FinishCompleteRounds
+    reconsider_db_test.go:802: submitted 0:107 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:803: SpeculateCopy(0:107, 1) -> true
+    reconsider_db_test.go:804: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:805: w1 claims 0:107:spec attempt 1
+    reconsider_db_test.go:806: shard 0 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=true (one recorded query of 0 ms)
+    reconsider_db_test.go:810: [db] primary: 0:107 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.970307-07:00 finished_at=2026-10-22T23:50:52.976154-07:00
+    reconsider_db_test.go:811: [db] copy (still leased): 0:107:spec placement=gpu state=leased attempt=1 priority=1 moved=false speculative=true lease_owner=w1 fail_reason=<nil> started_at=2026-10-22T23:50:52.974432-07:00 finished_at=<nil>
+    reconsider_db_test.go:814: FinishCompleteRounds -> [{RoundID:107 Duration:6.399ms StragglerLag:0s QueueWaits:[]}]
+    reconsider_db_test.go:816: [db] round finished_at=2026-10-22T23:50:52.976154-07:00 (want the primary's finish 2026-10-22T23:50:52.976154-07:00)
+    reconsider_db_test.go:824: ResolveSpeculations after the round closed -> [{BuildID:0:107 RoundID:107 Winner:local CopyState:leased CopyAttempt:1}] (decision 17: 'the sweep cancels it afterwards regardless of round state')
+    reconsider_db_test.go:828: [db] copy: 0:107:spec placement=gpu state=failed attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:52.974432-07:00 finished_at=2026-10-22T23:50:52.981122-07:00
+=== RUN   TestReconsiderDB/RoundWaitsForGPUWinResolution
+    reconsider_db_test.go:833: spec: decision 17 (completion ignores copies), decision 16 (primary takes the copy's finished_at): a done copy does not close the round; the resolved primary does, at the copy's finish
+    reconsider_db_test.go:836: submitted 0:108 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:837: SpeculateCopy(0:108, 1) -> true
+    reconsider_db_test.go:838: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:839: w1 claims 0:108:spec attempt 1
+    reconsider_db_test.go:840: shard 0 reports queue_depth=0 waiting_needs_index=0 build_progress=0.3 stream_done=true (one recorded query of 0 ms)
+    reconsider_db_test.go:844: [db] copy done: 0:108:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.995941-07:00 finished_at=2026-10-22T23:50:52.997842-07:00
+    reconsider_db_test.go:847: FinishCompleteRounds before resolve -> [] (want none: the real build still runs locally)
+    reconsider_db_test.go:857: FinishCompleteRounds after resolve -> [{RoundID:108 Duration:7.342ms StragglerLag:0s QueueWaits:[]}]
+    reconsider_db_test.go:859: [db] round finished_at=2026-10-22T23:50:52.997842-07:00, copy finished_at=2026-10-22T23:50:52.997842-07:00
+    reconsider_db_test.go:867: [db] primary after resolve: 0:108 placement=gpu state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.991338-07:00 finished_at=2026-10-22T23:50:52.997842-07:00
+    reconsider_db_test.go:868: [db] copy: 0:108:spec placement=gpu state=done attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:52.995941-07:00 finished_at=2026-10-22T23:50:52.997842-07:00
+    reconsider_db_test.go:869: evidence: primary started_at - enqueued_at = 0s (attempt 0, never claimed: its started_at is the LOCAL start); copy started_at - enqueued_at = 1.567ms (attempt 1)
+    reconsider_db_test.go:871: QueueWaits=[]: the primary was never claimed (attempt 0) and the copy is excluded, so want none (go doc: 'builds never claimed are skipped')
+=== RUN   TestReconsiderDB/RoundStatsExcludeCopies
+    reconsider_db_test.go:880: spec: decision 17: straggler lag, queue-wait stats and finished_at exclude speculative rows, even a copy cancelled later
+    reconsider_db_test.go:882: submitted 0:109 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_db_test.go:883: submitted 1:109 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:884: submitted 2:109 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:885: SpeculateCopy(2:109, 1) -> true
+    reconsider_db_test.go:886: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:888: w1 claims 2:109:spec attempt 1
+    reconsider_db_test.go:893: worker w2 heartbeats, mem 1099511627776
+    reconsider_db_test.go:894: w2 claims 0:109 attempt 1
+    reconsider_db_test.go:899: shard 0 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=true (one recorded query of 0 ms)
+    reconsider_db_test.go:899: shard 1 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=true (one recorded query of 0 ms)
+    reconsider_db_test.go:899: shard 2 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=true (one recorded query of 0 ms)
+    reconsider_db_test.go:914: copy cancelled 300 ms after the last real finish: [{BuildID:2:109 RoundID:109 Winner:local CopyState:leased CopyAttempt:1}]
+    reconsider_db_test.go:915: [db] copy: 2:109:spec placement=gpu state=failed attempt=1 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:53.093399-07:00 finished_at=2026-10-22T23:50:53.632383-07:00
+    reconsider_db_test.go:919: [db] real: 0:109 placement=gpu state=done attempt=1 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:53.135759-07:00 finished_at=2026-10-22T23:50:53.139875-07:00
+    reconsider_db_test.go:919: [db] real: 1:109 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:53.047796-07:00 finished_at=2026-10-22T23:50:53.201303-07:00
+    reconsider_db_test.go:919: [db] real: 2:109 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:53.049131-07:00 finished_at=2026-10-22T23:50:53.322423-07:00
+    reconsider_db_test.go:928: FinishCompleteRounds -> [{RoundID:109 Duration:277.705ms StragglerLag:121.119976ms QueueWaits:[90.507ms]}]
+    reconsider_db_test.go:936: hand: finished_at = last real finish 2026-10-22T23:50:53.322423-07:00; lag = last - median = 121.12ms; queue waits = [90.507ms] (g only; the copy 2:109:spec waited 42.649ms and must not appear); copy finished_at 2026-10-22T23:50:53.632383-07:00
+=== RUN   TestReconsiderDB/NShardsCapCountsRealBuildsOnly
+    reconsider_db_test.go:951: spec: decision 17 'SubmitBuild's n_shards cap counts real builds only'
+    reconsider_db_test.go:953: submitted 0:110 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:954: SpeculateCopy(0:110, 1) -> true
+    reconsider_db_test.go:956: SubmitBuild shard 1 into n_shards=2 with one real build + one copy -> true <nil> (want inserted)
+    reconsider_db_test.go:961: SubmitBuild shard 2 (third real) -> false round already has n_shards builds (want ErrRoundFull)
+=== RUN   TestReconsiderDB/StatsCountCopies
+    reconsider_db_test.go:969: spec: decision 17 'gpu_queue_depth and builds_leased DO count copies'; go doc Stats
+    reconsider_db_test.go:971: submitted 0:111 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:972: submitted 1:111 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_db_test.go:973: SpeculateCopy(0:111, 5) -> true
+    reconsider_db_test.go:976: Stats with one real queued + one queued copy: {GPUQueued:2 Leased:0 RoundsOpen:1} (want GPUQueued 2)
+    reconsider_db_test.go:980: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:981: w1 claims 0:111:spec attempt 1
+    reconsider_db_test.go:983: Stats after w1 claims the copy: {GPUQueued:1 Leased:1 RoundsOpen:1} (want GPUQueued 1, Leased 1)
+=== RUN   TestReconsiderDB/ReconsiderSnapshotContents
+    reconsider_db_test.go:993: spec: go doc GetReconsiderSnapshot / ReconsiderBuild / ReconsiderStatus; decision 18 (aggregates derived in SQL)
+    reconsider_db_test.go:996: submitted 0:113 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:998: submitted 0:112 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:999: submitted 1:112 n=100000 dim=128 mem=102400000 placement=gpu priority=1
+    reconsider_db_test.go:1000: submitted 2:112 n=100000 dim=128 mem=102400000 placement=gpu priority=3
+    reconsider_db_test.go:1001: submitted 3:112 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_db_test.go:1005: SpeculateCopy(0:112, 2) -> true
+    reconsider_db_test.go:1006: worker w1 heartbeats, mem 1099511627776
+    reconsider_db_test.go:1007: w1 claims 2:112 attempt 1
+    reconsider_db_test.go:1014: shard 0 reported depth 2, needs 1, oldest 1500 ms, progress 0.25, with 3 records of 100/200/600 ms (mean 300)
+    reconsider_db_test.go:1026: [snapshot] build 2:112 placement=gpu state=leased prio=3 attempt=1 moved=false spec=false owner="w1" elapsed=0.206
+    reconsider_db_test.go:1026: [snapshot] build 0:112:spec placement=gpu state=queued prio=2 attempt=0 moved=false spec=true owner="" elapsed=0.000
+    reconsider_db_test.go:1026: [snapshot] build 1:112 placement=gpu state=queued prio=1 attempt=0 moved=false spec=false owner="" elapsed=0.000
+    reconsider_db_test.go:1026: [snapshot] build 0:112 placement=local state=running prio=0 attempt=0 moved=false spec=false owner="" elapsed=0.216
+    reconsider_db_test.go:1029: [snapshot] status {RoundID:112 ShardID:0 QueueDepth:2 WaitingNeedsIndex:1 OldestWaitMs:1500 BuildProgress:0.25 Arrivals:3 MeanQueryMs:300 RoundElapsedS:10.204893}
+    reconsider_db_test.go:1031: [snapshot] workers [{WorkerID:w1 Node: MemBytes:1099511627776}]
+--- PASS: TestReconsiderDB (1.79s)
+    --- PASS: TestReconsiderDB/PreemptSetsMovedAndOnlyOnce (0.06s)
+    --- PASS: TestReconsiderDB/RenegeSetsMovedAndBlocksPreempt (0.07s)
+    --- PASS: TestReconsiderDB/ReprioritizeOnlyWhileQueued (0.03s)
+    --- PASS: TestReconsiderDB/SpeculateCopyRowShapeAndOneEver (0.02s)
+    --- PASS: TestReconsiderDB/CopyClaimableByOrdinaryClaimSQL (0.02s)
+    --- PASS: TestReconsiderDB/PreemptRefusedWhileCopyInFlight (0.02s)
+    --- PASS: TestReconsiderDB/PreemptWhileCopyDoneButUnresolvedKeepsTheWin (0.02s)
+    --- PASS: TestReconsiderDB/RenegeRefusedOnCopy (0.01s)
+    --- PASS: TestReconsiderDB/ResolveGPUWinPrimaryTakesCopyFinish (0.05s)
+    --- PASS: TestReconsiderDB/ResolveLocalWinCancelsLeasedCopyAndFencesWorker (0.02s)
+    --- PASS: TestReconsiderDB/ResolveLocalWinCancelsQueuedCopy (0.02s)
+    --- PASS: TestReconsiderDB/ResolveBothDoneNeedsNothing (0.02s)
+    --- PASS: TestReconsiderDB/ReaperTreatsCopyAsOrdinaryBuild (0.07s)
+    --- PASS: TestReconsiderDB/RaceClaimVersusRenegeExactlyOneWins (0.10s)
+    --- PASS: TestReconsiderDB/RaceResolveVersusCopyComplete (0.14s)
+    --- PASS: TestReconsiderDB/RaceResolveVersusLocalDone (0.13s)
+    --- PASS: TestReconsiderDB/Migration0006GeneratedFKColumns (0.02s)
+    --- PASS: TestReconsiderDB/Migration0006PartialUniqueAndCheck (0.02s)
+    --- PASS: TestReconsiderDB/SubmitBuildWithNonConventionalIDProbe (0.01s)
+    --- PASS: TestReconsiderDB/RoundClosesWithUnresolvedCopy (0.02s)
+    --- PASS: TestReconsiderDB/RoundWaitsForGPUWinResolution (0.05s)
+    --- PASS: TestReconsiderDB/RoundStatsExcludeCopies (0.61s)
+    --- PASS: TestReconsiderDB/NShardsCapCountsRealBuildsOnly (0.02s)
+    --- PASS: TestReconsiderDB/StatsCountCopies (0.02s)
+    --- PASS: TestReconsiderDB/ReconsiderSnapshotContents (0.23s)
+=== RUN   TestReconsiderTick
+    reconsider_tick_test.go:37: cost model v0 at dim 128: 100k local L=20.631 s, GPU total G=4.639 s, mem 102400000; 2M local 519.990 s, GPU total 65.519 s; margin 2 s (decision 8)
+=== RUN   TestReconsiderTick/PreemptsHurtingLocalBuild
+    reconsider_tick_test.go:51: spec: roadmap policy 3 / Reactive migration flow; decision 14 (Tick executes preempts as guarded updates); decision 10 (priority after a preempt = the backlog behind the build)
+    reconsider_tick_test.go:43: submitted 0:114 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 114 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:53: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:56: hand: stay = remaining 20.631 + backlog 50x1 s = 70.631; migrate = max(non-index drain 50, wait 0 + G 4.639 + index drain 0) = 50.000; stay - migrate = 20.631 > margin 2 -> PREEMPT at priority 50 (the backlog)
+    reconsider_tick_test.go:57:   [tick reactive scale 1] time=2026-10-22T23:50:53.947-07:00 level=INFO msg="reconsider preempt applied" build_id=0:114 round_id=114 attempt=0 priority=50 reason="stay local 70.6s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:58: [db] after tick: 0:114 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:67: shard 0's next report -> 200 {"build":{"build_id":"0:114","placement":"gpu","state":"queued","attempt":0}}
+         (the shard learns through its report reply)
+=== RUN   TestReconsiderTick/ReprioritizeTracksBacklogStrictlyPastOneSecond
+    reconsider_tick_test.go:81: spec: decision 10: a preempted build's priority is recomputed as the backlog behind it, 'strictly past a 1 s churn delta'; go doc Reprioritize
+    reconsider_tick_test.go:43: submitted 0:115 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 115 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:83: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:84:   [tick reactive scale 1] time=2026-10-22T23:50:53.968-07:00 level=INFO msg="reconsider preempt applied" build_id=0:115 round_id=115 attempt=0 priority=50 reason="stay local 70.6s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:85: [db] after preempt: 0:115 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:101: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:102:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:103: [db] after report q=50: 0:115 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:104: hand: unchanged backlog -> unchanged priority (decision 10: stable across ticks)
+    reconsider_tick_test.go:101: shard 0 reports queue_depth=51 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:102:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:103: [db] after report q=51: 0:115 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:104: hand: backlog 51 vs priority 50: delta exactly 1 s, not strictly more -> unchanged
+    reconsider_tick_test.go:101: shard 0 reports queue_depth=52 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:102:   [tick reactive scale 1] time=2026-10-22T23:50:53.977-07:00 level=INFO msg="reconsider reprioritize applied" build_id=0:115 round_id=115 attempt=0 priority=52 reason="blocked work now 52.0s, priority was 50.0"
+    reconsider_tick_test.go:103: [db] after report q=52: 0:115 placement=gpu state=queued attempt=0 priority=52 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:104: hand: delta 2 s > 1 -> reprioritize to 52
+    reconsider_tick_test.go:101: shard 0 reports queue_depth=51 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:102:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:103: [db] after report q=51: 0:115 placement=gpu state=queued attempt=0 priority=52 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:104: hand: delta back down exactly 1 -> unchanged
+    reconsider_tick_test.go:101: shard 0 reports queue_depth=40 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:102:   [tick reactive scale 1] time=2026-10-22T23:50:53.982-07:00 level=INFO msg="reconsider reprioritize applied" build_id=0:115 round_id=115 attempt=0 priority=40 reason="blocked work now 40.0s, priority was 52.0"
+    reconsider_tick_test.go:103: [db] after report q=40: 0:115 placement=gpu state=queued attempt=0 priority=40 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:104: hand: delta -12 -> reprioritize to 40
+=== RUN   TestReconsiderTick/SunkCostRestrainsPreemption
+    reconsider_tick_test.go:116: spec: roadmap 'Sunk cost is in the comparison through build_progress'; decision 8 margin 2 s
+    reconsider_tick_test.go:118: submitted 0:116 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:119: submitted 1:116 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:120: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0.95 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:121: shard 1 reports queue_depth=50 waiting_needs_index=0 build_progress=0.85 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:122: fixture: round 116 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:123: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:125: hand: shard 0 at 95%: remaining 1.032; stay = 1.032 + 50 vs migrate = max(50, 4.639) = 50 -> gain 1.032 < 2 -> LEAVE
+    reconsider_tick_test.go:126: hand: shard 1 at 85%: remaining 3.095; gain 3.095 > 2 -> PREEMPT
+    reconsider_tick_test.go:127:   [tick reactive scale 1] time=2026-10-22T23:50:54.003-07:00 level=INFO msg="reconsider preempt applied" build_id=1:116 round_id=116 attempt=0 priority=50 reason="stay local 53.1s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:128: [db] shard 0 (95%): 0:116 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:53.990959-07:00 finished_at=<nil>
+    reconsider_tick_test.go:128: [db] shard 1 (85%): 1:116 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/NoPreemptOnEmptyPoolOrWhenFitsNowhere
+    reconsider_tick_test.go:139: spec: bug 11 fix 'never preempts a build that fits no live worker — including when the pool is empty'; decision 19
+    reconsider_tick_test.go:43: submitted 0:117 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 117 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:141:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:142: [db] no workers at all: 0:117 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.013146-07:00 finished_at=<nil>
+    reconsider_tick_test.go:146: worker w-small heartbeats, mem 102399999
+    reconsider_tick_test.go:147:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:148: [db] one worker of 102399999 bytes, build needs 102400000: 0:117 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.013146-07:00 finished_at=<nil>
+    reconsider_tick_test.go:152: worker w-ok heartbeats, mem 102400000
+    reconsider_tick_test.go:153:   [tick reactive scale 1] time=2026-10-22T23:50:54.027-07:00 level=INFO msg="reconsider preempt applied" build_id=0:117 round_id=117 attempt=0 priority=50 reason="stay local 70.6s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:154: [db] control: a worker of exactly 102400000 bytes joins: 0:117 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/RenegesQueuedBuildWhenShrunkenPoolMakesQueueSlow
+    reconsider_tick_test.go:162: spec: roadmap 'move a queued GPU build back to local when its GPU estimate has grown past its local estimate'; decision 19 'a shrunken pool produces genuinely longer replayed waits and reneging reacts to those'; per-tick ReplayQueue (step 3 notes)
+    reconsider_tick_test.go:166: submitted 1:118 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:166: submitted 2:118 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:166: submitted 3:118 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:166: submitted 4:118 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:166: submitted 5:118 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:168: submitted 0:118 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:169: shard 0 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 0 ms)
+    reconsider_tick_test.go:170: fixture: round 118 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:171: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:173: hand: one worker, five 2M builds ahead at priority 1000: shard 0 starts at 5 x 65.519 = 327.595 s; GPU recovery 332.234 vs local from scratch 20.631 + margin -> RENEGE. The k-th 2M build finishes at k x 65.519 <= 327.595 < its local 519.990 -> stays
+    reconsider_tick_test.go:174:   [tick reactive scale 1] time=2026-10-22T23:50:54.051-07:00 level=INFO msg="reconsider renege applied" build_id=0:118 round_id=118 attempt=0 priority=0 reason="local recovery 20.6s beats staying queued 332.2s by the margin"
+    reconsider_tick_test.go:175: [db] shard 0: 0:118 placement=local state=running attempt=0 priority=0 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.050912-07:00 finished_at=<nil>
+    reconsider_tick_test.go:180: [db] 2M: 1:118 placement=gpu state=queued attempt=0 priority=1000 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:180: [db] 2M: 2:118 placement=gpu state=queued attempt=0 priority=1000 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:180: [db] 2M: 3:118 placement=gpu state=queued attempt=0 priority=1000 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:180: [db] 2M: 4:118 placement=gpu state=queued attempt=0 priority=1000 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:180: [db] 2M: 5:118 placement=gpu state=queued attempt=0 priority=1000 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:187: worker w2 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:187: worker w3 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:187: worker w4 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:187: worker w5 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:187: worker w6 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:189: shard 0 reports queue_depth=100 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:190: now six idle workers (wait 0 for a would-be preempt) and shard 0 reports 100 x 1 s non-index backlog at progress 0: stay 120.6 vs migrate 100 would preempt, but the build has moved once already
+    reconsider_tick_test.go:191:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:192: [db] shard 0 after the hurting report: 0:118 placement=local state=running attempt=0 priority=0 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.050912-07:00 finished_at=<nil>
+=== RUN   TestReconsiderTick/EmptyPoolHoldsQueuedBuilds
+    reconsider_tick_test.go:200: spec: decision 19 'with zero live workers every QueueWaitS reads 0, so queued builds hold their place'
+    reconsider_tick_test.go:203: submitted 1:119 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:203: submitted 2:119 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:203: submitted 3:119 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:203: submitted 4:119 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:203: submitted 5:119 n=2000000 dim=128 mem=2048000000 placement=gpu priority=1000
+    reconsider_tick_test.go:205: submitted 0:119 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:206: shard 0 reports queue_depth=0 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 0 ms)
+    reconsider_tick_test.go:207: fixture: round 119 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:208: worker w-stale heartbeats, mem 1099511627776
+    reconsider_tick_test.go:212: same queue as the shrunken-pool case, but the only worker last heartbeated 1 h ago (StaleAfter 1 min): an empty pool. hand: wait reads 0 -> GPU 4.639 < local 20.631 -> HOLD
+    reconsider_tick_test.go:213:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:214: [db] shard 0: 0:119 placement=gpu state=queued attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/FitsNowhereQueuedBuildEscapesByRenege
+    reconsider_tick_test.go:222: spec: decision 19 'a queued build that fits no live worker still reads +Inf, and reneging it to local is exactly how a stuck too-big build escapes the queue — bug 11's cure'
+    reconsider_tick_test.go:224: submitted 0:120 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:225: submitted 1:120 n=10000 dim=128 mem=10240000 placement=gpu priority=0
+    reconsider_tick_test.go:226: fixture: round 120 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:227: worker w-small heartbeats, mem 50000000
+    reconsider_tick_test.go:229: hand: worker 50 MB; shard 0 (100k) needs 102400000 -> wait +Inf -> RENEGE; shard 1 (10k, 10240000 bytes) fits: local 1.650 vs GPU 2.223, local wins by 0.572 < margin -> stays
+    reconsider_tick_test.go:230:   [tick reactive scale 1] time=2026-10-22T23:50:54.099-07:00 level=INFO msg="reconsider renege applied" build_id=0:120 round_id=120 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:231: [db] shard 0 (fits nowhere): 0:120 placement=local state=running attempt=0 priority=0 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.09849-07:00 finished_at=<nil>
+    reconsider_tick_test.go:235: [db] shard 1 (fits): 1:120 placement=gpu state=queued attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/FitsNowhereOnEmptyPoolHolds
+    reconsider_tick_test.go:243: spec: decision 19's first clause: zero live workers -> every QueueWaitS reads 0 (the +Inf clause is about live workers that cannot take it)
+    reconsider_tick_test.go:245: submitted 0:121 n=2000000 dim=128 mem=2048000000 placement=gpu priority=0
+    reconsider_tick_test.go:246: fixture: round 121 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:247:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:248: [db] 2M build, no workers: 0:121 placement=gpu state=queued attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/PreemptedFitsNowhereBuildEscapesByRenege
+    reconsider_tick_test.go:256: spec: decision 20 (the step 3 triage's F3 fix, owner approved): a moved build whose memory fits no live worker reneges anyway — impossibility is not a cost judgment, and preemption still requires never-moved, so no loop can form. Probe: preempt onto a big worker, then the big worker shrinks away
+    reconsider_tick_test.go:43: submitted 0:122 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 122 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:258: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:259:   [tick reactive scale 1] time=2026-10-22T23:50:54.131-07:00 level=INFO msg="reconsider preempt applied" build_id=0:122 round_id=122 attempt=0 priority=50 reason="stay local 70.6s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:260: [db] after preempt: 0:122 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:266: worker w-small heartbeats, mem 1000
+    reconsider_tick_test.go:267: w1 is now stale; the only live worker has 1000 bytes. The preempted build reads +Inf: without the escape this is bug 11's hang through preempt-then-shrink (bug 13).
+    reconsider_tick_test.go:268:   [tick reactive scale 1] time=2026-10-22T23:50:54.134-07:00 level=INFO msg="reconsider renege applied" build_id=0:122 round_id=122 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:269: [db] after tick: 0:122 placement=local state=running attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.134334-07:00 finished_at=<nil>
+    reconsider_tick_test.go:276: the build escaped to local/running (moved stays true); the queue is empty and the round can finish on the shard's CPU
+    reconsider_tick_test.go:278: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:279:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:280: [db] after the big worker returns: 0:122 placement=local state=running attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.134334-07:00 finished_at=<nil>
+    reconsider_tick_test.go:283: the big worker came back and the next tick left the escaped build alone: no flapping loop
+=== RUN   TestReconsiderTick/Decision18LeaseElapsedIsScaled
+    reconsider_tick_test.go:288: spec: decision 18: a lease's elapsed wall time is multiplied by FAKE_TIME_SCALE before it meets a cost-model duration
+    reconsider_tick_test.go:43: submitted 0:123 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=10 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 123 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:290: submitted 1:123 n=2000000 dim=128 mem=2048000000 placement=gpu priority=0
+    reconsider_tick_test.go:291: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:292: w1 claims 1:123 attempt 1
+    reconsider_tick_test.go:298: hand: stay = 20.631 + 10 = 30.631; migrate = max(10, wait + 4.639). Preempt iff wait < 23.992.
+    reconsider_tick_test.go:299: hand, scale 1: w1's 2M lease has 65.519 - ~0.1 = ~65.4 s left -> migrate 70.1 -> LEAVE
+    reconsider_tick_test.go:300:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:301: [db] after scale-1 tick: 0:123 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.14621-07:00 finished_at=<nil>
+    reconsider_tick_test.go:305: hand, scale 100000: ~0.1 s wall = ~10000 modeled s >= 65.519 -> w1 counts as free now -> migrate max(10, 4.639) = 10 -> PREEMPT
+    reconsider_tick_test.go:306:   [tick reactive scale 100000] time=2026-10-22T23:50:54.262-07:00 level=INFO msg="reconsider preempt applied" build_id=0:123 round_id=123 attempt=0 priority=10 reason="stay local 30.6s, migrate 10.0s, margin 2.0s"
+    reconsider_tick_test.go:307: [db] after scale-1e5 tick: 0:123 placement=gpu state=queued attempt=0 priority=10 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/Decision18SubmitEstimateScalesLeaseElapsed
+    reconsider_tick_test.go:315: spec: decision 18 'a lease's elapsed time (here and in step 2's submit-time estimate)'; go doc api.Config.TimeScale
+    reconsider_tick_test.go:320: submitted 0:124 n=2000000 dim=128 mem=2048000000 placement=gpu priority=0
+    reconsider_tick_test.go:321: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:322: w1 claims 0:124 attempt 1
+    reconsider_tick_test.go:328: POST /builds shard 1 (n=100000 dim=128) -> 201 placement=gpu created=true gpu_total_ms=4639 gpu_queue_wait_ms=67315877021720 (key present: true)
+    reconsider_tick_test.go:330: hand, scale 1000: w1's remaining = max(0, 65.519 - 200) = 0 -> gpu_queue_wait_ms 0
+    reconsider_tick_test.go:334: POST /builds shard 2 (n=100000 dim=128) -> 201 placement=gpu created=true gpu_total_ms=4639 gpu_queue_wait_ms=67315875052720 (key present: true)
+    reconsider_tick_test.go:337: hand, scale 1: w1's remaining 65.519 - 0.217..0.2, then shard 1 (queued ahead, 4.639) -> wait in [69937, 69963] ms
+=== RUN   TestReconsiderTick/SpeculationLifecycleGPUWins
+    reconsider_tick_test.go:362: spec: roadmap policy 4; ReactiveSpec doc 'when a worker is idle and the GPU queue is empty, start a GPU copy of the local build with the worst projected recovery... One speculation per tick, and never while one is already in flight'; Speculation sequence diagram; decisions 15, 16
+    reconsider_tick_test.go:350: submitted 0:125 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:351: submitted 1:125 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:352: shard 0 reports queue_depth=2 waiting_needs_index=2 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:353: shard 1 reports queue_depth=40 waiting_needs_index=40 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:354: fixture: round 125 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:356: hand: both at 75%: remaining 5.158; all-needs-index backlog cancels out: gain from preempting = 5.158 - 4.639 = 0.519 < margin -> no preempt. Projected stay-local recovery: shard 0 5.158 + 1 = 6.158, shard 1 5.158 + 20 = 25.158 -> shard 1 is the worst
+    reconsider_tick_test.go:364: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:365:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:369:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.527-07:00 level=INFO msg="reconsider speculate applied" build_id=1:125 round_id=125 attempt=0 priority=20 reason="idle worker, empty queue; worst projected recovery 25.2s"
+    reconsider_tick_test.go:375: [db] copy: 1:125:spec placement=gpu state=queued attempt=0 priority=20 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:383: [db] primary: 0:125 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.509237-07:00 finished_at=<nil>
+    reconsider_tick_test.go:383: [db] primary: 1:125 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.513254-07:00 finished_at=<nil>
+    reconsider_tick_test.go:387:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:391: w1 claims 1:125:spec attempt 1
+    reconsider_tick_test.go:395: worker w2 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:396: copy leased on w1; w2 idle; queue empty -> still no copy for shard 0 (one in flight)
+    reconsider_tick_test.go:397:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:401: shard 1 reports queue_depth=100 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:402: shard 1 now reports progress 0 and 100 non-index queries: stay 70.6 vs migrate max(50, 4.639) -> a preempt would pay, but its copy is in flight (decision 15)
+    reconsider_tick_test.go:403:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:404: [db] shard 1 primary: 1:125 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.513254-07:00 finished_at=<nil>
+    reconsider_tick_test.go:410: [db] copy completed by w1: 1:125:spec placement=gpu state=done attempt=1 priority=20 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.53056-07:00 finished_at=2026-10-22T23:50:54.535777-07:00
+    reconsider_tick_test.go:411:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.537-07:00 level=INFO msg="speculation resolved: the gpu copy won; the local build will be aborted" build_id=1:125 round_id=125 attempt=0 winner=gpu copy_attempt=1
+    reconsider_tick_test.go:411:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.538-07:00 level=INFO msg="reconsider speculate applied" build_id=0:125 round_id=125 attempt=0 priority=1 reason="idle worker, empty queue; worst projected recovery 6.2s"
+    reconsider_tick_test.go:412: [db] shard 1 primary after tick: 1:125 placement=gpu state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.513254-07:00 finished_at=2026-10-22T23:50:54.535777-07:00
+    reconsider_tick_test.go:418: shard 1's next report -> 200 {"build":{"build_id":"1:125","placement":"gpu","state":"done","attempt":0}}
+         (the shard aborts its local build on 'done')
+    reconsider_tick_test.go:422:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:424: after the race settled: shard 0 is the only local build, w1 and w2 idle, queue empty, nothing in flight -> copy of shard 0 expected; present=true
+    reconsider_tick_test.go:428: [db] shard 0 copy: 0:125:spec placement=gpu state=queued attempt=0 priority=1 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/SpeculationLocalWinsCancelsCopy
+    reconsider_tick_test.go:434: spec: Speculation diagram 'local build completes first: mark GPU copy cancelled, worker stops at its next failed renew'; decision 16
+    reconsider_tick_test.go:350: submitted 0:126 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:351: submitted 1:126 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:352: shard 0 reports queue_depth=2 waiting_needs_index=2 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:353: shard 1 reports queue_depth=40 waiting_needs_index=40 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:354: fixture: round 126 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:356: hand: both at 75%: remaining 5.158; all-needs-index backlog cancels out: gain from preempting = 5.158 - 4.639 = 0.519 < margin -> no preempt. Projected stay-local recovery: shard 0 5.158 + 1 = 6.158, shard 1 5.158 + 20 = 25.158 -> shard 1 is the worst
+    reconsider_tick_test.go:436: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:437:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.562-07:00 level=INFO msg="reconsider speculate applied" build_id=1:126 round_id=126 attempt=0 priority=20 reason="idle worker, empty queue; worst projected recovery 25.2s"
+    reconsider_tick_test.go:439: w1 claims 1:126:spec attempt 1
+    reconsider_tick_test.go:444: shard 1 POST /builds/1:126/done -> 200 {"build_id":"1:126","state":"done"}
+    reconsider_tick_test.go:448:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.565-07:00 level=INFO msg="speculation resolved: the local build won; the copy was cancelled" build_id=1:126 round_id=126 attempt=0 winner=local copy_attempt=1 copy_state_at_cancel=leased gpu_work_wasted=true
+    reconsider_tick_test.go:448:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.566-07:00 level=INFO msg="reconsider speculate applied" build_id=0:126 round_id=126 attempt=0 priority=1 reason="idle worker, empty queue; worst projected recovery 6.2s"
+    reconsider_tick_test.go:449: [db] copy after tick: 1:126:spec placement=gpu state=failed attempt=1 priority=20 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:54.562969-07:00 finished_at=2026-10-22T23:50:54.564593-07:00
+    reconsider_tick_test.go:459: [db] primary: 1:126 placement=local state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.553347-07:00 finished_at=2026-10-22T23:50:54.563624-07:00
+=== RUN   TestReconsiderTick/SpeculationOnePerTickWithTwoIdleWorkers
+    reconsider_tick_test.go:467: spec: decision 8 'Speculation is additionally one per reconsider tick'
+    reconsider_tick_test.go:350: submitted 0:127 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:351: submitted 1:127 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:352: shard 0 reports queue_depth=2 waiting_needs_index=2 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:353: shard 1 reports queue_depth=40 waiting_needs_index=40 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:354: fixture: round 127 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:356: hand: both at 75%: remaining 5.158; all-needs-index backlog cancels out: gain from preempting = 5.158 - 4.639 = 0.519 < margin -> no preempt. Projected stay-local recovery: shard 0 5.158 + 1 = 6.158, shard 1 5.158 + 20 = 25.158 -> shard 1 is the worst
+    reconsider_tick_test.go:469: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:470: worker w2 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:471:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.588-07:00 level=INFO msg="reconsider speculate applied" build_id=1:127 round_id=127 attempt=0 priority=20 reason="idle worker, empty queue; worst projected recovery 25.2s"
+    reconsider_tick_test.go:474: [db] speculative rows after one tick with two idle workers: 1 (want 1)
+=== RUN   TestReconsiderTick/SpeculationRespectsMemoryAndNonEmptyQueue
+    reconsider_tick_test.go:486: spec: CLAUDE.md memory filter (speculation is one of its sites, bug 11); ReactiveSpec 'when ... the GPU queue is empty'
+    reconsider_tick_test.go:350: submitted 0:128 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:351: submitted 1:128 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:352: shard 0 reports queue_depth=2 waiting_needs_index=2 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:353: shard 1 reports queue_depth=40 waiting_needs_index=40 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:354: fixture: round 128 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:356: hand: both at 75%: remaining 5.158; all-needs-index backlog cancels out: gain from preempting = 5.158 - 4.639 = 0.519 < margin -> no preempt. Projected stay-local recovery: shard 0 5.158 + 1 = 6.158, shard 1 5.158 + 20 = 25.158 -> shard 1 is the worst
+    reconsider_tick_test.go:488: worker w-small heartbeats, mem 102399999
+    reconsider_tick_test.go:489:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:492: idle worker of 102399999 bytes, builds need 102400000 -> copies 0 (want 0)
+    reconsider_tick_test.go:496: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:497: submitted 2:128 n=10000 dim=128 mem=10240000 placement=gpu priority=0
+    reconsider_tick_test.go:498: a big idle worker joins, but 2:128 is queued (and fits) -> queue not empty -> no copy
+    reconsider_tick_test.go:499:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:504: [db] queued z: 2:128 placement=gpu state=queued attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+=== RUN   TestReconsiderTick/TwoSchedulersTickingConcurrently
+    reconsider_tick_test.go:513: spec: decision 14 'Two schedulers ticking concurrently are therefore safe, like two reapers'
+    reconsider_tick_test.go:43: submitted 0:129 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:44: shard 0 reports queue_depth=50 waiting_needs_index=0 build_progress=0 stream_done=false (one recorded query of 1000 ms)
+    reconsider_tick_test.go:45: fixture: round 129 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:515: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:519:   [tick reactive scale 1] time=2026-10-22T23:50:54.631-07:00 level=INFO msg="reconsider preempt applied" build_id=0:129 round_id=129 attempt=0 priority=50 reason="stay local 70.6s, migrate 50.0s, margin 2.0s"
+    reconsider_tick_test.go:519:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:522: [db] after two concurrent ticks: 0:129 placement=gpu state=queued attempt=0 priority=50 moved=true speculative=false lease_owner=<nil> fail_reason=<nil> started_at=<nil> finished_at=<nil>
+    reconsider_tick_test.go:350: submitted 0:130 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:351: submitted 1:130 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_tick_test.go:352: shard 0 reports queue_depth=2 waiting_needs_index=2 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:353: shard 1 reports queue_depth=40 waiting_needs_index=40 build_progress=0.75 stream_done=false (one recorded query of 500 ms)
+    reconsider_tick_test.go:354: fixture: round 130 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    reconsider_tick_test.go:356: hand: both at 75%: remaining 5.158; all-needs-index backlog cancels out: gain from preempting = 5.158 - 4.639 = 0.519 < margin -> no preempt. Projected stay-local recovery: shard 0 5.158 + 1 = 6.158, shard 1 5.158 + 20 = 25.158 -> shard 1 is the worst
+    reconsider_tick_test.go:529: worker w1 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:530: worker w2 heartbeats, mem 1099511627776
+    reconsider_tick_test.go:533:   [tick reactive_spec scale 1] time=2026-10-22T23:50:54.657-07:00 level=INFO msg="reconsider speculate applied" build_id=1:130 round_id=130 attempt=0 priority=20 reason="idle worker, empty queue; worst projected recovery 25.2s"
+    reconsider_tick_test.go:533:   [tick reactive_spec scale 1] (no log lines)
+    reconsider_tick_test.go:538: [db] copies after two concurrent reactive_spec ticks: 1 (want 1, of 1:130)
+=== RUN   TestReconsiderTick/TickRenegeRacingAClaim
+    reconsider_tick_test.go:546: spec: decision 4 (renege guarded against a concurrent claim), decision 14 (a stale action updates zero rows and is skipped)
+    reconsider_tick_test.go:547: worker w-small heartbeats, mem 1000
+    reconsider_tick_test.go:551: submitted 0:131 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:551: submitted 0:132 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.685-07:00 level=INFO msg="reconsider renege skipped" build_id=0:132 round_id=132 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:133 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.688-07:00 level=INFO msg="reconsider renege applied" build_id=0:133 round_id=133 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:134 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.693-07:00 level=INFO msg="reconsider renege applied" build_id=0:134 round_id=134 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:135 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.701-07:00 level=INFO msg="reconsider renege applied" build_id=0:135 round_id=135 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:136 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:551: submitted 0:137 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.714-07:00 level=INFO msg="reconsider renege skipped" build_id=0:137 round_id=137 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:138 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.718-07:00 level=INFO msg="reconsider renege applied" build_id=0:138 round_id=138 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:139 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.723-07:00 level=INFO msg="reconsider renege applied" build_id=0:139 round_id=139 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:140 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.729-07:00 level=INFO msg="reconsider renege applied" build_id=0:140 round_id=140 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:141 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:551: submitted 0:142 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.740-07:00 level=INFO msg="reconsider renege skipped" build_id=0:142 round_id=142 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:143 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.744-07:00 level=INFO msg="reconsider renege applied" build_id=0:143 round_id=143 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:144 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.749-07:00 level=INFO msg="reconsider renege applied" build_id=0:144 round_id=144 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:145 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.755-07:00 level=INFO msg="reconsider renege applied" build_id=0:145 round_id=145 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:146 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] (no log lines)
+    reconsider_tick_test.go:551: submitted 0:147 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.766-07:00 level=INFO msg="reconsider renege applied" build_id=0:147 round_id=147 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:148 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.770-07:00 level=INFO msg="reconsider renege applied" build_id=0:148 round_id=148 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:149 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.774-07:00 level=INFO msg="reconsider renege applied" build_id=0:149 round_id=149 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:551: submitted 0:150 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    reconsider_tick_test.go:557:   [tick reactive scale 1] time=2026-10-22T23:50:54.780-07:00 level=INFO msg="reconsider renege applied" build_id=0:150 round_id=150 attempt=0 priority=0 reason="fits no live worker: no claim can ever serve this build (decision 20 escape)"
+    reconsider_tick_test.go:577: 20 races of a renege-worthy (fits-nowhere for the live pool) build vs an unregistered big worker's claim: claim won 7, renege won 13; every outcome coherent
+--- PASS: TestReconsiderTick (0.87s)
+    --- PASS: TestReconsiderTick/PreemptsHurtingLocalBuild (0.03s)
+    --- PASS: TestReconsiderTick/ReprioritizeTracksBacklogStrictlyPastOneSecond (0.03s)
+    --- PASS: TestReconsiderTick/SunkCostRestrainsPreemption (0.02s)
+    --- PASS: TestReconsiderTick/NoPreemptOnEmptyPoolOrWhenFitsNowhere (0.02s)
+    --- PASS: TestReconsiderTick/RenegesQueuedBuildWhenShrunkenPoolMakesQueueSlow (0.03s)
+    --- PASS: TestReconsiderTick/EmptyPoolHoldsQueuedBuilds (0.03s)
+    --- PASS: TestReconsiderTick/FitsNowhereQueuedBuildEscapesByRenege (0.02s)
+    --- PASS: TestReconsiderTick/FitsNowhereOnEmptyPoolHolds (0.01s)
+    --- PASS: TestReconsiderTick/PreemptedFitsNowhereBuildEscapesByRenege (0.02s)
+    --- PASS: TestReconsiderTick/Decision18LeaseElapsedIsScaled (0.13s)
+    --- PASS: TestReconsiderTick/Decision18SubmitEstimateScalesLeaseElapsed (0.23s)
+    --- PASS: TestReconsiderTick/SpeculationLifecycleGPUWins (0.05s)
+    --- PASS: TestReconsiderTick/SpeculationLocalWinsCancelsCopy (0.03s)
+    --- PASS: TestReconsiderTick/SpeculationOnePerTickWithTwoIdleWorkers (0.02s)
+    --- PASS: TestReconsiderTick/SpeculationRespectsMemoryAndNonEmptyQueue (0.02s)
+    --- PASS: TestReconsiderTick/TwoSchedulersTickingConcurrently (0.05s)
+    --- PASS: TestReconsiderTick/TickRenegeRacingAClaim (0.13s)
+=== RUN   TestReconsiderWorker
+=== RUN   TestReconsiderWorker/PythonWorkerBuildsCopyAndTickSettlesGPUWin
+    reconsider_worker_test.go:20: spec: decision 15 (copy claimable with zero worker changes), decision 16 (GPU win: primary gpu/done at the copy's finished_at), Speculation diagram
+    reconsider_worker_test.go:22: submitted 0:151 n=100000 dim=128 mem=102400000 placement=local priority=0
+    reconsider_worker_test.go:23: SpeculateCopy(0:151, 3) -> true
+    reconsider_worker_test.go:24: started worker py-gpu (pid 47203) with FAKE_TIME_SCALE=20 LEASE_SECONDS=2 RENEW_INTERVAL_SECONDS=0.3
+    reconsider_worker_test.go:25: copy modeled GPU total 4.639116243s -> ~231.955812ms wall at scale 20
+    reconsider_worker_test.go:27: [db] copy: 0:151:spec placement=gpu state=done attempt=1 priority=3 moved=false speculative=true lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.990842-07:00 finished_at=2026-10-22T23:50:55.228854-07:00
+    reconsider_worker_test.go:30: [worker] {"time": "2026-10-23T06:50:54.992Z", "level": "INFO", "msg": "claimed", "build_id": "0:151:spec", "attempt": 1, "round_id": 151, "n_vectors": 100000, "dim": 128, "estimate_s": 0.23}
+    reconsider_worker_test.go:30: [worker] {"time": "2026-10-23T06:50:55.229Z", "level": "INFO", "msg": "completed", "build_id": "0:151:spec", "attempt": 1, "round_id": 151, "kind": "fake", "index_bytes": 64000000, "elapsed_s": 0.24}
+    reconsider_worker_test.go:35: [db] primary before tick (still running locally): 0:151 placement=local state=running attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.792322-07:00 finished_at=<nil>
+    reconsider_worker_test.go:39:   [tick reactive_spec scale 20] time=2026-10-22T23:50:55.253-07:00 level=INFO msg="speculation resolved: the gpu copy won; the local build will be aborted" build_id=0:151 round_id=151 attempt=0 winner=gpu copy_attempt=1
+    reconsider_worker_test.go:40: [db] primary after tick: 0:151 placement=gpu state=done attempt=0 priority=0 moved=false speculative=false lease_owner=<nil> fail_reason=<nil> started_at=2026-10-22T23:50:54.792322-07:00 finished_at=2026-10-22T23:50:55.228854-07:00
+    worker_helpers_test.go:115: --- worker py-gpu stdout ---
+        {"time": "2026-10-23T06:50:54.972Z", "level": "INFO", "msg": "health server listening", "addr": ":8081"}
+        {"time": "2026-10-23T06:50:54.987Z", "level": "INFO", "msg": "worker starting", "worker_id": "py-gpu", "node": "", "mem_bytes": 8589934592, "builder": "fake", "lease_s": 2.0, "renew_interval_s": 0.3}
+        {"time": "2026-10-23T06:50:54.990Z", "level": "INFO", "msg": "registered", "worker_id": "py-gpu"}
+        {"time": "2026-10-23T06:50:54.992Z", "level": "INFO", "msg": "claimed", "build_id": "0:151:spec", "attempt": 1, "round_id": 151, "n_vectors": 100000, "dim": 128, "estimate_s": 0.23}
+        {"time": "2026-10-23T06:50:55.229Z", "level": "INFO", "msg": "completed", "build_id": "0:151:spec", "attempt": 1, "round_id": 151, "kind": "fake", "index_bytes": 64000000, "elapsed_s": 0.24}
+=== RUN   TestReconsiderWorker/PythonWorkerFencedOutByCancelledCopy
+    reconsider_worker_test.go:48: spec: decision 16 'the worker's every write stays guarded by attempt and state=leased, so its next renew or complete updates zero rows and it stops — exactly a lost lease'; Speculation diagram 'worker stops at its next failed renew'
+    reconsider_worker_test.go:50: submitted 0:152 n=1000000 dim=128 mem=1024000000 placement=local priority=0
+    reconsider_worker_test.go:51: SpeculateCopy(0:152, 3) -> true
+    reconsider_worker_test.go:52: started worker py-gpu (pid 47206) with FAKE_TIME_SCALE=10 LEASE_SECONDS=30 RENEW_INTERVAL_SECONDS=0.3
+    reconsider_worker_test.go:53: copy modeled GPU total 32.517394919s -> ~3.251739491s wall at scale 10; renew every 0.3 s
+    reconsider_worker_test.go:57: shard 0's local build finishes first: POST /builds/0:152/done -> 200 {"build_id":"0:152","state":"done"}
+    reconsider_worker_test.go:59:   [tick reactive_spec scale 10] time=2026-10-22T23:50:55.952-07:00 level=INFO msg="speculation resolved: the local build won; the copy was cancelled" build_id=0:152 round_id=152 attempt=0 winner=local copy_attempt=1 copy_state_at_cancel=leased gpu_work_wasted=true
+    reconsider_worker_test.go:60: [db] copy after tick: 0:152:spec placement=gpu state=failed attempt=1 priority=3 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:55.415691-07:00 finished_at=2026-10-22T23:50:55.951073-07:00
+    reconsider_worker_test.go:65: worker noticed after 87.599125ms: {"time": "2026-10-23T06:50:56.035Z", "level": "WARNING", "msg": "renew rejected: lease lost, cancelling build", "build_id": "0:152:spec", "attempt": 1, "round_id": 152}
+    reconsider_worker_test.go:67: [db] copy one full build time later: 0:152:spec placement=gpu state=failed attempt=1 priority=3 moved=false speculative=true lease_owner=<nil> fail_reason=speculation cancelled: the local build finished first started_at=2026-10-22T23:50:55.415691-07:00 finished_at=2026-10-22T23:50:55.951073-07:00
+    reconsider_worker_test.go:78: queued GPU build 1:152: n=10000 dim=128 mem=10240000 priority=0 modeled gpu_total=2.222649299s
+    reconsider_worker_test.go:80: the worker built 1:152 after the cancelled copy: a cancel is just a lost lease
+    worker_helpers_test.go:115: --- worker py-gpu stdout ---
+        {"time": "2026-10-23T06:50:55.392Z", "level": "INFO", "msg": "health server listening", "addr": ":8081"}
+        {"time": "2026-10-23T06:50:55.408Z", "level": "INFO", "msg": "worker starting", "worker_id": "py-gpu", "node": "", "mem_bytes": 8589934592, "builder": "fake", "lease_s": 30.0, "renew_interval_s": 0.3}
+        {"time": "2026-10-23T06:50:55.413Z", "level": "INFO", "msg": "registered", "worker_id": "py-gpu"}
+        {"time": "2026-10-23T06:50:55.423Z", "level": "INFO", "msg": "claimed", "build_id": "0:152:spec", "attempt": 1, "round_id": 152, "n_vectors": 1000000, "dim": 128, "estimate_s": 3.25}
+        {"time": "2026-10-23T06:50:56.035Z", "level": "WARNING", "msg": "renew rejected: lease lost, cancelling build", "build_id": "0:152:spec", "attempt": 1, "round_id": 152}
+        {"time": "2026-10-23T06:50:56.043Z", "level": "WARNING", "msg": "lost ownership", "build_id": "0:152:spec", "attempt": 1, "round_id": 152, "why": "lease lost; build abandoned"}
+        {"time": "2026-10-23T06:50:59.591Z", "level": "INFO", "msg": "claimed", "build_id": "1:152", "attempt": 1, "round_id": 152, "n_vectors": 10000, "dim": 128, "estimate_s": 0.22}
+        {"time": "2026-10-23T06:50:59.817Z", "level": "INFO", "msg": "completed", "build_id": "1:152", "attempt": 1, "round_id": 152, "kind": "fake", "index_bytes": 6400000, "elapsed_s": 0.22}
+--- PASS: TestReconsiderWorker (5.06s)
+    --- PASS: TestReconsiderWorker/PythonWorkerBuildsCopyAndTickSettlesGPUWin (0.48s)
+    --- PASS: TestReconsiderWorker/PythonWorkerFencedOutByCancelledCopy (4.59s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	7.990s
+
+== Docker events for container kgpu-test-pg-47150
+  23:50:49  create
+  23:50:49  start
+  23:50:59  kill
+  23:51:00  die
+  23:51:00  destroy
+
+== Result: PASS

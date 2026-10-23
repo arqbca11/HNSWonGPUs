@@ -79,11 +79,18 @@ func (s *Store) GetRound(ctx context.Context, id int64) (Round, bool, error) {
 // a cancelled copy's finish must not stretch the round.
 // FinishedRound is what FinishCompleteRounds reports per round it closed:
 // the numbers the Phase 2 metrics need, computed in SQL from the rows.
+// StragglerLag travels through float seconds, so it carries nanosecond-level
+// rounding and is not exactly comparable to the row timestamps it came from.
 type FinishedRound struct {
 	RoundID      int64
-	Duration     time.Duration   // finished_at - started_at
-	StragglerLag time.Duration   // last shard's finish minus the median shard's finish
-	QueueWaits   []time.Duration // per GPU build: first claim minus enqueue (builds never claimed are skipped)
+	Duration     time.Duration // finished_at - started_at
+	StragglerLag time.Duration // last shard's finish minus the median shard's finish
+	// QueueWaits is per claimed GPU build: first claim minus enqueue. "Claimed"
+	// is attempt > 0, the claim's own counter — a build never claimed is
+	// skipped, and so is a primary marked gpu/done by a won speculation race
+	// (its started_at is its local start, which once produced a fake 0 s
+	// sample here; step 3 cross-check F2). Copies are excluded (decision 17).
+	QueueWaits []time.Duration
 }
 
 func (s *Store) FinishCompleteRounds(ctx context.Context) ([]FinishedRound, error) {
@@ -147,7 +154,8 @@ func (s *Store) fillRoundStats(ctx context.Context, fr *FinishedRound) error {
 	fr.StragglerLag = time.Duration(lagSecs * float64(time.Second))
 	rows, err := s.pool.Query(ctx, `
 		SELECT EXTRACT(EPOCH FROM (started_at - enqueued_at))::float8 FROM builds
-		WHERE round_id = $1 AND placement = 'gpu' AND started_at IS NOT NULL AND NOT speculative`, fr.RoundID)
+		WHERE round_id = $1 AND placement = 'gpu' AND started_at IS NOT NULL
+		  AND attempt > 0 AND NOT speculative`, fr.RoundID)
 	if err != nil {
 		return fmt.Errorf("queue waits for round %d: %w", fr.RoundID, err)
 	}
@@ -288,6 +296,13 @@ var ErrRoundFinished = errors.New("round is already finished")
 // row is locked for the transaction, so concurrent submits into one round
 // serialise and the n_shards cap holds.
 func (s *Store) SubmitBuild(ctx context.Context, b Build) (inserted bool, err error) {
+	// The id convention is load-bearing (step 3 cross-check F4): migration
+	// 0006's generated foreign keys derive shard_id:round_id, so a build
+	// submitted under any other id could never be reported against. The API
+	// always uses BuildID(); this closes the door on direct store callers.
+	if want := BuildID(b.ShardID, b.RoundID); b.BuildID != want {
+		return false, fmt.Errorf("submit %s: build_id must be %q (shard_id:round_id, the idempotency key)", b.BuildID, want)
+	}
 	var state string
 	switch b.Placement {
 	case "gpu":
@@ -475,7 +490,10 @@ func (s *Store) RenegeToLocal(ctx context.Context, buildID string) (bool, error)
 // Reprioritize sets a queued GPU build's priority (the reconsider timer keeps
 // a preempted build's priority equal to the blocked work behind it, decision
 // 10). false if the build is no longer queued: a claimed or moved build keeps
-// whatever priority it was claimed at.
+// whatever priority it was claimed at. A queued speculative copy would be
+// accepted here, but no shipped policy ever asks: a copy's priority is set
+// once at creation (the Action's, the chosen shard's blocked work) and the
+// policies skip speculative views on reconsider.
 func (s *Store) Reprioritize(ctx context.Context, buildID string, priority float64) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
@@ -509,11 +527,17 @@ func (s *Store) SpeculateCopy(ctx context.Context, buildID string, priority floa
 // "local" (the shard finished first; the copy was cancelled). CopyState is
 // the copy's state at cancel time ("queued" or "leased") for the local case:
 // a leased copy means a worker's work was wasted, the cost speculation pays.
+// CopyAttempt is the copy's attempt counter — the fencing token of the worker
+// that built it (gpu win) or was fenced out (local win; 0 = never claimed).
+// The primary's own attempt stays whatever it was (0 unless it was once a GPU
+// build): a won race is a settlement, not a move or a claim, so neither the
+// primary's moved flag nor its attempt changes.
 type SpeculationResolved struct {
-	BuildID   string
-	RoundID   int64
-	Winner    string
-	CopyState string
+	BuildID     string
+	RoundID     int64
+	Winner      string
+	CopyState   string
+	CopyAttempt int32
 }
 
 // ResolveSpeculations settles every speculation race that has a winner, in
@@ -525,7 +549,8 @@ type SpeculationResolved struct {
 //     finished_at (the index existed from that moment), so the shard's next
 //     report reply says done and it aborts the local build.
 //   - The primary is terminal but the copy is still queued or leased: the
-//     local build won. The copy is cancelled — state='failed' with a reason —
+//     local build won. The copy is cancelled — state='failed' with a reason,
+//     its finished_at the cancel time (which rounds ignore, decision 17) —
 //     which ends a worker's lease from the outside: like the reaper, this is
 //     a sanctioned exception to the attempt-guarded-writes invariant, safe
 //     for the same reason the invariant exists — the worker's own writes stay
@@ -546,14 +571,14 @@ func (s *Store) ResolveSpeculations(ctx context.Context) ([]SpeculationResolved,
 		WHERE c.speculative AND c.state = 'done'
 		  AND p.round_id = c.round_id AND p.shard_id = c.shard_id AND NOT p.speculative
 		  AND p.placement = 'local' AND p.state = 'running'
-		RETURNING p.build_id, p.round_id`)
+		RETURNING p.build_id, p.round_id, c.attempt`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		r := SpeculationResolved{Winner: "gpu"}
-		if err := rows.Scan(&r.BuildID, &r.RoundID); err != nil {
+		if err := rows.Scan(&r.BuildID, &r.RoundID, &r.CopyAttempt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -571,14 +596,14 @@ func (s *Store) ResolveSpeculations(ctx context.Context) ([]SpeculationResolved,
 		  AND p.round_id = c.round_id AND p.shard_id = c.shard_id AND NOT p.speculative
 		  AND p.state IN ('done', 'failed')
 		RETURNING p.build_id, p.round_id,
-		          (SELECT state FROM builds b2 WHERE b2.build_id = c.build_id)`)
+		          (SELECT state FROM builds b2 WHERE b2.build_id = c.build_id), c.attempt`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		r := SpeculationResolved{Winner: "local"}
-		if err := rows.Scan(&r.BuildID, &r.RoundID, &r.CopyState); err != nil {
+		if err := rows.Scan(&r.BuildID, &r.RoundID, &r.CopyState, &r.CopyAttempt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
