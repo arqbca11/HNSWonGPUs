@@ -456,15 +456,19 @@ func (s *Store) PreemptToGPU(ctx context.Context, buildID string, priority float
 
 // RenegeToLocal moves a queued GPU build back to the shard's CPU (decision
 // 31); started_at becomes now, since the local attempt starts now, and moved
-// becomes true (decision 8: at most one move, so a preempted build never
-// bounces back). false if the build is not a queued GPU build (leased builds
-// are never moved), already moved once, or a speculative copy (a copy is
-// cancelled, never turned into a second local build).
+// becomes true. Deliberately NOT guarded on moved: decision 8's at-most-once
+// is a judgment rule the policy enforces, and decision 20's impossibility
+// escape (a build fitting no live worker reneges even after a preempt — bug
+// 13) needs this door open. No flapping loop can form, because PreemptToGPU
+// strictly requires a never-moved build: the longest possible lifetime is
+// submit, preempt, escape-renege, local forever. false if the build is not a
+// queued GPU build (leased builds are never moved) or is a speculative copy
+// (a copy is cancelled, never turned into a second local build).
 func (s *Store) RenegeToLocal(ctx context.Context, buildID string) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
 		SET placement = 'local', state = 'running', started_at = now(), lease_owner = NULL, lease_until = NULL, moved = true
-		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued' AND NOT moved AND NOT speculative`,
+		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued' AND NOT speculative`,
 		buildID)
 }
 

@@ -6,6 +6,20 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
+## 13. Two anti-flapping rules collided and stranded a preempted build the pool could no longer hold
+
+**Found:** 2026-10-22, by the Phase 3 step 3 cross-check agent (`PreemptedBuildNeverReneged_EvenWhenItFitsNowhere`, a probe pitting decision 8 against decision 19). The test passed — the code followed the spec — and the finding (F3) was that the spec itself builds a hang. Owner decided 2026-10-22 (decision 20); fixed in this commit, `scheduler/policy/reactive.go` and `scheduler/store/store.go`. **Related:** entry 11 (the identical end state — a queued build no claim will ever take, no lease, no reaper, no retry budget, the round hung — reached this time not by a missing filter but by two *correct* rules composed; entry 11's own fix created the move that this entry's rule then refused to undo), entry 12 (the same step's other blind spot in a placement-change guard).
+
+**Symptom.** A hurting local build is preempted onto the one worker big enough for it (move #1, decision 8's quota spent). That worker dies or drains — the shrinking_pool scenario. The build now fits no live worker: the claim's memory filter skips it forever, and the reconsider's renege — decision 19's designated escape, "exactly how a stuck too-big build escapes the queue" — is refused because the build already moved once. It sits `queued` until a big worker happens to return; the round hangs on it.
+
+**Cause.** Decision 8 (placement changes at most once, the anti-flapping rule) and decision 19 (fits-nowhere reneges out) were each argued correctly and never confronted: the flapping rule was written when every move was a *cost judgment* that a later tick might reverse, and the escape was written as if the stranded build's history didn't exist. The collision needs three steps — preempt, then shrink, then the refusal — which no single decision's "why" column walks through.
+
+**Fix (decision 20, the impossibility escape).** A moved build may still renege when its memory fits no live worker (`QueueWaitS` +Inf from the queue replay). Impossibility is not a cost judgment, so the anti-flapping rationale does not apply to it; and no loop can form, because preemption still strictly requires a never-moved build — the longest possible lifetime is submit → preempt → escape-renege → local forever. The store's `RenegeToLocal` drops its moved guard (the policy enforces the judgment rule; the store keeps state and speculative guards), `PreemptToGPU` keeps its moved guard absolutely, and on an empty pool the escape stays shut (decision 19's cold-start clause).
+
+**In production.** This is the shrinking_pool scenario crossed with the bimodal one: big builds are preempted onto the few big cards, and big cards are exactly what maintenance drains. One drain after one preemption and the round waits for hardware on an operator's timetable, with the scheduler reporting nothing wrong — every row is in a legal state.
+
+**Lesson.** Two guards that are each right can compose into a deadlock; the question "what undoes this state if the world changes?" has to be asked per *state*, not per rule. And a cross-check test that passes can still be the most important finding of its round — this one pinned the spec's own behaviour and handed the conflict to the owner instead of silently picking a side.
+
 ## 12. A preempt in the settle window threw away a won speculation race
 
 **Found:** 2026-10-22, by the Phase 3 step 3 cross-check agent (`PreemptWhileCopyDoneButUnresolvedKeepsTheWin`, a deliberate probe of the gap between a copy finishing and `ResolveSpeculations` noticing). Fixed in this commit, `scheduler/store/store.go`. **Related:** entry 11 (the same family: a placement-change site whose guard had a blind spot; there the memory filter, here the definition of "the copy is racing"), entry 5 (work discarded because two actors disagreed about who owns a result).

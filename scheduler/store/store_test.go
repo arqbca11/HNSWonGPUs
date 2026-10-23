@@ -581,16 +581,20 @@ func TestPreemptAndRenegeTransitions(t *testing.T) {
 	}
 	t.Log("the shard, unaware, reports its local build done -> rejected: that is how it learns")
 
-	t.Log("decision 8: the preempt set moved=true, so the build never moves again")
+	t.Log("decision 8 / decision 20: the preempt set moved=true; the one move left open is the escape renege")
 	var moved bool
 	pool.QueryRow(ctx, `SELECT moved FROM builds WHERE build_id = $1`, id).Scan(&moved) //nolint:errcheck
 	if !moved {
 		t.Fatal("preempt did not set moved")
 	}
-	if ok, _ := s.RenegeToLocal(ctx, id); ok {
-		t.Fatal("reneged a build that already moved once (decision 8: at most one move)")
+	if ok, _ := s.RenegeToLocal(ctx, id); !ok {
+		t.Fatal("the store refused the escape renege of a moved build (decision 20 needs this door open)")
 	}
-	t.Log("renege after a preempt -> rejected: placement changes at most once after submit")
+	row(t, pool, id)
+	if ok, _ := s.PreemptToGPU(ctx, id, 1); ok {
+		t.Fatal("preempted a moved build: the flapping loop decision 8 forbids")
+	}
+	t.Log("preempt -> escape renege allowed (decision 20); preempt again -> rejected: no loop can form")
 
 	t.Log("a fresh queued gpu build reneges back to local, once")
 	id2 := submit(t, s, r, 2, "gpu", 0, 1<<20)
@@ -601,12 +605,11 @@ func TestPreemptAndRenegeTransitions(t *testing.T) {
 	if ok, _ := s.PreemptToGPU(ctx, id2, 7); ok {
 		t.Fatal("preempted a build that already reneged once (decision 8)")
 	}
-	t.Log("preempt after a renege -> rejected; a claim finds only the preempted build, never the local one:")
-	c0, ok, _ := s.Claim(ctx, "w", 1<<40, lease)
-	if !ok || c0.BuildID != id {
-		t.Fatalf("claim: ok=%v build=%s, want the preempted %s (the reneged %s is local and unclaimable)", ok, c0.BuildID, id, id2)
+	t.Log("preempt after a renege -> rejected; and neither local build is claimable:")
+	if _, ok, _ := s.Claim(ctx, "w", 1<<40, lease); ok {
+		t.Fatal("a worker claimed a local build")
 	}
-	t.Logf("a worker claims -> gets the preempted %s; the reneged %s is invisible to the queue", id, id2)
+	t.Logf("a worker tries to claim -> nothing; both %s and %s are local", id, id2)
 
 	t.Log("a leased build is never moved")
 	id3 := submit(t, s, r, 3, "gpu", 0, 1<<20)

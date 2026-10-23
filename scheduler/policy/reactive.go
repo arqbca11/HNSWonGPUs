@@ -1,6 +1,9 @@
 package policy
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // ReactiveConfig tunes the reactive policies. The zero value means defaults.
 type ReactiveConfig struct {
@@ -163,7 +166,21 @@ func (p Reactive) preemptIfWorth(b BuildView) (Action, bool) {
 // cross-check showed the bare build-time comparison could renege a shard
 // into a worse recovery when a non-index backlog was waiting. Without a
 // report both sides degrade to plain build-vs-queue times.
+//
+// The impossibility escape comes first (decision 20, owner approved
+// 2026-10-22): a build whose QueueWaitS is +Inf fits no live worker, so no
+// claim will ever take it (bug 11's hang, reachable again through
+// preempt-then-shrink, bug 13) — it reneges even if it already moved once.
+// Decision 8's moved-at-most-once stops cost-model flapping, and this is not
+// a cost judgment; no loop can form, because preemption still strictly
+// requires a never-moved build.
 func (p Reactive) renegeIfWorth(b BuildView) (Action, bool) {
+	if math.IsInf(b.QueueWaitS, 1) {
+		return Action{
+			Kind: ActRenege, BuildID: b.BuildID,
+			Reason: "fits no live worker: no claim can ever serve this build (decision 20 escape)",
+		}, true
+	}
 	if b.Moved {
 		return Action{}, false // moved at most once (decision 8)
 	}

@@ -1,6 +1,9 @@
 package policy
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // A shard 20% into a 100 s local build with 5 one-second queries waiting (all
 // needing the index), no new arrivals: staying costs 80+5 s, migrating costs
@@ -119,6 +122,15 @@ func TestReactiveRenegeAndReprioritize(t *testing.T) {
 	if acts := p.Reconsider(ReconsiderInput{Builds: []BuildView{once}}); len(acts) != 0 {
 		t.Fatalf("expected no second move, got %+v", acts)
 	}
+
+	t.Log("--- decision 20, the impossibility escape: the same moved build reading +Inf (fits no live worker) reneges anyway — bug 13")
+	stranded := once
+	stranded.QueueWaitS = math.Inf(1)
+	acts = p.Reconsider(ReconsiderInput{Builds: []BuildView{stranded}})
+	if len(acts) != 1 || acts[0].Kind != ActRenege || acts[0].BuildID != "1:7" {
+		t.Fatalf("a moved fits-nowhere build must escape by renege (decision 20), got %+v", acts)
+	}
+	t.Logf("    escape renege %s (%s)", acts[0].BuildID, acts[0].Reason)
 
 	t.Log("--- a preempted build's priority follows the backlog behind it, but only strictly past the churn delta")
 	preempted := BuildView{
