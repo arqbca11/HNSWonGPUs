@@ -434,11 +434,15 @@ func (s *Store) Release(ctx context.Context, buildID string, attempt int32) (boo
 // are untouched (the first claim bumps attempt; enqueued_at keeps the submit
 // time for the timeline). moved becomes true: placement changes at most once
 // after submit (decision 8), and the guard holds even if two schedulers tick.
-// A build whose speculative copy is still racing is never preempted (the copy
-// exists to protect the CPU progress a preempt would throw away); the policy
-// refuses it and this guard makes the refusal unconditional. false if any
-// guard fails: the build is not a running local build, has moved before, or
-// has a live copy.
+// A build whose speculative copy has not FAILED is never preempted: a queued
+// or leased copy is still racing (it exists to protect the CPU progress a
+// preempt would throw away), and a copy already done is a race already won —
+// preempting in the window before ResolveSpeculations settles it would
+// discard a finished index and rebuild it a third time (bug 12; the settle
+// runs within a tick). Only a failed copy, a race with no possible winner,
+// frees the primary to move. The policy refuses these too; this guard makes
+// the refusal unconditional. false if any guard fails: the build is not a
+// running local build, has moved before, or has a non-failed copy.
 func (s *Store) PreemptToGPU(ctx context.Context, buildID string, priority float64) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
@@ -446,7 +450,7 @@ func (s *Store) PreemptToGPU(ctx context.Context, buildID string, priority float
 		WHERE build_id = $1 AND placement = 'local' AND state = 'running' AND NOT moved
 		  AND NOT EXISTS (SELECT 1 FROM builds c
 		                  WHERE c.round_id = builds.round_id AND c.shard_id = builds.shard_id
-		                    AND c.speculative AND c.state IN ('queued', 'leased'))`,
+		                    AND c.speculative AND c.state <> 'failed')`,
 		buildID, priority)
 }
 

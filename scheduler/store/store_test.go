@@ -686,6 +686,11 @@ func TestSpeculationLifecycle(t *testing.T) {
 	if ok, _ := s.Complete(ctx, copyID, c.Attempt); !ok {
 		t.Fatal("complete copy failed")
 	}
+	t.Log("bug 12: the copy is done but not yet settled; a preempt now would discard the win")
+	if ok, _ := s.PreemptToGPU(ctx, id, 99); ok {
+		t.Fatal("preempted a primary whose copy already finished: the won race is thrown away (bug 12)")
+	}
+	t.Log("preempt in the settle window -> rejected: only a FAILED copy frees the primary to move")
 	res, err := s.ResolveSpeculations(ctx)
 	if err != nil || len(res) != 1 || res[0].Winner != "gpu" || res[0].BuildID != id {
 		t.Fatalf("resolve: res=%+v err=%v, want one gpu win for %s", res, err, id)

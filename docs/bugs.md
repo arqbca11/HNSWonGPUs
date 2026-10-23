@@ -6,7 +6,21 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
-## 11. Preemption ignored the memory filter: a hurting build could be parked in a queue nobody can claim
+## 12. A preempt in the settle window threw away a won speculation race
+
+**Found:** 2026-10-22, by the Phase 3 step 3 cross-check agent (`PreemptWhileCopyDoneButUnresolvedKeepsTheWin`, a deliberate probe of the gap between a copy finishing and `ResolveSpeculations` noticing). Fixed in this commit, `scheduler/store/store.go`. **Related:** entry 11 (the same family: a placement-change site whose guard had a blind spot; there the memory filter, here the definition of "the copy is racing"), entry 5 (work discarded because two actors disagreed about who owns a result).
+
+**Symptom.** A shard's local build is racing its speculative GPU copy. The copy completes — the index exists. Before the next reconsider tick settles the race, a preempt of the primary is accepted: the primary becomes `gpu/queued`, `ResolveSpeculations` then finds no primary still running locally and returns nothing, and the finished index is simply forgotten. The build is claimed and built a **third** time, and the shard — whose backlog was the reason for preempting — waits a whole extra GPU build for an index that already existed.
+
+**Cause.** The preempt guard refused a primary whose copy was "in flight", implemented as `state IN ('queued', 'leased')`. A copy in state `done` is neither — but it is not *gone*, it is a race already won that nobody has settled yet. "Live copy" was never defined to include done-but-unsettled; the guard encoded the intuition (a copy still running) instead of the invariant (the race has a possible or actual winner). The window is real on one scheduler — a copy can complete between a tick's resolve step and its snapshot read — and wider with two.
+
+**Fix.** The guard is now `state <> 'failed'`: only a failed copy — a race with no possible winner left — frees the primary to move. In the settle window the preempt is refused, and the next tick's resolve marks the primary done from the copy. The policy-level refusal (step 1's "never preempt a build whose copy is in flight") was already there; this is the store making it unconditional, with the correct definition.
+
+**In production.** Speculation exists for the shards hurting most; those are exactly the shards the reactive policy also wants to preempt. Every GPU-won race whose primary crossed the preempt threshold in the same tick window would silently double the shard's wait and burn a third build's worth of GPU — the policy's two tools cancelling each other.
+
+**Lesson.** A guard that names states ("queued or leased") rots the moment a new state appears in the lifecycle; a guard that names the *meaning* ("any copy that could still win, or already has") survives. When a check exists in two layers (policy and store), the store's version is the one that must get the meaning right, because it is the one that runs during the race.
+
+
 
 **Found:** 2026-10-19, by the Phase 3 step 1 cross-check agent (`Reactive_MemoryAwarePreempt`): a local build one byte too big for every live worker, with a convincing backlog, was preempted. Fixed in [`86d7099`](https://github.com/arqbca11/HNSWonGPUs/commit/86d7099), `scheduler/policy/reactive.go`. **Related:** entry 5 (the other build that could never finish and what the retry budget does about leases — but a *queued* unclaimable build has no lease to expire, so no reaper or budget ever touches it), entry 1 (also the cross-check's first run against a brand-new piece of the system).
 
