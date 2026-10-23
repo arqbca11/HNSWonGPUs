@@ -37,6 +37,11 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       POLICY: ${POLICY:-always_gpu}
       REAP_INTERVAL: ${REAP_INTERVAL:-1s}
+      RECONSIDER_INTERVAL: ${RECONSIDER_INTERVAL:-1s}
+      # The same scale the workers' fake builds and the shardsim run at, so the
+      # scheduler can convert wall-clock elapsed times into modeled seconds
+      # before comparing them with cost-model estimates (Phase 3 step 3).
+      FAKE_TIME_SCALE: ${FAKE_TIME_SCALE:-1}
       MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
       WORKER_STALE_AFTER: ${WORKER_STALE_AFTER:-15s}
     ports:

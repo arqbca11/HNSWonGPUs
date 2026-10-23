@@ -126,6 +126,10 @@ type BuildRow struct {
 	EnqueuedAt time.Time  `json:"enqueued_at"`
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
+	// Moved: placement already changed once after submit (Phase 3 decision 8).
+	// Speculative: a GPU copy racing its shard's local build (decision 5).
+	Moved       bool `json:"moved"`
+	Speculative bool `json:"speculative"`
 }
 
 type JobRow struct {

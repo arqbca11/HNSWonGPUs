@@ -300,6 +300,80 @@ func TestPreemptionAbortsLocalBuild(t *testing.T) {
 	t.Log("preemption freed the CPU: the independent query ran during the gpu build; the index query waited for it")
 }
 
+// Phase 3 step 3, decision 5: a speculative GPU copy races the local build and
+// wins. The local build keeps running while the copy is queued and built (its
+// progress is protected — nothing is killed up front); when the copy finishes,
+// the resolve sweep marks the real build done and the shard learns from its
+// report reply, aborts the local build, and the index queries unblock.
+func TestSpeculationGPUCopyWinsRace(t *testing.T) {
+	h := newHarness(t)
+	h.fakeWorker("tiny", 1, scale) // nothing fits: the submit goes local
+	time.Sleep(100 * time.Millisecond)
+	w := workload.Workload{
+		Scenario: workload.Scenario{Name: "test-speculate", NShards: 1, Dim: 128, Stream: workload.StreamProfile{Horizon: 30 * time.Second}},
+		Seed:     1,
+		Shards: []workload.ShardWorkload{{ShardID: 0, NVectors: 400_000, Queries: []workload.Query{ // cpu ~92 s modeled -> 4.6 s at 20x; gpu total ~13 s modeled -> 0.7 s
+			q(500*time.Millisecond, 1*time.Second, false, workload.KindSingleShard, 1),
+			q(1*time.Second, 1*time.Second, true, workload.KindSingleShard, 2),
+		}}},
+	}
+	cfg := RoundConfig{Shard: Config{TimeScale: scale, PollInterval: 100 * time.Millisecond, Slice: 20 * time.Millisecond},
+		MinWorkers: 1, WaitWorkers: 5 * time.Second, RoundTimeout: 60 * time.Second}
+
+	// The reconsider actor: once the local build is under way, start a copy
+	// (as reactive_spec would), bring up a worker that can take it, and keep
+	// running the resolve sweep as the reconsider tick does.
+	go func() {
+		ctx := context.Background()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			var id string
+			var progress float32
+			err := h.pool.QueryRow(ctx, `SELECT b.build_id, COALESCE(s.build_progress, 0) FROM builds b
+				LEFT JOIN shard_status s ON s.round_id = b.round_id AND s.shard_id = b.shard_id
+				WHERE b.placement = 'local' AND b.state = 'running' AND NOT b.speculative LIMIT 1`).Scan(&id, &progress)
+			if err == nil && progress > 0.1 {
+				ok, _ := h.st.SpeculateCopy(ctx, id, 10)
+				h.t.Logf("  [reconsider] speculative copy of %s at progress %.0f%% -> %v; the local build keeps running", id, 100*progress, ok)
+				h.fakeWorker("big", 8<<30, scale)
+				for time.Now().Before(deadline) {
+					if res, _ := h.st.ResolveSpeculations(ctx); len(res) > 0 {
+						h.t.Logf("  [reconsider] resolved: winner=%s for %s", res[0].Winner, res[0].BuildID)
+						return
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	tl, err := RunRound(context.Background(), h.api, w, cfg, h.log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("\n%s", tl.Text())
+	var abortedBySpec, ready bool
+	for _, e := range tl.Shards[0].Events {
+		t.Logf("  +%5.2fs %s", e.At.Seconds(), e.Msg)
+		abortedBySpec = abortedBySpec || strings.Contains(e.Msg, "speculative gpu copy")
+		ready = ready || strings.Contains(e.Msg, "index ready")
+	}
+	s := tl.Shards[0]
+	if !abortedBySpec || !ready || s.Placement != "gpu" || s.BuildState != "done" || s.Attempt != 0 {
+		t.Fatalf("expected the copy to win and the local build to abort; got abortedBySpec=%v ready=%v %s/%s attempt %d",
+			abortedBySpec, ready, s.Placement, s.BuildState, s.Attempt)
+	}
+	t.Log("the real build is gpu/done at attempt 0: the claim bumped only the copy's attempt, the primary was never leased")
+	if tl.Speculations != 1 {
+		t.Fatalf("timeline counted %d speculative copies, want 1", tl.Speculations)
+	}
+	if q1 := s.Queries[1]; q1.Started < s.BuildDone {
+		t.Fatalf("the needs_index query started %s before the index was done %s", q1.Started, s.BuildDone)
+	}
+	t.Log("the needs_index query waited for the copy's finish, then ran: the shard recovered without losing its CPU to a kill")
+}
+
 // Decisions 59 and 60: with a staggered DDL, queries that arrive before the
 // shard's DDL run on the CPU as normal and are backfilled, with their own
 // timestamps, once the build exists. Nothing about a query crosses HTTP while

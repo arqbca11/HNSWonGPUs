@@ -72,6 +72,7 @@ type buildState struct {
 	localWant  bool          // the scheduler says: build locally, and we have not started
 	localBusy  bool          // the CPU goroutine is building right now
 	cancel     bool          // abort the local build at the next slice
+	cancelWhy  string        // why: preempted, or the speculative GPU copy won
 	progress   float32
 	indexReady bool
 	failed     bool
@@ -302,12 +303,16 @@ func (s *Shard) runLocalBuild(ctx context.Context, dur time.Duration) {
 		elapsed := time.Since(started)
 		s.mu.Lock()
 		if s.b.cancel {
+			why := s.b.cancelWhy
+			if why == "" {
+				why = "preempted to the gpu queue"
+			}
 			s.b.localBusy = false
 			s.b.progress = 0
 			localBuildsAborted.Inc()
-			s.event("local build aborted at %.0f%%: preempted to the gpu queue", 100*float64(elapsed)/float64(dur))
+			s.event("local build aborted at %.0f%%: %s", 100*float64(elapsed)/float64(dur), why)
 			s.mu.Unlock()
-			s.log.Warn("local build aborted: preempted", "progress", float64(elapsed)/float64(dur))
+			s.log.Warn("local build aborted", "why", why, "progress", float64(elapsed)/float64(dur))
 			return
 		}
 		if elapsed >= dur {
@@ -466,12 +471,19 @@ func (s *Shard) apply(b client.BuildSummary) {
 		s.b.indexReady = true
 		s.event("index ready (attempt %d, %s)", b.Attempt, b.Placement)
 		s.log.Info("index ready", "attempt", b.Attempt, "placement", b.Placement)
+		if s.b.localBusy {
+			// We were still building locally, so this done came from elsewhere:
+			// the speculative GPU copy won the race (decision 5). Stop burning
+			// the CPU on an index that already exists.
+			s.b.cancel, s.b.cancelWhy = true, "the speculative gpu copy finished first"
+			s.event("the speculative gpu copy won: aborting the local build")
+		}
 	case b.State == "failed" && !s.b.failed:
 		s.b.failed = true
 		s.event("build FAILED (attempt %d): queries that need the index can never run on this shard", b.Attempt)
 		s.log.Error("build failed; needs_index queries are stuck (open question in the design doc)", "attempt", b.Attempt)
 	case b.Placement == "gpu" && (b.State == "queued" || b.State == "leased") && s.b.localBusy:
-		s.b.cancel = true
+		s.b.cancel, s.b.cancelWhy = true, "preempted to the gpu queue"
 		s.event("scheduler moved the build to the gpu (%s): aborting the local build", b.State)
 	case b.Placement == "local" && b.State == "running" && !s.b.localBusy && !s.b.indexReady && !s.b.localWant:
 		if prevPlacement == "gpu" {

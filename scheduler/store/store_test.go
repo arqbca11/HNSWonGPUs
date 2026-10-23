@@ -581,27 +581,303 @@ func TestPreemptAndRenegeTransitions(t *testing.T) {
 	}
 	t.Log("the shard, unaware, reports its local build done -> rejected: that is how it learns")
 
-	t.Log("renege the queued gpu build back to local")
-	if ok, _ := s.RenegeToLocal(ctx, id); !ok {
+	t.Log("decision 8: the preempt set moved=true, so the build never moves again")
+	var moved bool
+	pool.QueryRow(ctx, `SELECT moved FROM builds WHERE build_id = $1`, id).Scan(&moved) //nolint:errcheck
+	if !moved {
+		t.Fatal("preempt did not set moved")
+	}
+	if ok, _ := s.RenegeToLocal(ctx, id); ok {
+		t.Fatal("reneged a build that already moved once (decision 8: at most one move)")
+	}
+	t.Log("renege after a preempt -> rejected: placement changes at most once after submit")
+
+	t.Log("a fresh queued gpu build reneges back to local, once")
+	id2 := submit(t, s, r, 2, "gpu", 0, 1<<20)
+	if ok, _ := s.RenegeToLocal(ctx, id2); !ok {
 		t.Fatal("renege rejected")
 	}
-	row(t, pool, id)
-	if _, ok, _ := s.Claim(ctx, "w", 1<<40, lease); ok {
-		t.Fatal("a worker claimed a build that was moved back to local")
+	row(t, pool, id2)
+	if ok, _ := s.PreemptToGPU(ctx, id2, 7); ok {
+		t.Fatal("preempted a build that already reneged once (decision 8)")
 	}
-	t.Log("a worker tries to claim -> nothing; the build is local again")
+	t.Log("preempt after a renege -> rejected; a claim finds only the preempted build, never the local one:")
+	c0, ok, _ := s.Claim(ctx, "w", 1<<40, lease)
+	if !ok || c0.BuildID != id {
+		t.Fatalf("claim: ok=%v build=%s, want the preempted %s (the reneged %s is local and unclaimable)", ok, c0.BuildID, id, id2)
+	}
+	t.Logf("a worker claims -> gets the preempted %s; the reneged %s is invisible to the queue", id, id2)
 
 	t.Log("a leased build is never moved")
-	s.PreemptToGPU(ctx, id, 99) //nolint:errcheck
+	id3 := submit(t, s, r, 3, "gpu", 0, 1<<20)
 	c, ok, _ := s.Claim(ctx, "w", 1<<40, lease)
-	if !ok || c.Attempt != 1 {
-		t.Fatalf("claim after preempt: ok=%v attempt=%d", ok, c.Attempt)
+	if !ok || c.BuildID != id3 || c.Attempt != 1 {
+		t.Fatalf("claim: ok=%v build=%s attempt=%d", ok, c.BuildID, c.Attempt)
 	}
-	row(t, pool, id)
-	if ok, _ := s.RenegeToLocal(ctx, id); ok {
+	row(t, pool, id3)
+	if ok, _ := s.RenegeToLocal(ctx, id3); ok {
 		t.Fatal("reneged a leased build")
 	}
-	t.Logf("renege on a leased build -> rejected; attempt is %d, bumped by the claim, untouched by the moves", c.Attempt)
+	t.Logf("renege on a leased build -> rejected; attempt is %d, bumped by the claim", c.Attempt)
+}
+
+// Phase 3 step 3: the reprioritize action. Only a still-queued gpu build takes
+// a new priority; a claimed one keeps what it was claimed at.
+func TestReprioritize(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRound(ctx, "test", 1, 10)
+	id := submit(t, s, r, 1, "gpu", 5, 1<<20)
+
+	if ok, _ := s.Reprioritize(ctx, id, 50); !ok {
+		t.Fatal("reprioritize rejected on a queued build")
+	}
+	var prio float64
+	pool.QueryRow(ctx, `SELECT priority FROM builds WHERE build_id = $1`, id).Scan(&prio) //nolint:errcheck
+	if prio != 50 {
+		t.Fatalf("priority after reprioritize: %v, want 50", prio)
+	}
+	t.Logf("queued build reprioritized 5 -> %v", prio)
+
+	if _, ok, _ := s.Claim(ctx, "w", 1<<40, lease); !ok {
+		t.Fatal("claim failed")
+	}
+	if ok, _ := s.Reprioritize(ctx, id, 99); ok {
+		t.Fatal("reprioritized a leased build")
+	}
+	t.Log("reprioritize on a leased build -> rejected (zero rows): the claim already happened")
+}
+
+// Phase 3 step 3 / decision 5: the speculation lifecycle in the store. A copy
+// is a second builds row (build_id + ':spec') that a worker claims like any
+// build; ResolveSpeculations settles the race in both directions.
+func TestSpeculationLifecycle(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRound(ctx, "test", 1, 10)
+	id := submit(t, s, r, 1, "local", 0, 1<<20)
+
+	t.Log("--- the copy is born and is a claimable gpu build")
+	if ok, _ := s.SpeculateCopy(ctx, id, 33); !ok {
+		t.Fatal("speculate rejected on a running local build")
+	}
+	copyID := id + ":spec"
+	row(t, pool, copyID)
+	cb, found, _ := s.GetBuild(ctx, copyID)
+	if !found || !cb.Speculative || cb.Placement != "gpu" || cb.State != "queued" || cb.Priority != 33 {
+		t.Fatalf("copy row: found=%v speculative=%v %s/%s priority=%v", found, cb.Speculative, cb.Placement, cb.State, cb.Priority)
+	}
+	if ok, _ := s.SpeculateCopy(ctx, id, 44); ok {
+		t.Fatal("a second copy was inserted for the same build")
+	}
+	t.Log("speculating again -> rejected (one copy ever per build, by primary key)")
+
+	t.Log("--- decision 8 guard: the primary is never preempted while its copy races")
+	if ok, _ := s.PreemptToGPU(ctx, id, 1); ok {
+		t.Fatal("preempted the primary of an in-flight copy: its CPU progress is what the copy protects")
+	}
+	t.Log("preempt of the primary -> rejected while the copy is queued/leased")
+
+	t.Log("--- gpu wins: a worker claims and completes the copy; resolve marks the primary done")
+	c, ok, _ := s.Claim(ctx, "w1", 1<<40, lease)
+	if !ok || c.BuildID != copyID {
+		t.Fatalf("claim: ok=%v build=%s, want the copy", ok, c.BuildID)
+	}
+	if ok, _ := s.Complete(ctx, copyID, c.Attempt); !ok {
+		t.Fatal("complete copy failed")
+	}
+	res, err := s.ResolveSpeculations(ctx)
+	if err != nil || len(res) != 1 || res[0].Winner != "gpu" || res[0].BuildID != id {
+		t.Fatalf("resolve: res=%+v err=%v, want one gpu win for %s", res, err, id)
+	}
+	row(t, pool, id)
+	b, _, _ := s.GetBuild(ctx, id)
+	if b.State != "done" || b.Placement != "gpu" || b.FinishedAt == nil {
+		t.Fatalf("primary after gpu win: %s/%s", b.Placement, b.State)
+	}
+	if !b.FinishedAt.Equal(*cb2(t, s, copyID).FinishedAt) {
+		t.Fatal("the primary's finished_at should be the copy's: the index existed from that moment")
+	}
+	t.Logf("primary %s is gpu/done, finished_at taken from the copy", id)
+	if res2, _ := s.ResolveSpeculations(ctx); len(res2) != 0 {
+		t.Fatalf("resolve is not idempotent: %+v", res2)
+	}
+	t.Log("resolving again -> nothing (idempotent)")
+
+	t.Log("--- local wins: the shard finishes first and the leased copy is cancelled")
+	id2 := submit(t, s, r, 2, "local", 0, 1<<20)
+	if ok, _ := s.SpeculateCopy(ctx, id2, 10); !ok {
+		t.Fatal("speculate rejected")
+	}
+	c2, ok, _ := s.Claim(ctx, "w2", 1<<40, lease)
+	if !ok || c2.BuildID != id2+":spec" {
+		t.Fatalf("claim: %v %s", ok, c2.BuildID)
+	}
+	if ok, _ := s.CompleteLocal(ctx, id2); !ok {
+		t.Fatal("the shard could not complete its local build during the race")
+	}
+	t.Log("local build done while the copy is leased to w2")
+	res, err = s.ResolveSpeculations(ctx)
+	if err != nil || len(res) != 1 || res[0].Winner != "local" || res[0].BuildID != id2 || res[0].CopyState != "leased" {
+		t.Fatalf("resolve: res=%+v err=%v, want one local win with a leased copy", res, err)
+	}
+	row(t, pool, id2+":spec")
+	cp, _, _ := s.GetBuild(ctx, id2+":spec")
+	if cp.State != "failed" || cp.FailReason == nil {
+		t.Fatalf("copy after local win: %s (%v)", cp.State, cp.FailReason)
+	}
+	t.Logf("copy cancelled: state=failed reason=%q", *cp.FailReason)
+	if ok, _ := s.Renew(ctx, id2+":spec", c2.Attempt, lease); ok {
+		t.Fatal("the worker renewed a cancelled copy's lease")
+	}
+	if ok, _ := s.Complete(ctx, id2+":spec", c2.Attempt); ok {
+		t.Fatal("the worker completed a cancelled copy")
+	}
+	t.Log("w2's renew and complete -> zero rows: the worker sees the cancel exactly like a lost lease and stops")
+}
+
+func cb2(t *testing.T, s *Store, id string) BuildRow {
+	t.Helper()
+	b, found, err := s.GetBuild(context.Background(), id)
+	if err != nil || !found {
+		t.Fatalf("get %s: found=%v err=%v", id, found, err)
+	}
+	return b
+}
+
+// Phase 3 step 3: rounds close without waiting for speculation artifacts, and
+// a copy's cancel never stretches the round.
+func TestRoundCompletionIgnoresSpeculativeCopies(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRound(ctx, "test", 1, 1)
+	id := submit(t, s, r, 1, "local", 0, 1<<20)
+	if ok, _ := s.SpeculateCopy(ctx, id, 1); !ok {
+		t.Fatal("speculate rejected")
+	}
+	if err := s.ReportStatus(ctx, ShardStatus{RoundID: r, ShardID: 1, StreamDone: true}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.CompleteLocal(ctx, id); !ok {
+		t.Fatal("local done failed")
+	}
+	t.Log("the shard is done (build done, stream done, no queries); the copy is still queued")
+	fin, err := s.FinishCompleteRounds(ctx)
+	if err != nil || len(fin) != 1 {
+		t.Fatalf("finish: %v %v — the round must close although the copy is unresolved", fin, err)
+	}
+	t.Logf("round %d closed with the copy still queued: the copy is the policy's artifact, not the round's work", fin[0].RoundID)
+	var roundFin, buildFin time.Time
+	pool.QueryRow(ctx, `SELECT finished_at FROM rounds WHERE round_id = $1`, r).Scan(&roundFin)  //nolint:errcheck
+	pool.QueryRow(ctx, `SELECT finished_at FROM builds WHERE build_id = $1`, id).Scan(&buildFin) //nolint:errcheck
+	if !roundFin.Equal(buildFin) {
+		t.Fatalf("round finished_at %v != the real build's %v", roundFin, buildFin)
+	}
+	if res, _ := s.ResolveSpeculations(ctx); len(res) != 1 || res[0].Winner != "local" {
+		t.Fatalf("the sweep still cancels the orphan copy after the round closed: %+v", res)
+	}
+	t.Log("the next resolve sweep cancelled the copy even though its round is closed")
+}
+
+// Phase 3 step 3 / migration 0006: the generated-column foreign keys hold the
+// bug-3 rule against the copy too — a report can only reference the real
+// build, and the partial unique indexes allow exactly one real build and one
+// copy per shard and round.
+func TestSpeculationSchema(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRound(ctx, "test", 1, 10)
+	id := submit(t, s, r, 1, "local", 0, 1<<20)
+	if ok, _ := s.SpeculateCopy(ctx, id, 1); !ok {
+		t.Fatal("speculate rejected")
+	}
+
+	var genID string
+	if err := s.ReportStatus(ctx, ShardStatus{RoundID: r, ShardID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	pool.QueryRow(ctx, `SELECT build_id FROM shard_status WHERE round_id = $1 AND shard_id = 1`, r).Scan(&genID) //nolint:errcheck
+	if genID != id {
+		t.Fatalf("shard_status.build_id generated %q, want %q (the real build, never the copy)", genID, id)
+	}
+	t.Logf("shard_status.build_id is generated by Postgres as %q and FK-checked against builds", genID)
+
+	_, err := pool.Exec(ctx, `INSERT INTO builds (build_id, round_id, shard_id, n_vectors, dim, mem_bytes, placement, state, speculative)
+	                          VALUES ('1:`+fmt.Sprint(r)+`:spec2', $1, 1, 10, 4, 1, 'gpu', 'queued', true)`, r)
+	if err == nil {
+		t.Fatal("a second speculative copy for the same shard+round was accepted")
+	}
+	t.Logf("raw INSERT of a second copy -> %v (builds_one_copy_per_shard)", err)
+	_, err = pool.Exec(ctx, `INSERT INTO builds (build_id, round_id, shard_id, n_vectors, dim, mem_bytes, placement, state, speculative)
+	                         VALUES ('oops', $1, 1, 10, 4, 1, 'local', 'running', true)`, r)
+	if err == nil {
+		t.Fatal("a local speculative row was accepted; a copy lives only on the gpu side")
+	}
+	t.Logf("raw INSERT of a local copy -> %v (builds_speculative_gpu)", err)
+}
+
+// Phase 3 step 3: the reconsider snapshot carries the whole visible world —
+// workers, non-terminal builds in claim order with moved/speculative, and the
+// shard reports with the derived query aggregates.
+func TestGetReconsiderSnapshot(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	if err := s.Heartbeat(ctx, "w1", 8<<30, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := s.CreateRound(ctx, "test", 1, 10)
+	local := submit(t, s, r, 1, "local", 0, 1<<20)
+	low := submit(t, s, r, 2, "gpu", 1, 1<<20)
+	high := submit(t, s, r, 3, "gpu", 9, 1<<20)
+	leased := submit(t, s, r, 4, "gpu", 99, 1<<20)
+	if c, ok, _ := s.Claim(ctx, "w1", 1<<40, lease); !ok || c.BuildID != leased {
+		t.Fatalf("claim: %v %s", ok, c.BuildID)
+	}
+	if _, err := s.RecordArrival(ctx, r, 1, 0, 2000, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordArrival(ctx, r, 1, 1, 4000, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReportStatus(ctx, ShardStatus{RoundID: r, ShardID: 1, QueueDepth: 2, WaitingNeedsIndex: 1, OldestWaitMs: 500, BuildProgress: 0.25}); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := s.GetReconsiderSnapshot(ctx, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Workers) != 1 || snap.Workers[0].Node != "node-a" {
+		t.Fatalf("workers: %+v", snap.Workers)
+	}
+	if len(snap.Builds) != 4 {
+		t.Fatalf("builds: %d, want 4 non-terminal", len(snap.Builds))
+	}
+	var queued []string
+	for _, b := range snap.Builds {
+		t.Logf("  build %s %s/%s priority=%v elapsed=%.2fs", b.BuildID, b.Placement, b.State, b.Priority, b.ElapsedS)
+		if b.State == "queued" {
+			queued = append(queued, b.BuildID)
+		}
+		if b.BuildID == leased && (b.LeaseOwner != "w1" || b.ElapsedS < 0) {
+			t.Fatalf("leased build: owner=%q elapsed=%v", b.LeaseOwner, b.ElapsedS)
+		}
+		if b.BuildID == local && b.ElapsedS <= 0 {
+			t.Fatal("a running local build has started_at, so elapsed must be > 0")
+		}
+	}
+	if len(queued) != 2 || queued[0] != high || queued[1] != low {
+		t.Fatalf("queued order %v, want claim order [%s %s]", queued, high, low)
+	}
+	t.Log("queued builds arrive in claim order: priority DESC, enqueued_at")
+	if len(snap.Status) != 1 {
+		t.Fatalf("status: %+v", snap.Status)
+	}
+	st := snap.Status[0]
+	if st.Arrivals != 2 || st.MeanQueryMs != 3000 || st.RoundElapsedS <= 0 || st.QueueDepth != 2 {
+		t.Fatalf("status aggregates: %+v (want 2 arrivals, mean 3000 ms)", st)
+	}
+	t.Logf("shard 1: %d arrivals, mean %v ms over the round's %.2fs — the host derives the arrival rate from these", st.Arrivals, st.MeanQueryMs, st.RoundElapsedS)
 }
 
 func TestSchemaRefusesOrphanShardRows(t *testing.T) {

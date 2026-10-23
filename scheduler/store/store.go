@@ -73,7 +73,10 @@ func (s *Store) GetRound(ctx context.Context, id int64) (Round, bool, error) {
 // (decision 30): n_shards builds all done or failed, n_shards shards
 // reporting stream_done, and every recorded query finished. finished_at is
 // the latest build or query finish, not now(), so the round duration does
-// not depend on how often this runs. Idempotent.
+// not depend on how often this runs. Idempotent. Speculative copies (decision
+// 5) are invisible here: they are an artifact of the policy, not the round's
+// work — a round may close while a losing copy is still being cancelled, and
+// a cancelled copy's finish must not stretch the round.
 // FinishedRound is what FinishCompleteRounds reports per round it closed:
 // the numbers the Phase 2 metrics need, computed in SQL from the rows.
 type FinishedRound struct {
@@ -87,15 +90,16 @@ func (s *Store) FinishCompleteRounds(ctx context.Context) ([]FinishedRound, erro
 	rows, err := s.pool.Query(ctx, `
 		UPDATE rounds r
 		SET finished_at = GREATEST(
-		      (SELECT MAX(finished_at) FROM builds     WHERE round_id = r.round_id),
+		      (SELECT MAX(finished_at) FROM builds     WHERE round_id = r.round_id AND NOT speculative),
 		      (SELECT MAX(finished_at) FROM shard_jobs WHERE round_id = r.round_id))
 		WHERE r.finished_at IS NULL
-		  AND (SELECT COUNT(*) FROM builds b WHERE b.round_id = r.round_id) = r.n_shards
+		  AND (SELECT COUNT(*) FROM builds b WHERE b.round_id = r.round_id AND NOT b.speculative) = r.n_shards
 		  AND (SELECT COUNT(*) FROM shard_status st
-		       JOIN builds b ON b.round_id = st.round_id AND b.shard_id = st.shard_id
+		       JOIN builds b ON b.round_id = st.round_id AND b.shard_id = st.shard_id AND NOT b.speculative
 		       WHERE st.round_id = r.round_id AND st.stream_done) = r.n_shards
 		  AND NOT EXISTS (SELECT 1 FROM builds b
-		                  WHERE b.round_id = r.round_id AND b.state NOT IN ('done', 'failed'))
+		                  WHERE b.round_id = r.round_id AND NOT b.speculative
+		                    AND b.state NOT IN ('done', 'failed'))
 		  AND NOT EXISTS (SELECT 1 FROM shard_jobs j
 		                  WHERE j.round_id = r.round_id AND j.finished_at IS NULL)
 		RETURNING r.round_id, EXTRACT(EPOCH FROM (r.finished_at - r.started_at))::float8`)
@@ -134,7 +138,7 @@ func (s *Store) fillRoundStats(ctx context.Context, fr *FinishedRound) error {
 		  SELECT b.shard_id,
 		         GREATEST(b.finished_at, (SELECT MAX(j.finished_at) FROM shard_jobs j
 		                                  WHERE j.round_id = b.round_id AND j.shard_id = b.shard_id)) AS fin
-		  FROM builds b WHERE b.round_id = $1),
+		  FROM builds b WHERE b.round_id = $1 AND NOT b.speculative),
 		secs AS (SELECT EXTRACT(EPOCH FROM fin)::float8 AS t FROM per_shard WHERE fin IS NOT NULL)
 		SELECT COALESCE(MAX(t) - percentile_cont(0.5) WITHIN GROUP (ORDER BY t), 0) FROM secs`, fr.RoundID).Scan(&lagSecs)
 	if err != nil {
@@ -143,7 +147,7 @@ func (s *Store) fillRoundStats(ctx context.Context, fr *FinishedRound) error {
 	fr.StragglerLag = time.Duration(lagSecs * float64(time.Second))
 	rows, err := s.pool.Query(ctx, `
 		SELECT EXTRACT(EPOCH FROM (started_at - enqueued_at))::float8 FROM builds
-		WHERE round_id = $1 AND placement = 'gpu' AND started_at IS NOT NULL`, fr.RoundID)
+		WHERE round_id = $1 AND placement = 'gpu' AND started_at IS NOT NULL AND NOT speculative`, fr.RoundID)
 	if err != nil {
 		return fmt.Errorf("queue waits for round %d: %w", fr.RoundID, err)
 	}
@@ -207,6 +211,11 @@ type BuildRow struct {
 	EnqueuedAt time.Time  `json:"enqueued_at"`
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
+	// Moved: placement already changed once after submit (decision 8: at most
+	// once). Speculative: this row is a GPU copy racing its shard's local
+	// build (decision 5); its build_id is the primary's plus ":spec".
+	Moved       bool `json:"moved"`
+	Speculative bool `json:"speculative"`
 }
 
 // Claimed is what a worker gets back from a successful claim.
@@ -227,14 +236,14 @@ func BuildID(shardID int32, roundID int64) string {
 const selectBuild = `
 	SELECT build_id, round_id, shard_id, n_vectors, dim, mem_bytes, placement, state,
 	       priority, attempt, lease_owner, lease_until, fail_reason,
-	       enqueued_at, started_at, finished_at
+	       enqueued_at, started_at, finished_at, moved, speculative
 	FROM builds`
 
 func scanBuild(row pgx.Row) (BuildRow, error) {
 	var b BuildRow
 	err := row.Scan(&b.BuildID, &b.RoundID, &b.ShardID, &b.NVectors, &b.Dim, &b.MemBytes,
 		&b.Placement, &b.State, &b.Priority, &b.Attempt, &b.LeaseOwner, &b.LeaseUntil,
-		&b.FailReason, &b.EnqueuedAt, &b.StartedAt, &b.FinishedAt)
+		&b.FailReason, &b.EnqueuedAt, &b.StartedAt, &b.FinishedAt, &b.Moved, &b.Speculative)
 	return b, err
 }
 
@@ -319,7 +328,7 @@ func (s *Store) SubmitBuild(ctx context.Context, b Build) (inserted bool, err er
 		return false, ErrRoundFinished
 	}
 	var nBuilds int32
-	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM builds WHERE round_id = $1`, b.RoundID).Scan(&nBuilds); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM builds WHERE round_id = $1 AND NOT speculative`, b.RoundID).Scan(&nBuilds); err != nil {
 		return false, err
 	}
 	if nBuilds >= nShards {
@@ -423,24 +432,150 @@ func (s *Store) Release(ctx context.Context, buildID string, attempt int32) (boo
 // PreemptToGPU moves a running local build to the GPU queue (decision 31):
 // the shard's CPU progress is lost, its CPU is freed. attempt and enqueued_at
 // are untouched (the first claim bumps attempt; enqueued_at keeps the submit
-// time for the timeline). false if the build is not a running local build.
+// time for the timeline). moved becomes true: placement changes at most once
+// after submit (decision 8), and the guard holds even if two schedulers tick.
+// A build whose speculative copy is still racing is never preempted (the copy
+// exists to protect the CPU progress a preempt would throw away); the policy
+// refuses it and this guard makes the refusal unconditional. false if any
+// guard fails: the build is not a running local build, has moved before, or
+// has a live copy.
 func (s *Store) PreemptToGPU(ctx context.Context, buildID string, priority float64) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
-		SET placement = 'gpu', state = 'queued', priority = $2, started_at = NULL
-		WHERE build_id = $1 AND placement = 'local' AND state = 'running'`,
+		SET placement = 'gpu', state = 'queued', priority = $2, started_at = NULL, moved = true
+		WHERE build_id = $1 AND placement = 'local' AND state = 'running' AND NOT moved
+		  AND NOT EXISTS (SELECT 1 FROM builds c
+		                  WHERE c.round_id = builds.round_id AND c.shard_id = builds.shard_id
+		                    AND c.speculative AND c.state IN ('queued', 'leased'))`,
 		buildID, priority)
 }
 
 // RenegeToLocal moves a queued GPU build back to the shard's CPU (decision
-// 31); started_at becomes now, since the local attempt starts now. false if
-// the build is not a queued GPU build (leased builds are never moved).
+// 31); started_at becomes now, since the local attempt starts now, and moved
+// becomes true (decision 8: at most one move, so a preempted build never
+// bounces back). false if the build is not a queued GPU build (leased builds
+// are never moved), already moved once, or a speculative copy (a copy is
+// cancelled, never turned into a second local build).
 func (s *Store) RenegeToLocal(ctx context.Context, buildID string) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
-		SET placement = 'local', state = 'running', started_at = now(), lease_owner = NULL, lease_until = NULL
-		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued'`,
+		SET placement = 'local', state = 'running', started_at = now(), lease_owner = NULL, lease_until = NULL, moved = true
+		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued' AND NOT moved AND NOT speculative`,
 		buildID)
+}
+
+// Reprioritize sets a queued GPU build's priority (the reconsider timer keeps
+// a preempted build's priority equal to the blocked work behind it, decision
+// 10). false if the build is no longer queued: a claimed or moved build keeps
+// whatever priority it was claimed at.
+func (s *Store) Reprioritize(ctx context.Context, buildID string, priority float64) (bool, error) {
+	return s.guarded(ctx, `
+		UPDATE builds
+		SET priority = $2
+		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued'`,
+		buildID, priority)
+}
+
+// SpeculateCopy inserts the speculative GPU copy of a running local build
+// (decision 5): a second builds row, build_id = the primary's plus ":spec",
+// queued at priority so a worker claims it like any build. The primary keeps
+// running locally; the first side to finish wins and ResolveSpeculations
+// settles the race. Idempotent by primary key: one copy ever per build, so a
+// copy that already failed (cancelled, or its retry budget ran out) is not
+// retried — if the GPU could not finish the copy, speculating again buys
+// nothing. false if the primary is not a running local build or the copy row
+// already exists.
+func (s *Store) SpeculateCopy(ctx context.Context, buildID string, priority float64) (bool, error) {
+	return s.guarded(ctx, `
+		INSERT INTO builds
+		  (build_id, round_id, shard_id, n_vectors, dim, mem_bytes, placement, state, priority, speculative)
+		SELECT build_id || ':spec', round_id, shard_id, n_vectors, dim, mem_bytes, 'gpu', 'queued', $2, true
+		FROM builds
+		WHERE build_id = $1 AND placement = 'local' AND state = 'running' AND NOT speculative
+		ON CONFLICT (build_id) DO NOTHING`,
+		buildID, priority)
+}
+
+// SpeculationResolved is one settled race: BuildID is the primary's. Winner
+// is "gpu" (the copy finished first; the primary was marked done from it) or
+// "local" (the shard finished first; the copy was cancelled). CopyState is
+// the copy's state at cancel time ("queued" or "leased") for the local case:
+// a leased copy means a worker's work was wasted, the cost speculation pays.
+type SpeculationResolved struct {
+	BuildID   string
+	RoundID   int64
+	Winner    string
+	CopyState string
+}
+
+// ResolveSpeculations settles every speculation race that has a winner, in
+// either direction, and is idempotent (each statement's guards are false
+// after it acts):
+//
+//   - The copy is done but the primary still runs locally: the GPU won. The
+//     primary becomes placement='gpu', state='done' with the copy's
+//     finished_at (the index existed from that moment), so the shard's next
+//     report reply says done and it aborts the local build.
+//   - The primary is terminal but the copy is still queued or leased: the
+//     local build won. The copy is cancelled — state='failed' with a reason —
+//     which ends a worker's lease from the outside: like the reaper, this is
+//     a sanctioned exception to the attempt-guarded-writes invariant, safe
+//     for the same reason the invariant exists — the worker's own writes stay
+//     guarded by attempt AND state='leased', so its next renew or complete
+//     returns zero rows and it stops. If the copy finishes in the same
+//     instant, exactly one side's guard holds (both are single statements on
+//     the same row), and both finishing is merely the same index built twice.
+//
+// A copy that is done while the primary is also already terminal needs
+// nothing: both sides finished before a tick could settle it, and done is
+// done.
+func (s *Store) ResolveSpeculations(ctx context.Context) ([]SpeculationResolved, error) {
+	var out []SpeculationResolved
+	rows, err := s.pool.Query(ctx, `
+		UPDATE builds p
+		SET placement = 'gpu', state = 'done', finished_at = c.finished_at
+		FROM builds c
+		WHERE c.speculative AND c.state = 'done'
+		  AND p.round_id = c.round_id AND p.shard_id = c.shard_id AND NOT p.speculative
+		  AND p.placement = 'local' AND p.state = 'running'
+		RETURNING p.build_id, p.round_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		r := SpeculationResolved{Winner: "gpu"}
+		if err := rows.Scan(&r.BuildID, &r.RoundID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	rows, err = s.pool.Query(ctx, `
+		UPDATE builds c
+		SET state = 'failed', fail_reason = 'speculation cancelled: the local build finished first',
+		    finished_at = now(), lease_owner = NULL, lease_until = NULL
+		FROM builds p
+		WHERE c.speculative AND c.state IN ('queued', 'leased')
+		  AND p.round_id = c.round_id AND p.shard_id = c.shard_id AND NOT p.speculative
+		  AND p.state IN ('done', 'failed')
+		RETURNING p.build_id, p.round_id,
+		          (SELECT state FROM builds b2 WHERE b2.build_id = c.build_id)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		r := SpeculationResolved{Winner: "local"}
+		if err := rows.Scan(&r.BuildID, &r.RoundID, &r.CopyState); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // CompleteLocal marks a local build done. Local builds have no lease, so the
@@ -928,6 +1063,130 @@ func (s *Store) GetQueueSnapshot(ctx context.Context, maxAge time.Duration) (Que
 			return snap, err
 		}
 		snap.Leased = append(snap.Leased, l)
+	}
+	return snap, rows.Err()
+}
+
+// ---- reconsider snapshot ---------------------------------------------------
+
+// ReconsiderBuild is one non-terminal build in an open round, as the
+// reconsider timer reads it. ElapsedS is wall seconds since started_at (a
+// leased build's time on its worker, a local build's time on its CPU); 0 if
+// the current attempt has not started.
+type ReconsiderBuild struct {
+	BuildID     string
+	RoundID     int64
+	ShardID     int32
+	NVectors    int64
+	Dim         int32
+	MemBytes    int64
+	Placement   string
+	State       string // queued, leased or running
+	Priority    float64
+	Attempt     int32
+	Moved       bool
+	Speculative bool
+	LeaseOwner  string // "" unless leased
+	ElapsedS    float64
+}
+
+// ReconsiderStatus is a shard's latest report plus the aggregates the host
+// derives for the policy (decision 9): how many queries have been recorded
+// for the shard and their mean modeled duration, and how long the round has
+// been open in wall seconds — the arrival rate follows from those two.
+type ReconsiderStatus struct {
+	RoundID           int64
+	ShardID           int32
+	QueueDepth        int32
+	WaitingNeedsIndex int32
+	OldestWaitMs      int64
+	BuildProgress     float32
+	Arrivals          int64
+	MeanQueryMs       float64 // mean recorded duration_ms; 0 if none recorded
+	RoundElapsedS     float64 // wall seconds since the round started
+}
+
+// ReconsiderSnapshot is everything one reconsider tick reads. Like the queue
+// snapshot it is three reads with no transaction: a tick acting on a
+// momentarily stale row loses the guarded update (zero rows) and the next
+// tick sees the truth.
+type ReconsiderSnapshot struct {
+	Workers []SnapshotWorker   // live within maxAge, by worker_id
+	Builds  []ReconsiderBuild  // non-terminal builds in open rounds, claim order
+	Status  []ReconsiderStatus // latest report per shard in open rounds
+}
+
+// GetReconsiderSnapshot reads the reconsider timer's whole visible world:
+// live workers, every non-terminal build in an open round (including
+// speculative copies), and each shard's latest report with the query
+// aggregates.
+func (s *Store) GetReconsiderSnapshot(ctx context.Context, maxAge time.Duration) (ReconsiderSnapshot, error) {
+	var snap ReconsiderSnapshot
+	rows, err := s.pool.Query(ctx, `
+		SELECT worker_id, node, mem_bytes FROM workers
+		WHERE last_seen > now() - make_interval(secs => $1) ORDER BY worker_id`,
+		maxAge.Seconds())
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var w SnapshotWorker
+		if err := rows.Scan(&w.WorkerID, &w.Node, &w.MemBytes); err != nil {
+			return snap, err
+		}
+		snap.Workers = append(snap.Workers, w)
+	}
+	if err := rows.Err(); err != nil {
+		return snap, err
+	}
+
+	rows, err = s.pool.Query(ctx, `
+		SELECT b.build_id, b.round_id, b.shard_id, b.n_vectors, b.dim, b.mem_bytes,
+		       b.placement, b.state, b.priority, b.attempt, b.moved, b.speculative,
+		       COALESCE(b.lease_owner, ''),
+		       COALESCE(EXTRACT(EPOCH FROM (now() - b.started_at))::float8, 0)
+		FROM builds b JOIN rounds r USING (round_id)
+		WHERE r.finished_at IS NULL AND b.state IN ('queued', 'leased', 'running')
+		ORDER BY b.priority DESC, b.enqueued_at`)
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var b ReconsiderBuild
+		if err := rows.Scan(&b.BuildID, &b.RoundID, &b.ShardID, &b.NVectors, &b.Dim, &b.MemBytes,
+			&b.Placement, &b.State, &b.Priority, &b.Attempt, &b.Moved, &b.Speculative, &b.LeaseOwner, &b.ElapsedS); err != nil {
+			return snap, err
+		}
+		snap.Builds = append(snap.Builds, b)
+	}
+	if err := rows.Err(); err != nil {
+		return snap, err
+	}
+
+	rows, err = s.pool.Query(ctx, `
+		SELECT st.round_id, st.shard_id, st.queue_depth, st.waiting_needs_index,
+		       st.oldest_wait_ms, st.build_progress,
+		       COALESCE(j.cnt, 0), COALESCE(j.mean_ms, 0),
+		       EXTRACT(EPOCH FROM (now() - r.started_at))::float8
+		FROM shard_status st
+		JOIN rounds r USING (round_id)
+		LEFT JOIN (SELECT round_id, shard_id, COUNT(*) AS cnt, AVG(duration_ms)::float8 AS mean_ms
+		           FROM shard_jobs GROUP BY round_id, shard_id) j
+		  ON j.round_id = st.round_id AND j.shard_id = st.shard_id
+		WHERE r.finished_at IS NULL`)
+	if err != nil {
+		return snap, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st ReconsiderStatus
+		if err := rows.Scan(&st.RoundID, &st.ShardID, &st.QueueDepth, &st.WaitingNeedsIndex,
+			&st.OldestWaitMs, &st.BuildProgress, &st.Arrivals, &st.MeanQueryMs, &st.RoundElapsedS); err != nil {
+			return snap, err
+		}
+		snap.Status = append(snap.Status, st)
 	}
 	return snap, rows.Err()
 }

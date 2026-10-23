@@ -10,6 +10,10 @@ data:
   LOG_FORMAT: json
   POLICY: always_gpu
   REAP_INTERVAL: 2s
+  RECONSIDER_INTERVAL: 2s
+  # Must match the workers' FAKE_TIME_SCALE (deploy/k8s/worker.yaml) so the
+  # scheduler converts wall-clock elapsed times to modeled seconds correctly.
+  FAKE_TIME_SCALE: "10"
   MAX_ATTEMPTS: "5"
   WORKER_STALE_AFTER: 15s
 ---

@@ -5,6 +5,11 @@
 //	LISTEN_ADDR          default :8080
 //	POLICY               default always_gpu
 //	REAP_INTERVAL        default 2s
+//	RECONSIDER_INTERVAL  default 2s; how often the policy's Reconsider runs and speculation
+//	                     races are settled (Phase 3 step 3). 0 disables the loop.
+//	FAKE_TIME_SCALE      default 1; the same knob the worker and shardsim use. The scheduler
+//	                     multiplies wall-clock facts (lease elapsed, arrival rates) by it
+//	                     before comparing them with the cost model's modeled durations.
 //	MAX_ATTEMPTS         default 5; a build whose lease expires on this attempt is marked failed
 //	                     instead of requeued (decision 42). 0 disables.
 //	WORKER_STALE_AFTER   default 30s; a worker unseen for longer is not in the pool
@@ -34,6 +39,7 @@ import (
 	"github.com/arqbca11/HNSWonGPUs/scheduler/costmodel"
 	"github.com/arqbca11/HNSWonGPUs/scheduler/policy"
 	"github.com/arqbca11/HNSWonGPUs/scheduler/reaper"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/reconsider"
 	"github.com/arqbca11/HNSWonGPUs/scheduler/store"
 )
 
@@ -57,6 +63,8 @@ func main() {
 	}
 	cm := costModelFromEnv(log)
 	reapInterval := envDuration(log, "REAP_INTERVAL", 2*time.Second)
+	reconsiderInterval := envDuration(log, "RECONSIDER_INTERVAL", 2*time.Second)
+	timeScale := envFloat(log, "FAKE_TIME_SCALE", 1)
 	maxAttempts := envInt(log, "MAX_ATTEMPTS", 5)
 	staleAfter := envDuration(log, "WORKER_STALE_AFTER", 30*time.Second)
 	addr := env("LISTEN_ADDR", ":8080")
@@ -81,16 +89,24 @@ func main() {
 	st := store.New(pool)
 
 	go reaper.Run(ctx, st, reaper.Config{Interval: reapInterval, MaxAttempts: int32(maxAttempts), StaleAfter: staleAfter}, log)
+	if reconsiderInterval > 0 {
+		// The second loop (Phase 3 step 3): executes the policy's Reconsider
+		// and settles speculation races. Runs on the signal context like the
+		// reaper, so a draining pod takes no new initiative (decision 40).
+		go reconsider.Run(ctx, st, pol, cm,
+			reconsider.Config{Interval: reconsiderInterval, StaleAfter: staleAfter, TimeScale: timeScale}, log)
+	}
 
 	draining := new(atomic.Bool)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter, Draining: draining}, log),
+		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter, TimeScale: timeScale, Draining: draining}, log),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
 		log.Info("scheduler listening", "addr", addr, "policy", pol.Name(),
-			"reap_interval", reapInterval, "max_attempts", maxAttempts, "worker_stale_after", staleAfter)
+			"reap_interval", reapInterval, "reconsider_interval", reconsiderInterval,
+			"time_scale", timeScale, "max_attempts", maxAttempts, "worker_stale_after", staleAfter)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http server failed", "err", err)
 			stop()
@@ -193,6 +209,19 @@ func envInt(log *slog.Logger, key string, def int) int {
 		os.Exit(2)
 	}
 	return n
+}
+
+func envFloat(log *slog.Logger, key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	x, err := strconv.ParseFloat(v, 64)
+	if err != nil || x <= 0 {
+		log.Error("bad positive float", "var", key, "value", v, "err", err)
+		os.Exit(2)
+	}
+	return x
 }
 
 func envDuration(log *slog.Logger, key string, def time.Duration) time.Duration {

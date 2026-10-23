@@ -36,6 +36,11 @@ import (
 
 type Config struct {
 	WorkerStaleAfter time.Duration // a worker not seen for this long is not in the pool
+	// TimeScale converts wall-clock facts to modeled seconds (wall x scale)
+	// before they meet cost-model durations: under FAKE_TIME_SCALE=s a worker
+	// finishes a modeled 60 s build in 6 wall seconds, so a lease's elapsed
+	// wall time understates its modeled progress by s. 0 means 1 (production).
+	TimeScale float64
 	// Draining is set by main after SIGTERM, for the window the pod keeps
 	// serving while endpoint removal propagates (decision 29). A draining
 	// scheduler answers but never stamps a round: a stamp here would record
@@ -310,12 +315,17 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 // priority 0 behind the whole queue — exact for the FCFS baseline, an upper
 // bound for a policy that would rank it higher). Per decision 9 the host
 // computes every second here: a leased build's remaining time is its cost
-// model total minus the time since its claim, floored at 0 (an overdue lease
-// means "about to free or be reaped", either way soon).
+// model total minus the modeled time since its claim (wall elapsed x
+// TimeScale), floored at 0 (an overdue lease means "about to free or be
+// reaped", either way soon).
 func (s *Server) queueWait(snap store.QueueSnapshot, buildID string, memBytes int64, est policy.Estimates) float64 {
+	scale := s.cfg.TimeScale
+	if scale <= 0 {
+		scale = 1
+	}
 	busy := map[string]float64{}
 	for _, l := range snap.Leased {
-		rem := s.cm.GPUTotal(l.NVectors, l.Dim).Seconds() - l.ElapsedS
+		rem := s.cm.GPUTotal(l.NVectors, l.Dim).Seconds() - l.ElapsedS*scale
 		if rem < 0 {
 			rem = 0
 		}

@@ -60,6 +60,14 @@ var (
 		Name: "rounds_open",
 		Help: "Rounds created but not finished.",
 	})
+	ReconsiderActions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "reconsider_actions_total",
+		Help: "Actions the reconsider timer executed, by action (preempt, renege, speculate, reprioritize) and outcome (applied, or skipped because the row had moved on since the tick's snapshot).",
+	}, []string{"action", "outcome"})
+	SpeculationsResolved = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "speculations_resolved_total",
+		Help: "Speculation races settled, by winner (gpu = the copy finished first; local = the shard finished first and the copy was cancelled).",
+	}, []string{"winner"})
 )
 
 // ObserveFinishedRounds records the round histograms. Both places that stamp
@@ -85,5 +93,13 @@ func Init(policyName string) {
 	}
 	for _, p := range []string{"gpu", "local"} {
 		PlacementDecisions.WithLabelValues(p, policyName)
+	}
+	for _, a := range []string{"preempt", "renege", "speculate", "reprioritize"} {
+		for _, o := range []string{"applied", "skipped"} {
+			ReconsiderActions.WithLabelValues(a, o)
+		}
+	}
+	for _, w := range []string{"gpu", "local"} {
+		SpeculationsResolved.WithLabelValues(w)
 	}
 }

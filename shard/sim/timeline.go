@@ -25,6 +25,7 @@ type Timeline struct {
 	StragglerLag    time.Duration `json:"straggler_lag"`    // last shard finish minus median shard finish (real)
 	BuildsGPU       int           `json:"builds_gpu"`
 	BuildsLocal     int           `json:"builds_local"`
+	Speculations    int           `json:"speculations"` // speculative GPU copies seen (decision 5)
 	Queries         int           `json:"queries"`
 	Shards          []ShardLine   `json:"shards"`
 	ClusterQueries  []ClusterLine `json:"cluster_queries"`
@@ -88,6 +89,13 @@ func BuildTimeline(w workload.Workload, st client.RoundStatus, events map[int32]
 	}
 	builds := map[int32]client.BuildRow{}
 	for _, b := range st.Builds {
+		if b.Speculative {
+			// A speculative GPU copy (Phase 3 decision 5) is the policy's
+			// artifact, not the shard's build: count it, don't let it shadow
+			// the real row in the per-shard lines.
+			tl.Speculations++
+			continue
+		}
 		builds[b.ShardID] = b
 	}
 	jobs := map[int32]map[int32]client.JobRow{}
@@ -180,8 +188,8 @@ func (tl *Timeline) Text() string {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
 	fmt.Fprintf(&b, "round %d  scenario=%s seed=%d  time_scale=%g\n", tl.RoundID, tl.Scenario, tl.Seed, tl.TimeScale)
-	fmt.Fprintf(&b, "duration %s real (%s modeled)   straggler lag %s   builds: %d gpu, %d local   queries: %d\n",
-		r(tl.Duration), r(tl.DurationModeled), r(tl.StragglerLag), tl.BuildsGPU, tl.BuildsLocal, tl.Queries)
+	fmt.Fprintf(&b, "duration %s real (%s modeled)   straggler lag %s   builds: %d gpu, %d local, %d speculative copies   queries: %d\n",
+		r(tl.Duration), r(tl.DurationModeled), r(tl.StragglerLag), tl.BuildsGPU, tl.BuildsLocal, tl.Speculations, tl.Queries)
 	fmt.Fprintf(&b, "query latency (slowest piece): fan-out p50 %s p99 %s (n=%d)   single-shard p50 %s p99 %s (n=%d)\n",
 		r(tl.Latency.FanOutP50), r(tl.Latency.FanOutP99), tl.Latency.FanOutN, r(tl.Latency.SingleP50), r(tl.Latency.SingleP99), tl.Latency.SingleN)
 	fmt.Fprintf(&b, "%-6s %-9s %-6s %-4s %-8s %-8s %-8s %-8s %-7s %s\n", "shard", "n_vectors", "place", "att", "submit", "b.start", "b.done", "finish", "queries", "max wait")
