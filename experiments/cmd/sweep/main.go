@@ -32,16 +32,20 @@ import (
 )
 
 // Columns is the CSV schema, one row per simulated round. Overridden axes
-// echo their value; non-overridden ones echo the scenario's own (so a row is
-// self-describing and two CSVs can be concatenated safely).
+// echo their value; non-overridden ones echo the scenario's own, and every
+// knob that can change a result is a column — reconsider_s, poll_s, lease_s
+// and noise_seed included (cross-check F2) — so a row is self-describing and
+// two CSVs concatenate safely. The zipf column echoes the preset's exponent
+// field and reads 0 when the size distribution is not zipf.
 var columns = []string{
 	"scenario", "policy", "seed",
 	"n_shards", "dim", "workers", "workers_per_node", "worker_mem_bytes", "share_links",
 	"sigma", "zipf", "load", "needs_index", "speedup", "kill_at",
+	"reconsider_s", "poll_s", "lease_s", "noise_seed",
 	"completed", "round_s", "straggler_s",
 	"builds_gpu", "builds_local",
 	"preempts", "reneges", "reprioritizes",
-	"speculations", "spec_gpu_wins", "spec_local_wins", "wasted_gpu_s",
+	"speculations", "spec_gpu_wins", "spec_local_wins", "wasted_gpu_s", "wasted_cpu_s",
 	"queue_wait_p50_s", "queue_wait_p99_s", "events",
 }
 
@@ -65,6 +69,7 @@ func main() {
 		speedups    = flag.String("speedup", "", "comma list: override the cost model's GPU speedup")
 		killAt      = flag.Float64("kill_at", 0, "kill the busiest worker at this modeled second (shrinking pool)")
 		reconsider  = flag.Float64("reconsider_s", 2, "reconsider tick interval, modeled seconds")
+		leaseS      = flag.Float64("lease_s", 30, "a dead worker's lease requeues after this many modeled seconds")
 		poll        = flag.Float64("poll_s", 0.5, "shard report interval, modeled seconds")
 		noiseSeed   = flag.Int64("noise_seed", 1, "sub-seed for the estimate noise draws")
 	)
@@ -109,7 +114,7 @@ func main() {
 													perNode: wpn, shareLinks: *shareLinks,
 													sigma: sigma, zipf: zipf, load: load, needsIdx: ni,
 													dim: int32(dim), speedup: spd, killAt: *killAt,
-													reconsiderS: *reconsider, pollS: *poll, noiseSeed: *noiseSeed,
+													reconsiderS: *reconsider, pollS: *poll, leaseS: *leaseS, noiseSeed: *noiseSeed,
 												})
 												if err != nil {
 													log.Fatal(err)
@@ -146,6 +151,7 @@ type cell struct {
 	speedup              float64
 	killAt               float64
 	reconsiderS, pollS   float64
+	leaseS               float64
 	noiseSeed            int64
 }
 
@@ -176,7 +182,7 @@ func runCell(c cell) ([]string, error) {
 	}
 	cfg := sim.Config{
 		CostModel: &cm, WorkersPerNode: c.perNode, ShareNodeLinks: c.shareLinks,
-		ReconsiderS: c.reconsiderS, PollS: c.pollS,
+		ReconsiderS: c.reconsiderS, PollS: c.pollS, LeaseS: c.leaseS,
 		EstimateSigma: c.sigma, NoiseSeed: c.noiseSeed, KillWorkerAtS: c.killAt,
 	}
 	if c.workers > 0 {
@@ -211,10 +217,11 @@ func runCell(c cell) ([]string, error) {
 		strconv.Itoa(sc.NShards), strconv.Itoa(int(sc.Dim)), strconv.Itoa(nw), strconv.Itoa(c.perNode),
 		strconv.FormatInt(mem, 10), strconv.FormatBool(c.shareLinks),
 		f(c.sigma), f(sc.Sizes.ZipfExponent), f(c.load), f(sc.Stream.NeedsIndexFraction), f(cm.Speedup), f(c.killAt),
+		f(c.reconsiderS), f(c.pollS), f(c.leaseS), strconv.FormatInt(c.noiseSeed, 10),
 		strconv.FormatBool(res.Completed), f(res.RoundS), f(res.StragglerLagS),
 		strconv.Itoa(res.BuildsGPU), strconv.Itoa(res.BuildsLocal),
 		strconv.Itoa(res.Preempts), strconv.Itoa(res.Reneges), strconv.Itoa(res.Reprioritizes),
-		strconv.Itoa(res.Speculations), strconv.Itoa(res.SpecGPUWins), strconv.Itoa(res.SpecLocalWins), f(res.WastedGPUS),
+		strconv.Itoa(res.Speculations), strconv.Itoa(res.SpecGPUWins), strconv.Itoa(res.SpecLocalWins), f(res.WastedGPUS), f(res.WastedCPUS),
 		f(pct(res.QueueWaits, 0.5)), f(pct(res.QueueWaits, 0.99)), strconv.Itoa(res.Events),
 	}, nil
 }

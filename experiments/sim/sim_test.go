@@ -186,7 +186,10 @@ func TestPreemptionInSim(t *testing.T) {
 	if r.QueueWaits[0] < 2 {
 		t.Fatalf("the preempted build's wait %.2f s should measure from submit (it sat local past the first tick)", r.QueueWaits[0])
 	}
-	t.Log("the round beat the stay-local projection; the wait measures from submit, like enqueued_at")
+	if r.WastedCPUS < 2 || r.WastedCPUS > 4 {
+		t.Fatalf("wasted CPU %.2f s: the abort came at the shard's first report after the t=2 tick, so 2..2.5 s of build was thrown away", r.WastedCPUS)
+	}
+	t.Logf("the round beat the stay-local projection; the wait measures from submit; %.2f s of CPU recorded wasted", r.WastedCPUS)
 }
 
 // Speculation, GPU wins: with a huge margin the reactive_spec policy never
@@ -203,6 +206,11 @@ func TestSpeculationGPUWinsByHand(t *testing.T) {
 	// resolve backdates the primary's finish to that moment (decision 16).
 	near(t, "round = copy finish", r.RoundS, 2+total150k, 1e-3)
 	near(t, "wasted gpu", r.WastedGPUS, 0, 1e-9)
+	// The copy finished at 8.07, the tick at 10 settled it, the shard's 10.5
+	// report aborted the local build: 10.5 s of CPU burned for nothing — the
+	// cost speculation pays on the CPU side (design doc: report wasted
+	// CPU-hours, not just wasted GPU time).
+	near(t, "wasted cpu", r.WastedCPUS, 10.5, 1e-3)
 	if len(r.QueueWaits) != 0 {
 		t.Fatalf("the primary was never claimed; only the copy was: waits=%v", r.QueueWaits)
 	}

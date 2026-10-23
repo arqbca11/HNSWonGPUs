@@ -35,6 +35,17 @@
 // reports are not staggered across shards, a killed worker leaves the pool
 // immediately (live: after WORKER_STALE_AFTER) and a cancelled copy frees its
 // worker at the tick (live: at the worker's next failed renew).
+//
+// Same-instant ordering, pinned (cross-check G3): at one event time the fixed
+// dispatch order is worker completions, lease requeues, the kill, DDLs, query
+// arrivals, CPU completions, shard reports, THEN the reconsider tick, then
+// claims and CPU dispatch — so a report coinciding with a tick is published
+// before the tick reads it, and a change the tick makes reaches its shard one
+// report later. The first tick fires at ReconsiderS (like the live ticker),
+// simultaneous submits enqueue in shard-ID order, and Result.ShardFinishS is
+// indexed by shard ID. The pool is uniform (one WorkerMemBytes), so the
+// mixed-memory renege escape (decision 20) is exercised against real Postgres
+// in scheduler/reconsider, not here; the kill covers pool shrinkage.
 package sim
 
 import (
@@ -63,8 +74,14 @@ type Config struct {
 	EstimateSigma  float64 // log-normal σ on every estimate policies see (decision 23)
 	NoiseSeed      int64   // sub-seed for the noise draws; the workload seed is mixed in
 	KillWorkerAtS  float64 // >0: at this time the busiest worker dies (shrinking_pool)
-	MaxModeledS    float64 // safety cap; default 6 h modeled
+	MaxModeledS    float64 // safety cap; default 24 h modeled (the production preset's local builds run ~9.6 h)
 }
+
+// Note on ShareNodeLinks's zero value: false, the live fake worker's
+// behaviour — the right default for step 7's validation against the live
+// stack. The SWEEP RUNNER defaults its -share_links flag to true (decision
+// 22: sweeps model what real GPUs on one machine will see); validation runs
+// must pass -share_links=false explicitly.
 
 func (c Config) withDefaults(w workload.Workload) Config {
 	if c.CostModel == nil {
@@ -99,22 +116,32 @@ func (c Config) withDefaults(w workload.Workload) Config {
 }
 
 // Result is one simulated round, the numbers one CSV row carries.
+//
+// When Completed is false (the safety cap fired — e.g. zero workers forever),
+// RoundS, StragglerLagS and ShardFinishS describe only the work that DID
+// finish (0 if none): they are not a round time. Consumers must filter on
+// Completed, as the committed plots do.
 type Result struct {
-	Completed     bool    // false: the safety cap fired (e.g. zero workers forever)
+	Completed     bool
 	RoundS        float64 // decision 30 semantics: latest real-build or query finish
 	StragglerLagS float64 // last shard's finish minus the median shard's (interpolated)
-	BuildsGPU     int     // real builds that finished on the GPU path
-	BuildsLocal   int     // real builds that finished locally
+	BuildsGPU     int     // real builds FINISHED on the GPU path (an unfinished build counts nowhere)
+	BuildsLocal   int     // real builds FINISHED locally
 	Preempts      int
 	Reneges       int
 	Reprioritizes int
 	Speculations  int // copies created
 	SpecGPUWins   int
 	SpecLocalWins int
-	WastedGPUS    float64   // worker-seconds spent on losing copies
-	QueueWaits    []float64 // per claimed real build: first claim minus submit
-	ShardFinishS  []float64 // per shard: max(build finish, last query finish)
-	Events        int
+	WastedGPUS    float64 // worker-seconds spent on losing copies
+	// WastedCPUS is the shard-side mirror (the design doc's "wasted CPU-hours,
+	// not just wasted GPU time"): CPU-seconds thrown away by preemption
+	// aborts, by local builds abandoned because the GPU copy won, and by a
+	// local build that finished after its row had already been moved.
+	WastedCPUS   float64
+	QueueWaits   []float64 // per claimed real build: first claim minus submit
+	ShardFinishS []float64 // per shard: max(build finish, last query finish)
+	Events       int
 }
 
 const eps = 1e-9
@@ -440,6 +467,8 @@ func (e *engine) step(w workload.Workload) bool {
 			if s.b.placement == "local" && s.b.state == "running" {
 				s.b.state, s.b.finishAt = "done", e.t
 				s.indexReady = true
+			} else {
+				e.res.WastedCPUS += e.t - s.buildStart // a whole build, refused
 			}
 		} else {
 			s.lastQueryFin = e.t
@@ -559,9 +588,11 @@ func (e *engine) report(s *shard) {
 		s.indexReady = true
 		if s.task == taskBuild {
 			s.task = taskIdle // the speculative copy won; stop burning the CPU
+			e.res.WastedCPUS += e.t - s.buildStart
 		}
 	case b.placement == "gpu" && (b.state == "queued" || b.state == "leased") && s.task == taskBuild:
 		s.task = taskIdle // preempted: the local progress is lost
+		e.res.WastedCPUS += e.t - s.buildStart
 	case b.placement == "local" && b.state == "running" && s.task != taskBuild && !s.indexReady && !s.localWant:
 		s.localWant = true // reneged back to us
 	}
@@ -852,10 +883,14 @@ func (e *engine) finish() {
 		if fin > e.res.RoundS {
 			e.res.RoundS = fin
 		}
-		if s.b.placement == "gpu" {
-			e.res.BuildsGPU++
-		} else {
-			e.res.BuildsLocal++
+		// Only FINISHED builds count (cross-check F4): an unfinished build on
+		// an incomplete round belongs to neither tally.
+		if s.b.state == "done" {
+			if s.b.placement == "gpu" {
+				e.res.BuildsGPU++
+			} else {
+				e.res.BuildsLocal++
+			}
 		}
 	}
 	for _, b := range e.builds {

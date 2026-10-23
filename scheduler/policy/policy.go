@@ -78,10 +78,16 @@ type Decision struct {
 
 // WorkerView is one live worker as reconsider sees it.
 type WorkerView struct {
-	ID             string
-	Node           string // which machine; the per-node transfer term (step 2) groups by it
-	MemBytes       int64
-	BusyRemainingS float64 // of its in-flight build; 0 means idle
+	ID       string
+	Node     string // which machine; the per-node transfer term (step 2) groups by it
+	MemBytes int64
+	// BusyRemainingS is the host's estimate of the in-flight build's remaining
+	// time; 0 means idle — or OVERDUE: the host computes estimated-total minus
+	// elapsed floored at 0, so a build that overruns its estimate reads as
+	// "free now" (steps 4–6 cross-check G2). An overdue worker is about to
+	// free or be reaped, so treating it as free errs small; but it does mean
+	// speculation may target a worker that is still finishing an overrun.
+	BusyRemainingS float64
 }
 
 // BuildView is one non-terminal build as reconsider sees it. Phase is the

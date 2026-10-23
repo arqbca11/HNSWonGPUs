@@ -645,3 +645,41 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | sim/TestDeterminism | skewed seed 7 under noise, run twice; then seed 8. | Byte-identical results including every counter; a different seed differs. |
 | sim/TestNoiseNeverTouchesExecution | always_gpu (which ignores estimates) at sigma 0 and sigma 2. | Identical rounds and waits: noise perturbs only what policies see, never what executes (decision 23). |
 | sim/TestAllFivePoliciesComplete | skewed seed 1, all five policies, the oracle built from the futures. | Every policy completes; the narrated comparison table is the pipeline's first output. |
+
+## Phase 3, steps 4–6, cross-check of the simulator and runner (Go, `scheduler/crosscheck`, `TestSimSpec` / `TestSweepCSV`, pure, no database). Log: `phase3/step456-crosscheck-sim.log`
+
+| Test | Scenario, in plain words | What it proves |
+| --- | --- | --- |
+| SimSpec/CostModelDefaultsAreTheDocumentedOnes | Read the default cost model and two of its outputs | Every hand number in the suite rests on the documented constants |
+| SimSpec/LocalRoundByHand | One 100k local build with a 2 s and a 3 s query behind it; again with the DDL at 5 s | Round = build + both queries (25.631 s); time counts from round start; no queue wait for a local build |
+| SimSpec/GPURoundIndexQueryWaitsForNextReport | One offloaded build, a free query and an index query, at report intervals 0.5, 0.3, 2 s; then no queries | The index query waits for the next report (6.0 / 5.8 / 7.0 s); with no queries the round is the build's own finish |
+| SimSpec/FCFSQueueWaitsAndInterpolatedMedian | Four, then three, equal builds on one worker | Waits 0, T, 2T, 3T; straggler lag 1.5T (interpolated median) and T |
+| SimSpec/ClaimPriorityThenEnqueuedOrder | Scripted priorities 9, 5, 5, 1 queue up behind a busy worker in mixed arrival order | Claims go by priority, then enqueued order, to the exact finish times |
+| SimSpec/PreemptedBuildKeepsSubmitTimeSeq | A scripted preempt at priority 5 among two later priority-5 builds | The preempted build keeps its submit-time place and claims first; its queue wait counts from submit |
+| SimSpec/StaleAndForbiddenActionsAreSkipped | A script asks every tick to preempt and renege every build | Only the queued build reneges; leased and moved builds never move; the local start waits for the shard's next report |
+| SimSpec/OneCopyEverAndNoPreemptWhileCopyInFlight | A script asks for a copy every tick, and a preempt once the copy exists, with the GPU winning and then losing | One copy ever; no preempt while it races |
+| SimSpec/SubmitSeesNewJobWaitColdStartAndInf | Record what the policy sees at submit: three builds on one worker, an empty pool, a build that fits no worker | Queue wait 0, T, 2T; 0 on an empty pool; +Inf for fits-nowhere; σ=0 estimates are the truth |
+| SimSpec/NodeLinkSharingThreeModes | Two 100k x 1536 builds: one node shared, two nodes, sharing off; a staggered join | Shared links slow both transfers to 2X; private or off give X; the fluid model by hand (found bug 14) |
+| SimSpec/GPUExecutionIndependentOfReportAndTickGrid | The same always_gpu rounds at four report/tick intervals | GPU execution does not depend on the report grid (found bug 14's overshoot) |
+| SimSpec/SharingNeverSpeedsABuildSixEqualBuilds | Six equal builds, two workers on one node, sharing on vs off | Sharing never makes a build faster, and nothing finishes before one GPU build (found bug 14's skipped build) |
+| SimSpec/ReplayQueuePredictsTheSimulator | Five mixed builds at t=0, replayed by step 2's estimator vs simulated; then a join mid-transfer | The estimator predicts execution exactly when no worker is busy; with a busy worker it is off by exactly the documented opacity gap, which vanishes with sharing off |
+| SimSpec/ReactivePreemptsHurtingLocalBuild | A 150k local build with 20 queued 1 s queries, reactive policy | Preempted once at a tick; the CPU is freed at the report and the round is 20 s later; wait counts from submit |
+| SimSpec/NoPreemptOfBuildThatFitsNoWorker | A 200k build too big for a 100 MB worker, with a backlog | Never preempted (bug 11); always_gpu also places it local |
+| SimSpec/SpeculationGPUWinsBackdatedAndIndexWaitsForResolve | reactive_spec with an unreachable margin; then with one index query | Round = the copy's finish (8.0676 s, decision 16); the index query waits for the settling tick and the report (11.5 s) |
+| SimSpec/SpeculationLocalWinsWastedWorkerSeconds | The same at speedup 1 | The local build wins at 32.036 s; the copy is cancelled at tick 34; exactly 32 wasted worker-seconds; the round is not stretched (decision 17) |
+| SimSpec/SpeculationOneInFlightAtATime | Two local builds, two idle workers | The second copy waits until the first settles at tick 10; finishes 8.07 and 16.07 s |
+| SimSpec/KilledWorkerLeaseRequeuesAfterLeaseS | Kill the busy worker at 2 s with LeaseS 10; then kill the only worker | Reclaimed at 12 s; with an empty pool the build holds, nothing reneges, Completed=false (decision 19) |
+| SimSpec/ShrunkenPoolMakesReactiveRenege | Ten 300k builds on two workers, with and without a kill at 1 s | No renege on the intact pool; reneges once the pool shrinks (decision 19) |
+| SimSpec/NoiseNeverTouchesExecution | Policies that ignore estimates, at σ 0.6 and 2 | Identical rounds: noise never touches execution (decision 23) |
+| SimSpec/NoiseThreeFactorsPersistAcrossTicks | Record estimates at submit and every tick at σ 0.5 | Three distinct factors per build, kept across ticks; busy-remaining noised and floored to "idle" when overdue (G2) |
+| SimSpec/NoiseMovesTheOracleLocalVsGPU | A borderline build (GPU 20.52 s vs local 20.63 s) over 40 noise seeds, two workload seeds | Per-kind noise flips the oracle (22 of 40 seeds); the oracle is noised like everyone; the workload seed is mixed in |
+| SimSpec/DeterminismUnderNoiseAndKills | Four presets × five policies at σ 0.6, with a kill, run twice and concurrently | Identical Results; the workload is never mutated (invariants 8, 10) |
+| SimSpec/FuturesRelativeToDDLAndClamped | Queries before and after a 5 s DDL | Arrivals relative to the DDL; pre-DDL arrivals clamp to 0 |
+| SimSpec/NewPresetsGenerateValidateComplete | high_dim at three seeds × three policies; one production round | Both presets generate, validate, reproduce and complete; high_dim's largest build fits no worker (decision 25) |
+| SimSpec/SafetyCapDefaultIsDocumentedConsistently | Zero workers forever; a 7 h and a 25.4 h local build | The cap is 24 h and documented so (found F3); incomplete rounds report only finished work (found F4, G1) |
+| SweepCSV/ByteIdenticalReruns | Two scenarios × all policies × two σ × three rounds with a kill, run twice | Byte-identical CSVs, one row per round, five policies |
+| SweepCSV/HeaderCarriesEveryAxis | Read the header | Every roadmap sweep axis, the identity, knob and result columns are present |
+| SweepCSV/NonOverriddenAxesEchoThePreset | skewed without overrides, then with eight overrides | Columns not overridden echo the preset; overrides echo themselves; zipf echoes 0 for non-zipf (G7) |
+| SweepCSV/RowsAreSelfDescribing | The same cell with different reconsider, poll and lease intervals and noise seed | Every knob that changes a result is a recorded column, so concatenated CSVs stay distinguishable (found F2) |
+| SweepCSV/RowMatchesSimRunAndPercentileRule | Six rows recomputed through sim.Run | Each row is the simulator's Result; p50/p99 follow sorted[int(p*(n-1))] |
+| SweepCSV/StrictNamesFailLoudly | Misspelled policy, empty threshold, argument on always_gpu, unknown scenario, bad float | Each exits non-zero with a reason (step 1 F5's rule, at the runner) |
