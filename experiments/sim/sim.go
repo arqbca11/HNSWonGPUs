@@ -334,13 +334,23 @@ func (e *engine) step(w workload.Workload) bool {
 		return false // nothing scheduled, or the safety cap: report incomplete
 	}
 
-	// Advance the clock; in-flight transfers drain at their node's current
-	// shared rate (constant between events, since events are the only state
-	// changes).
+	// Advance the clock; in-flight transfers drain at their node's shared
+	// rate, which is constant BETWEEN events — so every worker's share is
+	// snapshotted before any remaining is mutated. Bug 14: computing the
+	// share inside the mutation loop let a transfer that reached zero early
+	// in the loop vanish from its node-mates' k, advancing them at the full
+	// rate for the same interval — half an interval of stolen progress, and
+	// an overshoot below zero that then skipped a whole GPU build.
 	dt := next - e.t
-	for _, wk := range e.workers {
+	shares := make([]float64, len(e.workers))
+	for i, wk := range e.workers {
 		if wk.alive && wk.cur != nil && wk.xferRem > eps {
-			wk.xferRem -= dt / e.linkShare(wk)
+			shares[i] = e.linkShare(wk)
+		}
+	}
+	for i, wk := range e.workers {
+		if shares[i] > 0 {
+			wk.xferRem -= dt / shares[i]
 		}
 	}
 	e.t = next
@@ -348,6 +358,9 @@ func (e *engine) step(w workload.Workload) bool {
 
 	// 1. Workers: transfers that finished start their build; builds that
 	// finished complete their row (a copy's win is settled at the tick).
+	// The phase test is by MEANING, not by value (bug 12's lesson): any
+	// remaining at or below zero with no build deadline set means the
+	// transfer just ended — it must enter its build, never fall through.
 	for _, wk := range e.workers {
 		if !wk.alive || wk.cur == nil {
 			continue
@@ -355,7 +368,7 @@ func (e *engine) step(w workload.Workload) bool {
 		if wk.xferRem > eps {
 			continue
 		}
-		if wk.xferRem > -eps && wk.buildDoneAt == 0 {
+		if wk.buildDoneAt == 0 {
 			wk.xferRem = 0
 			wk.buildDoneAt = e.t + wk.cur.trueGPUS
 			continue

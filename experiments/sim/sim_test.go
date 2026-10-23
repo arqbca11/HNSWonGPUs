@@ -133,11 +133,31 @@ func TestNodeLinkSharingByHand(t *testing.T) {
 	}
 	shared := Run(w, policy.AlwaysGPU{}, Config{ShareNodeLinks: true, WorkersPerNode: 2})
 	near(t, "same node, shared link: round", shared.RoundS, 2*xfer100k+gpu100k, 1e-3)
+	// Bug 14: asserting only RoundS hid a build that "finished" at 2x transfer
+	// without ever running its GPU phase — the surviving build set the round.
+	// EVERY shard must finish at 2X+G, and no earlier.
+	for i, fin := range shared.ShardFinishS {
+		near(t, "  shared: shard finish", fin, 2*xfer100k+gpu100k, 1e-3)
+		if fin < xfer100k+gpu100k {
+			t.Fatalf("shard %d finished at %.3f, faster than an unshared build: sharing sped something up", i, fin)
+		}
+	}
 	separate := Run(w, policy.AlwaysGPU{}, Config{ShareNodeLinks: true, WorkersPerNode: 1})
 	near(t, "separate nodes: round", separate.RoundS, xfer100k+gpu100k, 1e-3)
 	off := Run(w, policy.AlwaysGPU{}, Config{ShareNodeLinks: false, WorkersPerNode: 2})
 	near(t, "sharing off (the fake worker's behaviour): round", off.RoundS, xfer100k+gpu100k, 1e-3)
 	t.Log("two transfers on one link each ran at 1/2 and finished together; off mimics the live fake worker")
+
+	t.Log("--- a staggered join: the second shard's DDL lands mid-transfer of the first (j = 0.2 s)")
+	w.Shards[1].DDLOffset = 200 * time.Millisecond
+	stag := Run(w, policy.AlwaysGPU{}, Config{ShareNodeLinks: true, WorkersPerNode: 2})
+	// By hand with X = 0.576, join at j = 0.2: A runs alone to j (remaining
+	// X-j), then both drain at 1/2, so A's transfer ends at j + 2(X-j) =
+	// 2X - j; B has X - (X-j) = j left, alone, ending at exactly 2X — the
+	// link moved 2X of work in 2X seconds, saturated throughout.
+	near(t, "  A finish", stag.ShardFinishS[0], 2*xfer100k-0.2+gpu100k, 1e-3)
+	near(t, "  B finish", stag.ShardFinishS[1], 2*xfer100k+gpu100k, 1e-3)
+	t.Log("the fluid drains at the shared rate for exactly the shared interval: no stolen progress at the rate change (bug 14)")
 }
 
 // The reactive policy preempts a hurting local build mid-flight: the round
