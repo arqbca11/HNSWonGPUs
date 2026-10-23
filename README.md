@@ -2,7 +2,7 @@
 
 A scheduler that places HNSW vector index builds from many database shards onto a small shared pool of GPU workers, or back onto each shard's own CPU, and measures which placement policy gets the whole cluster back to normal fastest.
 
-**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is next.** Phase 1 (done 2026-10-06) built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 (done 2026-10-19) moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
+**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is in progress — the policies, the GPU finish estimator and the reconsider timer that executes preemption, reneging and speculation are built; next is the discrete-event simulator.** Phase 1 (done 2026-10-06) built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 (done 2026-10-19) moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
 
 ## The problem
 
@@ -50,7 +50,20 @@ The properties the design is built around:
 - **An idempotent reaper.** Expired leases go back to the queue; running it twice changes nothing; a build whose lease keeps expiring is parked as failed after a retry budget instead of poisoning the pool.
 - **Graceful shutdown is designed, not assumed.** A deleted scheduler pod keeps answering while the cluster's routing catches up, but never stamps a round after SIGTERM, so a round's metrics can't die with the pod that recorded them; a deleted worker finishes or releases its build inside its grace period.
 - **Placement can change in flight.** A local build whose shard's backlog is growing can be preempted to the GPU queue with rising priority; a queued GPU build can be moved back to local. Shards learn of changes in the reply to their own report, never by push.
-- **Policies are pure functions** of the state they are given, so the live scheduler and the discrete-event simulator run the same code (Phase 3 builds the real ones; today's placeholder sends everything to the GPU queue).
+- **Policies are pure functions** of the state they are given, so the live scheduler and the discrete-event simulator run the same code. The deployable ones — always-GPU, static threshold, reactive migration, reactive plus speculation — are built; a reconsider timer executes what they decide, and the clairvoyant oracle exists only in the simulator.
+
+## How to understand this repo
+
+Most of this code was written by an AI pair, and the documentation exists so a human can re-enter the codebase cold — months later, or mid-incident — without having watched it being written. Four layers, each answering a different question. Arrive with your question and pick the layer:
+
+| Your question | Read | What it holds |
+| --- | --- | --- |
+| **Where** is this done? | [`docs/code-map.md`](docs/code-map.md) | One entry per action the system takes — decided where, written to Postgres where, reacted to where — ordered by a build's lifecycle, pointing at file + function. The re-entry point: start from "who cancels the losing copy?", not from a directory listing. |
+| **Why** is it this way? | the decisions tables in [`docs/design/`](docs/design/) | Every design decision, append-only, with the alternatives considered and the argument that won. A reversal is a new row pointing at the old one, so the history of a rule is readable. |
+| **What went wrong**, and what did it teach? | [`docs/bugs.md`](docs/bugs.md) | Significant bugs: symptom, cause, fix, what it would have looked like in production, and the lesson — including the ones where two correct rules composed into a deadlock. |
+| **What is proven** to work? | [`docs/tests.md`](docs/tests.md), then [`test-logs/`](test-logs/) | Every test with its scenario in plain words, and the saved narrated logs — the logs read as the system telling its own story ("local build aborted at 28%: the speculative gpu copy finished first"), which is the fastest way to see behavior without running anything. |
+
+The code map is kept current by working agreement (CLAUDE.md): any step that adds, moves or renames one of its pieces updates it. Its failure mode is silent staleness, so the standing audit is cheap and worth doing once a phase: pick one flow you care about, walk it against the map, and treat any mismatch as a bug.
 
 ## Repository
 
@@ -65,6 +78,7 @@ The properties the design is built around:
 | `scripts/` | One command per step: bring the cluster up, run rounds, inject failures, run every check |
 | `docs/roadmap.md` | The plan: six phases, schema, policies, scenarios, failure tests |
 | `docs/design/` | The design as built, one doc per phase: diagrams, flows, and an append-only table of every decision with the alternatives considered |
+| `docs/code-map.md` | Where each important action lives: decided where, written where, reacted to where, by build lifecycle |
 | `docs/bugs.md` | Significant bugs: symptom, cause, fix, what it would have looked like in production, lesson |
 | `docs/tests.md` | Every test, with the scenario it checks in plain words |
 | `test-logs/` | Narrated test output, saved per step |
