@@ -80,6 +80,7 @@ The code map is kept current by working agreement (CLAUDE.md): any step that add
 | `docs/design/` | The design as built, one doc per phase: diagrams, flows, and an append-only table of every decision with the alternatives considered |
 | `docs/code-map.md` | Where each important action lives: decided where, written where, reacted to where, by build lifecycle |
 | `docs/bugs.md` | Significant bugs: symptom, cause, fix, what it would have looked like in production, lesson |
+| `docs/speedup.md` | The headline question — how much offloading to GPUs actually speeds builds and rounds up — with assumed, simulated and measured numbers kept apart, updated as evidence lands |
 | `docs/tests.md` | Every test, with the scenario it checks in plain words |
 | `test-logs/` | Narrated test output, saved per step |
 
