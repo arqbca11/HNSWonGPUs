@@ -54,7 +54,7 @@ The properties the design is built around:
 
 ## How to understand this repo
 
-Most of this code was written by an AI pair, and the documentation exists so a human can re-enter the codebase cold — months later, or mid-incident — without having watched it being written. Four layers, each answering a different question. Arrive with your question and pick the layer:
+The documentation exists so a reader can enter the codebase cold — months later, or mid-incident — and find their way by the question they arrived with. Four layers, each answering a different one:
 
 | Your question | Read | What it holds |
 | --- | --- | --- |
