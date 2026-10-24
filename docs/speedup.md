@@ -82,4 +82,20 @@ Median round time over 5 seeds:
 
 Two findings. First, the headline: with every build offloadable, **offloading cuts simulated cluster recovery ~7×** on the production-scale workload (6 shards of 1M–10M × 1536 on 2 GPU workers). Second, the scheduling result: `reactive` beats `always_gpu` by **~20%** and cuts its straggler lag from 2,200–4,500 s to a tight ~690 s, because it keeps small builds local instead of queueing everything behind two workers — the first preset configuration where round time discriminates between policies at all, confirming the first entry's consequence. Both numbers inherit the assumed 10×/2 s/200 MB/s cost model and await step 7 (live validation) and Phase 5 (measured build times).
 
-*(Next expected entries: step 7 — does the live kind cluster reproduce the simulator's times?; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×.)*
+### 2026-10-23 — third entry: pre-registered prediction for Phase 5's measurement
+
+Written down *before* anything is measured, so the measurement can grade it. The simulator maps any measured per-build speedup N to a round-recovery factor M (production preset, 160 GB workers, all-local baseline fixed at 9.7 h):
+
+```
+go run ./experiments/cmd/sweep -scenarios production \
+  -policies static_threshold:999999999999999,reactive \
+  -rounds 5 -worker_mem_gb 160 -speedup 4,6,8,10,12,15 -out prodN.csv
+```
+
+| If N = | 4× | 6× | 8× | 10× | 12× | 15× |
+| --- | --- | --- | --- | --- | --- | --- |
+| M = | 3.6× | 4.5× | 5.8× | 7.0× | 8.2× | 9.7× |
+
+M is sub-linear in N because the transfer and the query-drain tail don't shrink with the GPU. **Prediction**: on an H100-class GPU, N ≈ 8–12× (the published 12.3× minus the CAGRA→HNSW conversion we must count, plus our GPU-friendly 1536 dims), hence M ≈ 5.8–8.2×; on a modest cloud GPU (L4/A10G, the likelier Phase 5 rig), N ≈ 4–8× with a point estimate of ~6×, hence M ≈ 3.6–5.8×, point ~4.5×. The policy-vs-policy ratios (reactive ~20% over always-offload, 3–6× tighter straggler lag) are predicted to survive any N in that range, widening slightly at low N where queueing penalizes always-offload more.
+
+*(Next expected entries: step 7 — does the live kind cluster reproduce the simulator's times?; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against this entry's prediction.)*
