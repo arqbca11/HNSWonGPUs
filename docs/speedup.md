@@ -15,7 +15,8 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see entry 2026-10-23) | Simulated |
+| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see first entry 2026-10-23) | Simulated |
+| Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see second entry 2026-10-23) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **Unknown.** hnswlib (CPU) vs cuVS (GPU) on real hardware is Phase 5 | — |
 | Does the simulator's number survive contact with the live stack? | **Untested.** Phase 3 step 7 compares simulator predictions to the live kind cluster | — |
@@ -58,5 +59,25 @@ go run ./experiments/cmd/sweep -scenarios production \
 Where offloading *does* show: in `production`, the straggler's lag over the rest of the cluster grows from ~25,300 s (all-local) to ~32,900 s (GPU policies) — read correctly, that means the five offloadable shards finish their builds and drain their blocked queries **~2.1 hours earlier** per round. Real blocked work unblocked; invisible to the round metric while one shard is un-offloadable.
 
 **Consequence for the experiment design** (feeds the FULL policy comparison after step 7): if round time itself is to discriminate between policies, the presets must make the largest build offloadable — bigger worker memory, a size cap, or a dedicated scenario — otherwise every policy ties by construction. Raising query load (`-load`) or shrinking the horizon are the other levers that move the binding constraint from stream physics to placement.
+
+### 2026-10-23 — second entry: ~7× round-level speedup once the largest build fits a worker
+
+The first entry showed `production`'s round pinned by the 10M × 1536 build that no 80 GB worker can hold. Lifting just that constraint (160 GB workers; the build needs ~125 GB) makes the round-level value of offloading — and of *dynamic* placement specifically — visible:
+
+```
+go run ./experiments/cmd/sweep -scenarios production \
+  -policies static_threshold:999999999999999,always_gpu,reactive,reactive_spec \
+  -rounds 5 -worker_mem_gb 160 -out prod160.csv
+```
+
+Median round time over 5 seeds:
+
+| Policy | Median round | vs all-local |
+| --- | --- | --- |
+| all-local baseline | 34,905 s (~9.7 h) | — |
+| `always_gpu` | 6,183 s (~1.7 h) | 5.6× |
+| `reactive` / `reactive_spec` | 4,959 s (~1.4 h) | **7.0×** |
+
+Two findings. First, the headline: with every build offloadable, **offloading cuts simulated cluster recovery ~7×** on the production-scale workload (6 shards of 1M–10M × 1536 on 2 GPU workers). Second, the scheduling result: `reactive` beats `always_gpu` by **~20%** and cuts its straggler lag from 2,200–4,500 s to a tight ~690 s, because it keeps small builds local instead of queueing everything behind two workers — the first preset configuration where round time discriminates between policies at all, confirming the first entry's consequence. Both numbers inherit the assumed 10×/2 s/200 MB/s cost model and await step 7 (live validation) and Phase 5 (measured build times).
 
 *(Next expected entries: step 7 — does the live kind cluster reproduce the simulator's times?; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×.)*
