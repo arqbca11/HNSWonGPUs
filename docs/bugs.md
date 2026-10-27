@@ -48,7 +48,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 **Lesson.** A guard that names states ("queued or leased") rots the moment a new state appears in the lifecycle; a guard that names the *meaning* ("any copy that could still win, or already has") survives. When a check exists in two layers (policy and store), the store's version is the one that must get the meaning right, because it is the one that runs during the race.
 
-
+## 11. Preemption ignored the memory filter: a hurting build could be parked in a queue nobody can claim
 
 **Found** by the Phase 3 step 1 cross-check agent (`Reactive_MemoryAwarePreempt`): a local build one byte too big for every live worker, with a convincing backlog, was preempted. Fixed in [`86d7099`](https://github.com/arqbca11/HNSWonGPUs/commit/86d7099), `scheduler/policy/reactive.go`. **Related:** entry 5 (the other build that could never finish and what the retry budget does about leases — but a *queued* unclaimable build has no lease to expire, so no reaper or budget ever touches it), entry 1 (also the cross-check's first run against a brand-new piece of the system).
 
