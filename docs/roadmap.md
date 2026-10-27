@@ -75,7 +75,7 @@ Keep the worker's build step behind one interface (`build(job) -> artifact`) fro
 
 ## Phase 1: Scheduler with fake jobs
 
-Build a scheduler that stays correct under failures, using jobs that only sleep. Run everything locally with Docker Compose; no Kubernetes yet. Start at 6 shards and 2 workers. **Done when** a worker killed mid-job still results in that job finishing exactly once, at both 6 and 50 shards. **Done 2026-10-06**; the design as built is `docs/design/phase1-scheduler.md`.
+Build a scheduler that stays correct under failures, using jobs that only sleep. Run everything locally with Docker Compose; no Kubernetes yet. Start at 6 shards and 2 workers. **Done when** a worker killed mid-job still results in that job finishing exactly once, at both 6 and 50 shards. **Done**; the design as built is `docs/design/phase1-scheduler.md`.
 
 ### Fake jobs and cost model v0
 
@@ -210,7 +210,7 @@ Run the same system on a local kind cluster, with Prometheus and Grafana watchin
 - [x] Postgres as a StatefulSet with a PersistentVolumeClaim
 - [x] Scheduler as a Deployment with one replica. Running two replicas is also safe for the reaper, because reaping is a conditional `UPDATE` and doing it twice changes nothing.
 - [x] Workers as a Deployment of long-running pullers. One Kubernetes Job per build is a different design; Phase 6 compares the two.
-- [x] ~~Shards as a StatefulSet, e.g. 5 pods running 10 simulated shards each. Set CPU requests and limits now, so local builds compete for real CPU in Phase 4.~~ **Replaced (Phase 2 decision 26):** the shards run *outside* the cluster, as the database fleet would; the simulator runs on the laptop and reaches the scheduler through a NodePort mapped to `127.0.0.1:30080` (decision 27). Phase 4's local builds run on the laptop's CPU. Done 2026-10-18.
+- [x] ~~Shards as a StatefulSet, e.g. 5 pods running 10 simulated shards each. Set CPU requests and limits now, so local builds compete for real CPU in Phase 4.~~ **Replaced (Phase 2 decision 26):** the shards run *outside* the cluster, as the database fleet would; the simulator runs on the laptop and reaches the scheduler through a NodePort mapped to `127.0.0.1:30080` (decision 27). Phase 4's local builds run on the laptop's CPU. Done.
 
 ### Lifecycle
 
@@ -379,7 +379,7 @@ Add a real GPU build path, run it on a small cloud GPU node pool for a few hours
 - [ ] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. Expect CPU fallback to win more often while the pool is cold.
 - [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it.
 - [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model.
-- [ ] **Builds per card:** one build per card against two with memory-aware admission in the worker, at 128 and 1536 dimensions, reporting throughput and the largest build's finish time. Expected to win for small builds (transfer overlaps compute, a small build does not fill the card) and lose for two large ones (Phase 5 design doc, 2026-10-17).
+- [ ] **Builds per card:** one build per card against two with memory-aware admission in the worker, at 128 and 1536 dimensions, reporting throughput and the largest build's finish time. Expected to win for small builds (transfer overlaps compute, a small build does not fill the card) and lose for two large ones (Phase 5 design doc).
 - [ ] Rerun the Phase 3 sweeps in the simulator with the measured GPU model, then validate a few rounds live
 
 ### Cost control

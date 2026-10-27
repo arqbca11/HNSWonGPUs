@@ -83,7 +83,7 @@ flowchart LR
 | 5 | Follow-up jobs become CPU-burning loops, not sleeps | Keep sleeping | They must compete with local builds for the shard's real CPU limit, or the blocking rule is not being tested. |
 | 6 | Fit the cost model from measurements and keep the residuals | Assume n log n | The estimate error distribution is an input to Phase 3's σ sweep; assuming the curve would hide the project's main uncertainty. |
 
-## Calibration targets from the published figures (2026-10-06)
+## Calibration targets from the published figures
 
 The measurements this phase makes have published reference points (Phase 1 doc, "Cost model v0 against published numbers"):
 

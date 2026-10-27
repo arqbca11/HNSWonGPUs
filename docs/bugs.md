@@ -8,7 +8,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 14. The simulator's shared link gave finishing transfers' bandwidth away mid-interval — and could skip a whole GPU build
 
-**Found:** 2026-10-23, by the Phase 3 steps 4–6 cross-check agent, from hand numbers alone (`NodeLinkSharingThreeModes` and three sibling probes): with two builds sharing one node's link, the second finished 0.208 s early — exactly half the event grid's last interval — and when both started together, one "finished" at 2× the transfer time **without ever running its GPU build**. The agent inferred the mechanism from the numbers before anyone read the code. Fixed in this commit, `experiments/sim/sim.go`. **Related:** entry 12 (the same lesson — a phase test written against a state *value* instead of the state's *meaning*), entry 8 (also a per-interval accounting error that only showed at a rate boundary).
+**Found** by the Phase 3 steps 4–6 cross-check agent, from hand numbers alone (`NodeLinkSharingThreeModes` and three sibling probes): with two builds sharing one node's link, the second finished 0.208 s early — exactly half the event grid's last interval — and when both started together, one "finished" at 2× the transfer time **without ever running its GPU build**. The agent inferred the mechanism from the numbers before anyone read the code. Fixed in this commit, `experiments/sim/sim.go`. **Related:** entry 12 (the same lesson — a phase test written against a state *value* instead of the state's *meaning*), entry 8 (also a per-interval accounting error that only showed at a rate boundary).
 
 **Symptom.** Under `ShareNodeLinks` with two or more workers per node, transfers finished early by half an interval per rate change; in the worst alignment a transfer's remaining time went negative, slipped past the transfer-finish test, and fell through to "build finished" — a build marked done at the moment its bytes arrived, its GPU phase never run, its worker freed to take the next job. Every `workers_per_node ≥ 2` sweep arm was wrong; the committed demo (workers per node = 1) was untouched.
 
@@ -22,7 +22,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 13. Two anti-flapping rules collided and stranded a preempted build the pool could no longer hold
 
-**Found:** 2026-10-22, by the Phase 3 step 3 cross-check agent (`PreemptedBuildNeverReneged_EvenWhenItFitsNowhere`, a probe pitting decision 8 against decision 19). The test passed — the code followed the spec — and the finding (F3) was that the spec itself builds a hang. Owner decided 2026-10-22 (decision 20); fixed in this commit, `scheduler/policy/reactive.go` and `scheduler/store/store.go`. **Related:** entry 11 (the identical end state — a queued build no claim will ever take, no lease, no reaper, no retry budget, the round hung — reached this time not by a missing filter but by two *correct* rules composed; entry 11's own fix created the move that this entry's rule then refused to undo), entry 12 (the same step's other blind spot in a placement-change guard).
+**Found** by the Phase 3 step 3 cross-check agent (`PreemptedBuildNeverReneged_EvenWhenItFitsNowhere`, a probe pitting decision 8 against decision 19). The test passed — the code followed the spec — and the finding (F3) was that the spec itself builds a hang. Owner decided (decision 20); fixed in this commit, `scheduler/policy/reactive.go` and `scheduler/store/store.go`. **Related:** entry 11 (the identical end state — a queued build no claim will ever take, no lease, no reaper, no retry budget, the round hung — reached this time not by a missing filter but by two *correct* rules composed; entry 11's own fix created the move that this entry's rule then refused to undo), entry 12 (the same step's other blind spot in a placement-change guard).
 
 **Symptom.** A hurting local build is preempted onto the one worker big enough for it (move #1, decision 8's quota spent). That worker dies or drains — the shrinking_pool scenario. The build now fits no live worker: the claim's memory filter skips it forever, and the reconsider's renege — decision 19's designated escape, "exactly how a stuck too-big build escapes the queue" — is refused because the build already moved once. It sits `queued` until a big worker happens to return; the round hangs on it.
 
@@ -36,7 +36,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 12. A preempt in the settle window threw away a won speculation race
 
-**Found:** 2026-10-22, by the Phase 3 step 3 cross-check agent (`PreemptWhileCopyDoneButUnresolvedKeepsTheWin`, a deliberate probe of the gap between a copy finishing and `ResolveSpeculations` noticing). Fixed in this commit, `scheduler/store/store.go`. **Related:** entry 11 (the same family: a placement-change site whose guard had a blind spot; there the memory filter, here the definition of "the copy is racing"), entry 5 (work discarded because two actors disagreed about who owns a result).
+**Found** by the Phase 3 step 3 cross-check agent (`PreemptWhileCopyDoneButUnresolvedKeepsTheWin`, a deliberate probe of the gap between a copy finishing and `ResolveSpeculations` noticing). Fixed in this commit, `scheduler/store/store.go`. **Related:** entry 11 (the same family: a placement-change site whose guard had a blind spot; there the memory filter, here the definition of "the copy is racing"), entry 5 (work discarded because two actors disagreed about who owns a result).
 
 **Symptom.** A shard's local build is racing its speculative GPU copy. The copy completes — the index exists. Before the next reconsider tick settles the race, a preempt of the primary is accepted: the primary becomes `gpu/queued`, `ResolveSpeculations` then finds no primary still running locally and returns nothing, and the finished index is simply forgotten. The build is claimed and built a **third** time, and the shard — whose backlog was the reason for preempting — waits a whole extra GPU build for an index that already existed.
 
@@ -50,7 +50,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 
 
-**Found:** 2026-10-19, by the Phase 3 step 1 cross-check agent (`Reactive_MemoryAwarePreempt`): a local build one byte too big for every live worker, with a convincing backlog, was preempted. Fixed in [`86d7099`](https://github.com/arqbca11/HNSWonGPUs/commit/86d7099), `scheduler/policy/reactive.go`. **Related:** entry 5 (the other build that could never finish and what the retry budget does about leases — but a *queued* unclaimable build has no lease to expire, so no reaper or budget ever touches it), entry 1 (also the cross-check's first run against a brand-new piece of the system).
+**Found** by the Phase 3 step 1 cross-check agent (`Reactive_MemoryAwarePreempt`): a local build one byte too big for every live worker, with a convincing backlog, was preempted. Fixed in [`86d7099`](https://github.com/arqbca11/HNSWonGPUs/commit/86d7099), `scheduler/policy/reactive.go`. **Related:** entry 5 (the other build that could never finish and what the retry budget does about leases — but a *queued* unclaimable build has no lease to expire, so no reaper or budget ever touches it), entry 1 (also the cross-check's first run against a brand-new piece of the system).
 
 **Symptom.** Pure policy level, caught before any deployment. The reactive policy's `reconsider`, given a local build whose modeled memory exceeded every live worker's capacity (or an empty pool) and a backlog that made migrating look good, returned a preempt action. Had the host applied it: the shard's CPU progress destroyed, the build placed in the GPU queue where `FOR UPDATE SKIP LOCKED` would skip it forever — no lease, no expiry, no reaper, no retry budget — and the round would never complete.
 
@@ -64,7 +64,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 10. Deleting the scheduler pod stalled every shard for 10 s, though the replacement was ready in 1 s
 
-**Found:** 2026-10-18, by the step 4 cross-check agent's scheduler-deletion test (36 retry warnings, the last 10.5 s after the delete; the round 3.4 s slower than its twin). Reproduced with `KILL_SCHEDULER=1 scripts/k8s-round.sh`: 56 warnings, 10.5 s stall, replacement ready in 0.9 s. Fixed in [`56e4dbe`](https://github.com/arqbca11/HNSWonGPUs/commit/56e4dbe), `scheduler/cmd/scheduler/main.go`, `shard/client/client.go`. **Related:** entry 7 and entry 9 (the same family: a dependency vanishing for a moment; those two were handled by retrying, this one is about *how long one failed attempt takes* before the retry can happen), entry 8 (another case where a small fixed delay per operation was multiplied by many operations into a visible slowdown).
+**Found** by the step 4 cross-check agent's scheduler-deletion test (36 retry warnings, the last 10.5 s after the delete; the round 3.4 s slower than its twin). Reproduced with `KILL_SCHEDULER=1 scripts/k8s-round.sh`: 56 warnings, 10.5 s stall, replacement ready in 0.9 s. Fixed in [`56e4dbe`](https://github.com/arqbca11/HNSWonGPUs/commit/56e4dbe), `scheduler/cmd/scheduler/main.go`, `shard/client/client.go`. **Related:** entry 7 and entry 9 (the same family: a dependency vanishing for a moment; those two were handled by retrying, this one is about *how long one failed attempt takes* before the retry can happen), entry 8 (another case where a small fixed delay per operation was multiplied by many operations into a visible slowdown).
 
 **Symptom.** `kubectl delete pod` on the scheduler during a 50-shard round. Kubernetes replaced the pod and it was ready within a second; the NodePort answered again within 1.2 s. Yet the shards logged `scheduler call failed, retrying` for ten seconds: a few `EOF`s at once, then dozens of client timeouts, the last 10.5 s after the deletion. Every build and query was correct; the round was simply three to five seconds longer than it should have been.
 
@@ -80,7 +80,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 9. Workers crashed on a fresh cluster: they connected before the schema existed
 
-**Found:** 2026-10-17, on the first deploy to a rebuilt kind cluster (Phase 2 step 3b). Fixed in [`2f501d0`](https://github.com/arqbca11/HNSWonGPUs/commit/2f501d0), `worker/kgpu_worker/worker.py`. **Related:** entry 7 (same class: a dependency not being there at a moment the code assumed it was; that one was the connection, this one is the schema), entry 5 (crash while an error could have been waited out).
+**Found** on the first deploy to a rebuilt kind cluster (Phase 2 step 3b). Fixed in [`2f501d0`](https://github.com/arqbca11/HNSWonGPUs/commit/2f501d0), `worker/kgpu_worker/worker.py`. **Related:** entry 7 (same class: a dependency not being there at a moment the code assumed it was; that one was the connection, this one is the schema), entry 5 (crash while an error could have been waited out).
 
 **Symptom.** Both worker pods went to `CrashLoopBackOff` within seconds of the stack being applied, each with one restart, then came up fine. The previous container's log ended in `psycopg.errors.UndefinedTable: relation "workers" does not exist` from the first heartbeat's `INSERT INTO workers`.
 
@@ -96,7 +96,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 8. Every simulated query ran 0.6 ms longer than modeled: a fixed overhead that scales with the time scale
 
-**Found:** 2026-10-06, by the step 7 cross-check's run-time fidelity test at 50 shards (and confirmed at 6). Fixed in [`2e601f3`](https://github.com/arqbca11/HNSWonGPUs/commit/2e601f3), `shard/sim/shard.go` (`runQuery`). **Related:** the step 5 cross-check's time-scale finding (the HTTP calls inside the measured interval), which decision 60 fixed; this is the residue underneath it.
+**Found** by the step 7 cross-check's run-time fidelity test at 50 shards (and confirmed at 6). Fixed in [`2e601f3`](https://github.com/arqbca11/HNSWonGPUs/commit/2e601f3), `shard/sim/shard.go` (`runQuery`). **Related:** the step 5 cross-check's time-scale finding (the HTTP calls inside the measured interval), which decision 60 fixed; this is the residue underneath it.
 
 **Symptom.** Across 31,087 queries in one round, every recorded run time (`finished_at - started_at`) was the scaled modeled duration plus about 0.56 ms (p50), never less. Aggregate run time was 105.5% of modeled. By size: queries under 1 ms ran at 1.77x, 1 to 5 ms at 1.19x, over 100 ms at 1.004x. The same 0.6 ms appeared at 6 shards, so it was not load.
 
@@ -114,7 +114,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 7. Workers crashed when Postgres restarted
 
-**Found:** 2026-10-05, by the Compose cross-check agent's `docker compose restart postgres` test. Fixed in [`51716f8`](https://github.com/arqbca11/HNSWonGPUs/commit/51716f8), `worker/kgpu_worker/worker.py` and `store.py`. **Related:** entry 5 (same class: an exit path while holding a lease that nothing guarded).
+**Found** by the Compose cross-check agent's `docker compose restart postgres` test. Fixed in [`51716f8`](https://github.com/arqbca11/HNSWonGPUs/commit/51716f8), `worker/kgpu_worker/worker.py` and `store.py`. **Related:** entry 5 (same class: an exit path while holding a lease that nothing guarded).
 
 **Symptom.** Postgres was restarted while one worker held a lease and the other was idle. Both worker processes died with a traceback and were restarted by the Docker restart policy. The idle one crashed inside `claim` with `psycopg.errors.AdminShutdown: terminating connection due to administrator command`. The leaseholder logged `heartbeat errored`, `renew errored`, then crashed after its build finished, in the `complete` call. The build was still recovered, by the reaper and the other worker as attempt 2, 17 s after the restart, and nothing completed twice.
 
@@ -130,7 +130,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 6. Concurrent duplicates of a round's last build were refused as "round full"
 
-**Found:** 2026-10-05, by the Compose cross-check agent. Fixed in [`422d722`](https://github.com/arqbca11/HNSWonGPUs/commit/422d722), the `SubmitBuild` hunk of `scheduler/store/store.go`. **Related:** entry 4 (the same snapshot-before-lock mechanism, one statement earlier).
+**Found** by the Compose cross-check agent. Fixed in [`422d722`](https://github.com/arqbca11/HNSWonGPUs/commit/422d722), the `SubmitBuild` hunk of `scheduler/store/store.go`. **Related:** entry 4 (the same snapshot-before-lock mechanism, one statement earlier).
 
 **Symptom.** A round with two slots, one taken. Eight identical submits of the second shard's build fired at once. One got 201. The other seven got `409 round already has n_shards builds` instead of `200 created:false`. In a round with spare capacity the same burst was handled correctly every time. A shard retrying its submit after a client timeout, as the round's last shard, would have been told the round was full rather than given its stored decision.
 
@@ -144,7 +144,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ## 5. A builder exception crashed the worker with the lease held: a poison-pill build
 
-**Found:** 2026-10-04, by the cross-check agent running the worker as a black-box process. Fixed the same day in [`9f206d0`](https://github.com/arqbca11/HNSWonGPUs/commit/9f206d0); the fix is the `_work` hunk of `worker/kgpu_worker/worker.py` plus `validate` in `config.py` and the exit-2 handling in `__main__.py`. (Bundled with the rest of that cross-check round; later bug fixes get their own commit.)
+**Found** by the cross-check agent running the worker as a black-box process. Fixed in [`9f206d0`](https://github.com/arqbca11/HNSWonGPUs/commit/9f206d0); the fix is the `_work` hunk of `worker/kgpu_worker/worker.py` plus `validate` in `config.py` and the exit-2 handling in `__main__.py`. (Bundled with the rest of that cross-check round; later bug fixes get their own commit.)
 
 **Symptom.** With `COST_BANDWIDTH=0`, a documented configuration override, the worker claimed a build and then the whole process died with exit status 1 and a `ZeroDivisionError` traceback. No `failed` or `released` line was logged. The row stayed `state=leased, attempt=1, lease_owner=gpu-err`.
 
@@ -158,7 +158,7 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 What would make it visible: the `attempt` counter is the tell, since a healthy system loses a lease only when a worker dies, so `attempt` above 2 or 3 on any build is abnormal and worth an alert (Phase 2 metrics: `lease_expirations_total` by `build_id`, or a gauge of builds by attempt). The reaper's log line already carries `build_id`, `attempt` and `lease_owner`, so "same build, new attempt, freshly restarted owner, every thirty seconds" is a diagnosable pattern once you know to look. Startup validation is the cheapest layer: one clear line at deploy time, before any shared state is touched.
 
-**The wider class, and the third fix.** Exception handling closes only half of this. A worker killed by the kernel for running out of memory on one oversized build raises nothing, so `fail` never runs, and that build cycles through the pool the same way, killing each worker that claims it. The defence that covers both halves is a retry budget: the reaper marks a build `failed` when its lease expires on attempt `MAX_ATTEMPTS` (default 5) instead of requeueing it, with the reason recorded (decision 42, commit [`7b13c7e`](https://github.com/arqbca11/HNSWonGPUs/commit/7b13c7e)). It is a dead-letter rule, independent of why the attempts failed. Added 2026-10-05.
+**The wider class, and the third fix.** Exception handling closes only half of this. A worker killed by the kernel for running out of memory on one oversized build raises nothing, so `fail` never runs, and that build cycles through the pool the same way, killing each worker that claims it. The defence that covers both halves is a retry budget: the reaper marks a build `failed` when its lease expires on attempt `MAX_ATTEMPTS` (default 5) instead of requeueing it, with the reason recorded (decision 42, commit [`7b13c7e`](https://github.com/arqbca11/HNSWonGPUs/commit/7b13c7e)). It is a dead-letter rule, independent of why the attempts failed.
 
 **Lesson.** In a lease-based worker, the invariant is not "the build is guarded" but "while I hold a lease, no code path may exit without resolving it." The guard belongs at the claim, not at the step you happen to call the build. A process that can crash on a configured value should refuse the configuration at startup, before it can touch shared state. And any retry loop that can be entered by a failure you did not anticipate needs a budget.
 
@@ -168,7 +168,7 @@ What would make it visible: the `attempt` counter is the tell, since a healthy s
 
 ## 4. Lock-then-count race: a per-round cap that held for sequential submits and failed completely under concurrency
 
-**Found:** 2026-10-02, by the independent cross-check agent's concurrency test. Fixed in [`c3e7178`](https://github.com/arqbca11/HNSWonGPUs/commit/c3e7178), the `SubmitBuild` hunk of `scheduler/store/store.go`.
+**Found** by the independent cross-check agent's concurrency test. Fixed in [`c3e7178`](https://github.com/arqbca11/HNSWonGPUs/commit/c3e7178), the `SubmitBuild` hunk of `scheduler/store/store.go`.
 
 **Symptom.** Twelve concurrent `POST /builds` into a round created with `n_shards = 3` all returned 201. Postgres held twelve builds in the round. The same cap worked perfectly when submits arrived one at a time, which is why the implementer's tests, all sequential, passed.
 
@@ -220,7 +220,7 @@ Both halves are necessary. Lock without a fresh count is this bug. A fresh count
 
 ## 3. A `stream_done` report from a shard with no build could complete a round
 
-**Found:** 2026-10-02, by the cross-check agent. Fixed in [`c3e7178`](https://github.com/arqbca11/HNSWonGPUs/commit/c3e7178) and [`412c189`](https://github.com/arqbca11/HNSWonGPUs/commit/412c189) (the foreign keys).
+**Found** by the cross-check agent. Fixed in [`c3e7178`](https://github.com/arqbca11/HNSWonGPUs/commit/c3e7178) and [`412c189`](https://github.com/arqbca11/HNSWonGPUs/commit/412c189) (the foreign keys).
 
 **Symptom.** Round of two shards. Both builds finished. Shard 0 reported its stream done, shard 1 was still streaming. A status row written for a shard 99 that had never submitted, with `stream_done = true`, made `FinishCompleteRounds` stamp the round finished.
 
@@ -234,7 +234,7 @@ Both halves are necessary. Lock without a fresh count is this bug. A fresh count
 
 ## 2. Test packages sharing one database truncated each other mid-test
 
-**Found:** 2026-10-02, while triaging the first cross-check run. Fixed in [`5fdc4eb`](https://github.com/arqbca11/HNSWonGPUs/commit/5fdc4eb), `scripts/test-db.sh`.
+**Found** while triaging the first cross-check run. Fixed in [`5fdc4eb`](https://github.com/arqbca11/HNSWonGPUs/commit/5fdc4eb), `scripts/test-db.sh`.
 
 **Symptom.** A test created a round, got `{"round_id": 19}` back, submitted a build into round 19, and received 404 "no such round." Another package's test reported a build it had just inserted as missing.
 
@@ -248,7 +248,7 @@ Both halves are necessary. Lock without a fresh count is this bug. A fresh count
 
 ## 1. Duplicate submit mixed the stored row with the repeat's request body
 
-**Found:** 2026-10-02, by the cross-check agent's first run. Fixed in [`5fdc4eb`](https://github.com/arqbca11/HNSWonGPUs/commit/5fdc4eb), `scheduler/api/api.go`.
+**Found** by the cross-check agent's first run. Fixed in [`5fdc4eb`](https://github.com/arqbca11/HNSWonGPUs/commit/5fdc4eb), `scheduler/api/api.go`.
 
 **Symptom.** A shard retried `POST /builds` with a body that differed from the original. The response said `created: false` and returned the stored placement and memory, but the CPU and GPU time estimates were computed from the repeat's `n_vectors`. A shard retrying a local build would have slept for the wrong time.
 

@@ -4,8 +4,8 @@ One document per phase. The [roadmap](../roadmap.md) is the plan written before 
 
 | Doc | Status |
 | --- | --- |
-| [Phase 1: scheduler with fake jobs](phase1-scheduler.md) | Done (2026-10-06): decisions 1–68, bugs 1–8 |
-| [Phase 2: Kubernetes on kind](phase2-kubernetes.md) | Done (2026-10-19): decisions 1–40, bugs 9–10, plus two post-close amendments |
+| [Phase 1: scheduler with fake jobs](phase1-scheduler.md) | Done: decisions 1–68, bugs 1–8 |
+| [Phase 2: Kubernetes on kind](phase2-kubernetes.md) | Done: decisions 1–40, bugs 9–10, plus two post-close amendments |
 | [Phase 3: placement policies and experiments](phase3-policies.md) | Next; not started |
 | [Phase 4: real CPU builds with hnswlib](phase4-hnswlib.md) | Planned |
 | [Phase 5: GPUs and cuVS](phase5-gpu.md) | Planned |

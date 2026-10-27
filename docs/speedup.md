@@ -8,15 +8,15 @@ The project's headline question — **how much does offloading an index build to
 
 Each number is also labeled by how we know it: **assumed** (a cost-model parameter), **simulated** (the discrete-event simulator running on that assumption), or **measured** (a real build on real hardware). Nothing is measured yet; that is Phase 5's job.
 
-This doc is updated whenever a sweep, a live validation or a real measurement produces a new number: the current-answer table below is rewritten in place, and a dated entry is appended to the evidence log (ascending by date — append at the end, never insert).
+This doc is updated whenever a sweep, a live validation or a real measurement produces a new number: the current-answer table below is rewritten in place, and a numbered entry is appended to the evidence log (append at the end, never insert).
 
-## Current answer (as of 2026-10-23)
+## Current answer
 
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see first entry 2026-10-23) | Simulated |
-| Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see second entry 2026-10-23) | Simulated |
+| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1) | Simulated |
+| Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **Unknown.** hnswlib (CPU) vs cuVS (GPU) on real hardware is Phase 5 | — |
 | Does the simulator's number survive contact with the live stack? | **Untested.** Phase 3 step 7 compares simulator predictions to the live kind cluster | — |
@@ -33,11 +33,11 @@ All modeled times come from one place: `scheduler/costmodel/costmodel.go`, `Defa
 
 The 10× is a placeholder chosen in Phase 1, in the plausible range for graph-index builds but not from our hardware or our libraries. Both the live fake worker and the simulator obey it, which is what makes step 7's simulator-vs-live comparison meaningful — and what makes the whole column worthless until Phase 5 replaces the placeholder with a measurement.
 
-**External reference points for the placeholder** (added 2026-10-23): [NVIDIA's FAISS + cuVS benchmarks](https://developer.nvidia.com/blog/enhancing-gpu-accelerated-vector-search-in-faiss-with-nvidia-cuvs) report CAGRA building **up to 12.3× faster than CPU HNSW** on Deep100M (same build-on-GPU, serve-as-HNSW path we assume; [Meta's writeup](https://engineering.fb.com/2025/05/08/data-infrastructure/accelerating-gpu-indexes-in-faiss-with-nvidia-cuvs/) matches); [Zilliz's CAGRA post](https://zilliz.com/blog/Milvus-introduces-GPU-index-CAGRA) quotes a 50M-vector rebuild at 8–12 h on a 32-core CPU vs <30 min on one H100 (~16–24×); the CAGRA paper (arXiv 2308.15136) reports 2.2–27× depending on dataset and recall target. So 10× is a defensible prior, with three caveats for Phase 5: published numbers are at chosen recall targets (build speed trades against graph quality), on H100-class hardware, and sometimes exclude the CAGRA→HNSW conversion and transfer that our pipeline must count (the cost model already charges the transfer). NVIDIA's own harness is [cuvs_bench](https://docs.rapids.ai/api/cuvs/stable/cuvs_bench/), a candidate to reuse or cross-check in Phase 5.
+**External reference points for the placeholder**: [NVIDIA's FAISS + cuVS benchmarks](https://developer.nvidia.com/blog/enhancing-gpu-accelerated-vector-search-in-faiss-with-nvidia-cuvs) report CAGRA building **up to 12.3× faster than CPU HNSW** on Deep100M (same build-on-GPU, serve-as-HNSW path we assume; [Meta's writeup](https://engineering.fb.com/2025/05/08/data-infrastructure/accelerating-gpu-indexes-in-faiss-with-nvidia-cuvs/) matches); [Zilliz's CAGRA post](https://zilliz.com/blog/Milvus-introduces-GPU-index-CAGRA) quotes a 50M-vector rebuild at 8–12 h on a 32-core CPU vs <30 min on one H100 (~16–24×); the CAGRA paper (arXiv 2308.15136) reports 2.2–27× depending on dataset and recall target. So 10× is a defensible prior, with three caveats for Phase 5: published numbers are at chosen recall targets (build speed trades against graph quality), on H100-class hardware, and sometimes exclude the CAGRA→HNSW conversion and transfer that our pipeline must count (the cost model already charges the transfer). NVIDIA's own harness is [cuvs_bench](https://docs.rapids.ai/api/cuvs/stable/cuvs_bench/), a candidate to reuse or cross-check in Phase 5.
 
 ## Evidence log
 
-### 2026-10-23 — first all-local baseline: round time is physics-bound at the preset loads
+### Evidence 1 — the all-local baseline: round time is physics-bound at the preset loads
 
 The demo sweep compares policies against each other but had no "never offload" baseline, so it couldn't answer *this doc's* question. Added one: `static_threshold` with an impossibly large threshold offloads nothing (the sweep CSV confirms `builds_gpu=0, builds_local=6` on every row). Two runs, reproducible by seed:
 
@@ -62,9 +62,9 @@ Where offloading *does* show: in `production`, the straggler's lag over the rest
 
 **Consequence for the experiment design** (feeds the FULL policy comparison after step 7): if round time itself is to discriminate between policies, the presets must make the largest build offloadable — bigger worker memory, a size cap, or a dedicated scenario — otherwise every policy ties by construction. Raising query load (`-load`) or shrinking the horizon are the other levers that move the binding constraint from stream physics to placement.
 
-### 2026-10-23 — second entry: ~7× round-level speedup once the largest build fits a worker
+### Evidence 2 — ~7× round-level speedup once the largest build fits a worker
 
-The first entry showed `production`'s round pinned by the 10M × 1536 build that no 80 GB worker can hold. Lifting just that constraint (160 GB workers; the build needs ~125 GB) makes the round-level value of offloading — and of *dynamic* placement specifically — visible:
+Evidence 1 showed `production`'s round pinned by the 10M × 1536 build that no 80 GB worker can hold. Lifting just that constraint (160 GB workers; the build needs ~125 GB) makes the round-level value of offloading — and of *dynamic* placement specifically — visible:
 
 ```
 go run ./experiments/cmd/sweep -scenarios production \
@@ -80,9 +80,9 @@ Median round time over 5 seeds:
 | `always_gpu` | 6,183 s (~1.7 h) | 5.6× |
 | `reactive` / `reactive_spec` | 4,959 s (~1.4 h) | **7.0×** |
 
-Two findings. First, the headline: with every build offloadable, **offloading cuts simulated cluster recovery ~7×** on the production-scale workload (6 shards of 1M–10M × 1536 on 2 GPU workers). Second, the scheduling result: `reactive` beats `always_gpu` by **~20%** and cuts its straggler lag from 2,200–4,500 s to a tight ~690 s, because it keeps small builds local instead of queueing everything behind two workers — the first preset configuration where round time discriminates between policies at all, confirming the first entry's consequence. Both numbers inherit the assumed 10×/2 s/200 MB/s cost model and await step 7 (live validation) and Phase 5 (measured build times).
+Two findings. First, the headline: with every build offloadable, **offloading cuts simulated cluster recovery ~7×** on the production-scale workload (6 shards of 1M–10M × 1536 on 2 GPU workers). Second, the scheduling result: `reactive` beats `always_gpu` by **~20%** and cuts its straggler lag from 2,200–4,500 s to a tight ~690 s, because it keeps small builds local instead of queueing everything behind two workers — the first preset configuration where round time discriminates between policies at all, confirming evidence 1's consequence. Both numbers inherit the assumed 10×/2 s/200 MB/s cost model and await step 7 (live validation) and Phase 5 (measured build times).
 
-### 2026-10-23 — third entry: pre-registered prediction for Phase 5's measurement
+### Evidence 3 — pre-registered prediction for Phase 5's measurement
 
 Written down *before* anything is measured, so the measurement can grade it. The simulator maps any measured per-build speedup N to a round-recovery factor M (production preset, 160 GB workers, all-local baseline fixed at 9.7 h):
 
