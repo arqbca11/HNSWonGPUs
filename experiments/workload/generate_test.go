@@ -455,3 +455,44 @@ func TestPresetTable(t *testing.T) {
 		}
 	}
 }
+
+func TestStragglerOverride(t *testing.T) {
+	t.Logf("Decision 27 (Phase 3 step 7): SizeDist.Straggler replaces ONE shard's size — the largest draw — with exactly that many vectors; every other shard and the whole query stream are the draws the base preset makes for the same seed.")
+	for _, n := range []int{6, 50} {
+		for seed := int64(1); seed <= 3; seed++ {
+			base := Generate(mustPreset(t, "skewed", n), seed)
+			hour := Generate(mustPreset(t, "hour_build", n), seed)
+			big, count := -1, 0
+			for i := range hour.Shards {
+				if hour.Shards[i].NVectors == 12_300_000 {
+					big, count = i, count+1
+					continue
+				}
+				if hour.Shards[i].NVectors != base.Shards[i].NVectors {
+					t.Fatalf("n=%d seed=%d shard %d: %d vectors, skewed gives %d", n, seed, i, hour.Shards[i].NVectors, base.Shards[i].NVectors)
+				}
+			}
+			if count != 1 {
+				t.Fatalf("n=%d seed=%d: %d shards at the straggler size, want exactly 1", n, seed, count)
+			}
+			if base.Shards[big].NVectors != base.Scenario.Sizes.Max {
+				t.Fatalf("n=%d seed=%d: the straggler replaced shard %d (%d vectors), not the rank-1 shard (%d)", n, seed, big, base.Shards[big].NVectors, base.Scenario.Sizes.Max)
+			}
+			rank1 := base.Scenario.Sizes.Max
+			hour.Scenario, base.Scenario = Scenario{}, Scenario{}
+			hour.Shards[big].NVectors = base.Shards[big].NVectors
+			if string(mustJSON(t, hour)) != string(mustJSON(t, base)) {
+				t.Fatalf("n=%d seed=%d: with the straggler's size put back, hour_build differs from skewed beyond the one size", n, seed)
+			}
+			t.Logf("n=%d seed=%d: shard %d (skewed's rank-1, %d vectors) became 12.3M; the other %d shards and all %d queries identical to skewed", n, seed, big, rank1, n-1, countQueries(base))
+		}
+	}
+}
+
+func countQueries(w Workload) int {
+	c := 0
+	for _, s := range w.Shards {
+		c += len(s.Queries)
+	}
+	return c
+}

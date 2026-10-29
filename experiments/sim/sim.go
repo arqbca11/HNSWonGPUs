@@ -75,6 +75,15 @@ type Config struct {
 	NoiseSeed      int64   // sub-seed for the noise draws; the workload seed is mixed in
 	KillWorkerAtS  float64 // >0: at this time the busiest worker dies (shrinking_pool)
 	MaxModeledS    float64 // safety cap; default 24 h modeled (the production preset's local builds run ~9.6 h)
+	// TickPhaseS, if > 0, is when the FIRST reconsider tick fires (modeled
+	// seconds after the round starts, at most ReconsiderS); later ticks
+	// follow every ReconsiderS. Zero means ReconsiderS: a ticker started at
+	// the round's start. The live scheduler's ticker runs from process
+	// start, so a live round begins at an arbitrary phase in [0, ReconsiderS)
+	// — and which builds the first tick preempts, hence the GPU queue's
+	// order, depends on it (step 7 finding, decision 29). The comparer
+	// replays several phases and reports the envelope.
+	TickPhaseS float64
 }
 
 // Note on ShareNodeLinks's zero value: false, the live fake worker's
@@ -138,10 +147,11 @@ type Result struct {
 	// not just wasted GPU time"): CPU-seconds thrown away by preemption
 	// aborts, by local builds abandoned because the GPU copy won, and by a
 	// local build that finished after its row had already been moved.
-	WastedCPUS   float64
-	QueueWaits   []float64 // per claimed real build: first claim minus submit
-	ShardFinishS []float64 // per shard: max(build finish, last query finish)
-	Events       int
+	WastedCPUS     float64
+	QueueWaits     []float64 // per claimed real build: first claim minus submit
+	ShardFinishS   []float64 // per shard: max(build finish, last query finish)
+	ShardPlacement []string  // per shard: the real build's final placement, "gpu" or "local" ("" if unfinished)
+	Events         int
 }
 
 const eps = 1e-9
@@ -235,6 +245,9 @@ func Run(w workload.Workload, pol policy.Policy, cfg Config) Result {
 	cfg = cfg.withDefaults(w)
 	e := &engine{cfg: cfg, cm: *cfg.CostModel, pol: pol, killPending: cfg.KillWorkerAtS > 0}
 	e.nextTick = cfg.ReconsiderS // like the live ticker: the first tick fires after one interval
+	if cfg.TickPhaseS > 0 && cfg.TickPhaseS <= cfg.ReconsiderS {
+		e.nextTick = cfg.TickPhaseS // decision 29: a chosen phase of the live ticker
+	}
 	e.res.QueueWaits = []float64{}
 
 	// Noise factors (decision 23): one per build and estimate kind, drawn in
@@ -885,13 +898,16 @@ func (e *engine) finish() {
 		}
 		// Only FINISHED builds count (cross-check F4): an unfinished build on
 		// an incomplete round belongs to neither tally.
+		placement := ""
 		if s.b.state == "done" {
+			placement = s.b.placement
 			if s.b.placement == "gpu" {
 				e.res.BuildsGPU++
 			} else {
 				e.res.BuildsLocal++
 			}
 		}
+		e.res.ShardPlacement = append(e.res.ShardPlacement, placement)
 	}
 	for _, b := range e.builds {
 		if !b.speculative && b.firstClaim >= 0 {

@@ -318,7 +318,7 @@ A workload is a seeded combination of four knobs: size distribution, query strea
 - [x] Discrete-event simulator using the same policy code
 - [x] Seeded runner writing one CSV row per round
 - [x] Plots: p50 and p99 round time per policy; p99 against estimate error per policy
-- [ ] Validate three or four configurations on the live kind cluster
+- [x] Validate three or four configurations on the live kind cluster *(seven: skewed 6/2 and 50/3, high_dim, and an hour-long build, under always_gpu and reactive; Phase 3 design doc, step 7)*
 
 ## Phase 4: Real CPU builds with hnswlib
 

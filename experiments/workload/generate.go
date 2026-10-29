@@ -125,6 +125,19 @@ func genSizes(d SizeDist, n int, rng *rand.Rand) []int64 {
 			out[i] = lo + rng.Int64N(hi-lo+1)
 		}
 	}
+	if d.Straggler > 0 {
+		// The largest draw becomes the straggler (ties to the lowest id), so
+		// a zipf preset's rank-1 shard is the one that grows; no extra
+		// random draw, so every other shard's size is unchanged by the
+		// override and the stream draws that follow stay aligned.
+		big := 0
+		for i := 1; i < n; i++ {
+			if out[i] > out[big] {
+				big = i
+			}
+		}
+		out[big] = d.Straggler
+	}
 	return out
 }
 

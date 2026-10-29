@@ -21,7 +21,9 @@ DRAIN_GPU="${DRAIN_GPU:-0}"; DRAIN_HOLD="${DRAIN_HOLD:-15}"
 K="kubectl -n kgpu"
 note() { printf '   %s\n' "$*"; }
 jget() { python3 scripts/jget.py "$1"; }
-SCRATCH="${TMPDIR:-/tmp}/kgpu-k8s-round.$$"; mkdir -p "$SCRATCH"; export TIMELINE_DIR="$SCRATCH"
+SCRATCH="${TMPDIR:-/tmp}/kgpu-k8s-round.$$"; mkdir -p "$SCRATCH"
+# the per-round timeline JSONs go to the scratch dir unless the caller keeps them (step 7 does)
+export TIMELINE_DIR="${TIMELINE_DIR:-$SCRATCH}"; mkdir -p "$TIMELINE_DIR"
 # never leave the GPU nodes cordoned, whatever happens
 cleanup() { rm -rf "$SCRATCH"; if [ "$DRAIN_GPU" = 1 ]; then kubectl uncordon $(kubectl get nodes -l kgpu.io/gpu=true -o jsonpath='{.items[*].metadata.name}') >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT

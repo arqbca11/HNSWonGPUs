@@ -192,6 +192,36 @@ func TestPreemptionInSim(t *testing.T) {
 	t.Logf("the round beat the stay-local projection; the wait measures from submit; %.2f s of CPU recorded wasted", r.WastedCPUS)
 }
 
+// Tick phase (decision 29): the live ticker runs from process start, so a
+// round begins at an arbitrary phase of it. The same preemption case with
+// the first tick at t=1 instead of t=2 preempts one tick earlier, and
+// everything downstream — the abort, the claim, the GPU finish, the drain —
+// shifts by exactly that second; nothing else changes.
+func TestTickPhaseByHand(t *testing.T) {
+	var qs []workload.Query
+	for i := 0; i < 20; i++ {
+		qs = append(qs, q(time.Duration(i+1)*250*time.Millisecond, time.Second, true))
+	}
+	w := oneShard(150_000, qs)
+	pol, _ := policy.ByName("reactive")
+	base := Run(w, pol, Config{})
+	early := Run(w, pol, Config{TickPhaseS: 1})
+	if early.Preempts != 1 || base.Preempts != 1 {
+		t.Fatalf("preempts: phase 1 -> %d, default -> %d, want 1 and 1", early.Preempts, base.Preempts)
+	}
+	if d := base.RoundS - early.RoundS; math.Abs(d-1) > 1e-6 {
+		t.Fatalf("round with the first tick at t=1 is %.4f s, default (t=2) %.4f s: differ by %.4f s, want exactly 1 s", early.RoundS, base.RoundS, d)
+	}
+	if d := base.WastedCPUS - early.WastedCPUS; math.Abs(d-1) > 1e-6 {
+		t.Fatalf("wasted CPU: %.4f vs %.4f s, want exactly 1 s less with the earlier tick", early.WastedCPUS, base.WastedCPUS)
+	}
+	late := Run(w, pol, Config{TickPhaseS: 2})
+	if late.RoundS != base.RoundS {
+		t.Fatalf("TickPhaseS equal to ReconsiderS must be the default: %.4f vs %.4f", late.RoundS, base.RoundS)
+	}
+	t.Logf("first tick at t=1: round %.4f s, wasted CPU %.4f s; at t=2 (default): %.4f s and %.4f s — the whole timeline shifted by exactly the phase", early.RoundS, early.WastedCPUS, base.RoundS, base.WastedCPUS)
+}
+
 // Speculation, GPU wins: with a huge margin the reactive_spec policy never
 // preempts or reneges, so the idle worker's only move is a copy. The round
 // ends at the copy's finish — by hand — and the primary never counts a wait.

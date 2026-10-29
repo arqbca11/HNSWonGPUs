@@ -829,8 +829,8 @@ func TestSimSpec(t *testing.T) {
 	t.Run("NewPresetsGenerateValidateComplete", func(t *testing.T) {
 		names := workload.PresetNames()
 		t.Logf("PresetNames = %v", names)
-		if len(names) != 8 || names[6] != "high_dim" || names[7] != "production" {
-			t.Errorf("want eight presets ending high_dim, production (roadmap order, decision 25)")
+		if len(names) != 9 || names[6] != "high_dim" || names[7] != "production" || names[8] != "hour_build" {
+			t.Errorf("want nine presets: the roadmap's eight ending high_dim, production (decision 25), then hour_build (decision 27)")
 		}
 		m := costmodel.Default()
 		hd, err := workload.Preset("high_dim")

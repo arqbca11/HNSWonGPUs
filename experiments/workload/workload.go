@@ -106,6 +106,12 @@ type SizeDist struct {
 	// BimodalHeavyFraction applies to "bimodal": the fraction of shards that
 	// get a build near Max; the rest get builds near Min.
 	BimodalHeavyFraction float64
+	// Straggler, if > 0, overrides ONE shard's size with exactly this many
+	// vectors, outside [Min, Max]: the shard that drew the largest size (for
+	// zipf, the rank-1 shard; ties to the lowest id). The other shards keep
+	// their draws, so the preset's usual shapes surround one build whose
+	// length is chosen directly — Phase 3 step 7's hour-long build.
+	Straggler int64
 }
 
 // StreamProfile describes the queries arriving at the shards during the round.

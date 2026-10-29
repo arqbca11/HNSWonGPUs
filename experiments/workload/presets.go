@@ -31,19 +31,28 @@ const (
 	presetHotNeedsIndex   = 0.8
 	presetBimodalHeavy    = 0.25
 	presetBimodalMemPoint = 0.9 // worker memory fits a heavy build up to 0.9*Max
+	// presetHourBuild is the straggler size of the hour_build preset: at the
+	// cost model's default A = 1.4e-7 s per n·ln(n)·dim and dim 128, a
+	// 12.3M-vector CPU build is 1.4e-7 × 12.3e6 × ln(12.3e6) × 128 ≈ 3,600 s,
+	// one modeled hour; on the GPU it is 6 min plus a 69 s transfer, and its
+	// modeled memory need (2 × 6.3 GB) fits a 24 GiB worker (decision 26).
+	presetHourBuild = 12_300_000
 	// approxGraphBytesPerVector is the HNSW layer-0 graph per vector at M=16
 	// (2*M links of 4 bytes). With float32 vectors that is 128*4 + 128 = 640 B
 	// per vector at dim 128.
 	approxGraphBytesPerVector = 2 * 16 * 4
 )
 
-// PresetNames lists the eight roadmap scenarios, in roadmap order. The last
-// two arrived with Phase 3 step 4: high_dim (transfer rivals the GPU build
-// and memory binds) and production (the sizes the scheduler would meet in
-// production, hour-long CPU builds — simulator only; its builds would sleep
-// for hours on the live stack).
+// PresetNames lists the roadmap's eight scenarios in roadmap order, then
+// the step 7 addition. high_dim and production arrived with Phase 3 step 4
+// (transfer rivals the GPU build and memory binds; the sizes the scheduler
+// would meet in production, hour-long CPU builds — simulator only, its
+// builds would sleep for hours on the live stack). hour_build arrived with
+// step 7: the skewed shapes plus ONE build of a modeled hour, short enough
+// to run live once, long enough for the cadence-to-build ratio to look like
+// production (decision 27).
 func PresetNames() []string {
-	return []string{"uniform", "skewed", "bimodal", "downstream_heavy", "staggered", "shrinking_pool", "high_dim", "production"}
+	return []string{"uniform", "skewed", "bimodal", "downstream_heavy", "staggered", "shrinking_pool", "high_dim", "production", "hour_build"}
 }
 
 // Preset returns a named scenario at DefaultShards shards.
@@ -133,6 +142,19 @@ func PresetWithShards(name string, n int) (Scenario, error) {
 		sc.Stream.MeanQueryDuration = 50 * time.Millisecond
 		sc.Stream.ClusterQueryRate = rateForUtil(0.4, sc.Stream, n)
 		sc.Pool.WorkerMemBytes = 80 << 30
+	case "hour_build":
+		// The skewed workload with its largest build replaced by one of a
+		// modeled hour on the shard's CPU (12.3M vectors at dim 128; 6 min
+		// plus a 69 s transfer on a GPU). Built for Phase 3 step 7: the one
+		// live round long enough that the control plane's 2 s reconsider
+		// tick and 0.5 s report cadence are a rounding error against the
+		// build, as they are in production, yet short enough to run on the
+		// kind cluster at time scale 1 (the round is ~8 min when the build
+		// is offloaded, an hour if it is not). The 30 s query stream is
+		// kept: the index queries behind the straggler wait for the whole
+		// build, which is the cost placement is measured by.
+		sc.Sizes = SizeDist{Kind: "zipf", Min: 10_000, Max: 200_000, ZipfExponent: 1.0, Straggler: presetHourBuild}
+		sc.Stream.ClusterQueryRate = rateForUtil(0.4, sc.Stream, n)
 	default:
 		return Scenario{}, fmt.Errorf("workload: unknown preset %q (known: %v)", name, PresetNames())
 	}

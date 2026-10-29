@@ -683,3 +683,15 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | SweepCSV/RowsAreSelfDescribing | The same cell with different reconsider, poll and lease intervals and noise seed | Every knob that changes a result is a recorded column, so concatenated CSVs stay distinguishable (found F2) |
 | SweepCSV/RowMatchesSimRunAndPercentileRule | Six rows recomputed through sim.Run | Each row is the simulator's Result; p50/p99 follow sorted[int(p*(n-1))] |
 | SweepCSV/StrictNamesFailLoudly | Misspelled policy, empty threshold, argument on always_gpu, unknown scenario, bad float | Each exits non-zero with a reason (step 1 F5's rule, at the runner) |
+
+## Phase 3, step 7: validation on the live cluster (Go, `experiments/workload` and `experiments/sim` pure; the live runs by `scripts/k8s-check-step7.sh` against the kind cluster). Logs: `phase3/step7-tests.log` (the pure tests), `phase3/step7-validation.log` (the live runs)
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| workload/TestStragglerOverride | `hour_build` against `skewed` at 6 and 50 shards, three seeds each. | Exactly one shard, skewed's rank-1, holds 12.3M vectors; every other shard's size and every query stream are byte-identical to skewed's (decision 27). |
+| sim/TestTickPhaseByHand | The preemption case with the first reconsider tick at t=1 instead of t=2, and at t=2 explicitly. | One preempt either way; the round and the wasted CPU shift by exactly 1 s; a phase equal to the interval is the default (decision 29). |
+| k8s-check-step7 A, B | skewed 6/2 always_gpu, seeds 1–3, then seed 1 again. | Live and simulated round time within max(2 s, 5 %); the repeat shows the live stack's own jitter. |
+| k8s-check-step7 C, D | skewed 50/3 under always_gpu and reactive, seeds 1–3. | Round time and straggler lag agree; the order-free per-shard max is small while the by-shard max is the submit-order lottery. |
+| k8s-check-step7 E | high_dim 6/2 reactive, seeds 1–3. | Agree with the default phase or inside the tick-phase envelope (decision 29). |
+| k8s-check-step7 F, G | hour_build 6/2 under always_gpu and reactive, seed 1: a modeled hour on a CPU, ~7 min on a GPU. | The straggler's GPU path (lease renewals over minutes, the transfer term, the index backlog's wait) agrees to within seconds; the runner proves which policy ran from the pod's startup line (bug 15). |
+
