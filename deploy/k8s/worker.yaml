@@ -14,7 +14,10 @@ metadata:
 data:
   # Phase 2 still runs fake builds; these are test-friendly values (short leases,
   # 10x time scale) so failure injection fits in seconds. Phase 4 changes them.
-  WORKER_MEM_BYTES: "8589934592"
+  # 24 GiB: an L4/A10G-class card, the pool the published cuVS index-build
+  # benchmarks run on; the same number the workload presets assume (Phase 3
+  # decision 26).
+  WORKER_MEM_BYTES: "25769803776"
   LEASE_SECONDS: "10"
   RENEW_INTERVAL_SECONDS: "3"
   HEARTBEAT_INTERVAL_SECONDS: "3"

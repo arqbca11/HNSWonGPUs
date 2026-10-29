@@ -374,7 +374,7 @@ Worker configuration:
 | --- | --- | --- |
 | `DATABASE_URL` | required | Postgres |
 | `WORKER_ID` | hostname | Appears in `workers` and `lease_owner` |
-| `WORKER_MEM_BYTES` | 8 GiB | Modeled capacity; the claim filters `mem_bytes <=` this |
+| `WORKER_MEM_BYTES` | 24 GiB (was 8 until Phase 3 decision 26) | Modeled capacity; the claim filters `mem_bytes <=` this |
 | `LEASE_SECONDS` | 30 | Lease length on claim and renew |
 | `RENEW_INTERVAL_SECONDS` | 10 | Renewer period |
 | `HEARTBEAT_INTERVAL_SECONDS` | 5 | Heartbeat period |

@@ -38,7 +38,7 @@ So the generator draws **coordinator-level queries** and splits each one into sh
 
 ## Presets
 
-All presets: Dim 128, mean query 20 ms, piece σ = 1.0, local DDL 0.005/s/shard at 2 s, fan-out width [2, n], hot shard off unless listed. Workers: 2 below 50 shards, 3 at 50 (roadmap targets). Worker memory: 16 GiB (no limit) unless listed. Rates shown at 6 / 50 shards.
+All presets: Dim 128, mean query 20 ms, piece σ = 1.0, local DDL 0.005/s/shard at 2 s, fan-out width [2, n], hot shard off unless listed. Workers: 2 below 50 shards, 3 at 50 (roadmap targets). Worker memory: 24 GiB (an L4/A10G-class card, the live workers' default too, Phase 3 decision 26; no limit at these sizes) unless listed. Rates shown at 6 / 50 shards.
 
 | Preset | Sizes | DDL | Stream | Pool | What it stresses |
 | --- | --- | --- | --- | --- | --- |

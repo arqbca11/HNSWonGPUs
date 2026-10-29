@@ -24,7 +24,7 @@ const (
 	presetHorizon         = 30 * time.Second
 	presetStaggerHorizon  = 40 * time.Second
 	presetStaggerSpread   = 15 * time.Second
-	presetBigWorkerMem    = 16 << 30 // effectively unbounded for these sizes
+	presetBigWorkerMem    = 24 << 30 // an L4/A10G-class card, the live default too (Phase 3 decision 26); unbounded for the small presets
 	presetHotShard        = 0
 	presetHotLoadRatio    = 4.0  // hot shard's offered load / a typical shard's
 	presetHotFanOut       = 0.15 // tenant-routed workload: fewer scatter-gathers

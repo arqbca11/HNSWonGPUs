@@ -6,7 +6,7 @@
                               name via the downward API); default empty = unknown.
                               Workers sharing a node share its network link, so
                               the scheduler's transfer estimates group by it.
-    WORKER_MEM_BYTES          modeled GPU memory capacity; default 8 GiB
+    WORKER_MEM_BYTES          modeled GPU memory capacity; default 24 GiB (an L4/A10G-class card, Phase 3 decision 26)
     LEASE_SECONDS             default 30
     RENEW_INTERVAL_SECONDS    default 10
     HEARTBEAT_INTERVAL_SECONDS default 5
@@ -104,7 +104,7 @@ class Config:
             database_url=url,
             worker_id=env.get("WORKER_ID") or socket.gethostname(),
             node=env.get("WORKER_NODE") or "",
-            mem_bytes=int(f("WORKER_MEM_BYTES", 8 << 30)),
+            mem_bytes=int(f("WORKER_MEM_BYTES", 24 << 30)),
             lease_s=f("LEASE_SECONDS", 30),
             renew_interval_s=f("RENEW_INTERVAL_SECONDS", 10),
             heartbeat_interval_s=f("HEARTBEAT_INTERVAL_SECONDS", 5),
