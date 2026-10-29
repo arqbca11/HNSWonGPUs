@@ -234,8 +234,11 @@ type BuildRow struct {
 	// Moved: placement already changed once after submit (decision 8: at most
 	// once). Speculative: this row is a GPU copy racing its shard's local
 	// build (decision 5); its build_id is the primary's plus ":spec".
-	Moved       bool `json:"moved"`
-	Speculative bool `json:"speculative"`
+	Moved bool `json:"moved"`
+	// LocalRetries: how many times the shard rebuilt this build locally after
+	// a terminal failure (Phase 4 decision 21: at most once).
+	LocalRetries int32 `json:"local_retries"`
+	Speculative  bool  `json:"speculative"`
 }
 
 // Claimed is what a worker gets back from a successful claim.
@@ -256,15 +259,29 @@ func BuildID(shardID int32, roundID int64) string {
 const selectBuild = `
 	SELECT build_id, round_id, shard_id, n_vectors, dim, mem_bytes, placement, state,
 	       priority, attempt, lease_owner, lease_until, fail_reason,
-	       enqueued_at, started_at, finished_at, moved, speculative
+	       enqueued_at, started_at, finished_at, moved, speculative, local_retries
 	FROM builds`
 
 func scanBuild(row pgx.Row) (BuildRow, error) {
 	var b BuildRow
 	err := row.Scan(&b.BuildID, &b.RoundID, &b.ShardID, &b.NVectors, &b.Dim, &b.MemBytes,
 		&b.Placement, &b.State, &b.Priority, &b.Attempt, &b.LeaseOwner, &b.LeaseUntil,
-		&b.FailReason, &b.EnqueuedAt, &b.StartedAt, &b.FinishedAt, &b.Moved, &b.Speculative)
+		&b.FailReason, &b.EnqueuedAt, &b.StartedAt, &b.FinishedAt, &b.Moved, &b.Speculative, &b.LocalRetries)
 	return b, err
+}
+
+// RetryLocal moves a terminally failed real build back to local/running for
+// the shard's one local retry (Phase 4 decision 21): allowed once
+// (local_retries 0 -> 1), at the next attempt number so the retry's
+// artifacts get their own prefix; the old failure reason is kept in the
+// row's history only through the log. Guarded like every build write.
+func (s *Store) RetryLocal(ctx context.Context, buildID string) (bool, error) {
+	return s.guarded(ctx, `
+		UPDATE builds
+		SET placement = 'local', state = 'running', attempt = attempt + 1, local_retries = local_retries + 1,
+		    fail_reason = NULL, lease_owner = NULL, lease_until = NULL, started_at = now(), finished_at = NULL
+		WHERE build_id = $1 AND state = 'failed' AND local_retries = 0 AND NOT speculative`,
+		buildID)
 }
 
 func (s *Store) GetBuild(ctx context.Context, id string) (BuildRow, bool, error) {

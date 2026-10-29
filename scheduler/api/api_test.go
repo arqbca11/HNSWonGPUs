@@ -650,3 +650,34 @@ func TestRoundDatasetAndLocalFailAPI(t *testing.T) {
 	}
 	t.Log("second fail 409, done after fail 409, fail on a gpu build 409, unknown build 404")
 }
+
+// Phase 4 decision 21 through the API: retry-local once, then 409.
+func TestRetryLocalAPI(t *testing.T) {
+	h := newHarness(t)
+	var cr CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "skewed", Seed: 1, NShards: 1, Dataset: "sift-128"}, &cr)
+	if err := h.st.Heartbeat(context.Background(), "gpu-1", 8<<30, "node-1"); err != nil {
+		t.Fatal(err)
+	}
+	var local SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 20_000_000, Dim: 128}, &local)
+	if code := h.call("POST", "/builds/"+local.BuildID+"/retry-local", nil, nil); code != 409 {
+		t.Fatalf("retry of a running build: %d, want 409", code)
+	}
+	h.call("POST", "/builds/"+local.BuildID+"/fail", LocalFailRequest{Reason: "recall@10 0.80 < 0.90"}, nil)
+	var bs BuildSummary
+	if code := h.call("POST", "/builds/"+local.BuildID+"/retry-local", nil, &bs); code != 200 || bs.State != "running" || bs.Attempt != 1 || bs.LocalRetries != 1 {
+		t.Fatalf("retry: %d %+v", code, bs)
+	}
+	t.Logf("retry-local: 200 %+v", bs)
+	h.call("POST", "/builds/"+local.BuildID+"/fail", LocalFailRequest{Reason: "recall@10 0.81 < 0.90"}, nil)
+	if code := h.call("POST", "/builds/"+local.BuildID+"/retry-local", nil, nil); code != 409 {
+		t.Fatalf("second retry: %d, want 409", code)
+	}
+	if code := h.call("POST", "/builds/nope:1/retry-local", nil, nil); code != 404 {
+		t.Fatalf("unknown: %d, want 404", code)
+	}
+	var rs RoundStatus
+	h.call("GET", fmt.Sprintf("/rounds/%d", cr.RoundID), nil, &rs)
+	t.Logf("second retry 409, unknown 404; the build is %s for good; local_retries in the report summary: %d", rs.Builds[0].State, rs.Builds[0].LocalRetries)
+}

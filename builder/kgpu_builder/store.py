@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from typing import Any
 
 import boto3
@@ -64,6 +65,13 @@ class Store:
 
     def put_bytes(self, name: str, data: bytes, content_type: str = "application/octet-stream") -> None:
         self.s3.put_object(Bucket=self.bucket, Key=name, Body=data, ContentType=content_type)
+
+    def put_file(self, name: str, path: str) -> int:
+        """Uploads a file from disk in parts (boto3's managed transfer), so a
+        large index never has to be held in memory as one blob; returns its
+        size in bytes."""
+        self.s3.upload_file(path, self.bucket, name)
+        return os.path.getsize(path)
 
     def get_bytes(self, name: str) -> bytes:
         try:

@@ -1148,3 +1148,47 @@ func TestRoundDatasetAndLocalFail(t *testing.T) {
 	}
 	t.Log("second fail, a later done, and a fail on a gpu build: all refused (0 rows)")
 }
+
+// Phase 4 decision 21: a terminally failed real build gets one local retry,
+// at the next attempt, and only one.
+func TestRetryLocalOnce(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRoundWithDataset(ctx, "skewed", 1, 2, "sift-128")
+	id := submit(t, s, r, 0, "local", 0, 1<<20)
+	if ok, _ := s.RetryLocal(ctx, id); ok {
+		t.Fatal("a running build is not retryable")
+	}
+	if ok, _ := s.FailLocal(ctx, id, "recall@10 0.80 < 0.90"); !ok {
+		t.Fatal("FailLocal")
+	}
+	ok, err := s.RetryLocal(ctx, id)
+	if err != nil || !ok {
+		t.Fatalf("RetryLocal: ok=%v err=%v", ok, err)
+	}
+	b, _, _ := s.GetBuild(ctx, id)
+	if b.State != "running" || b.Placement != "local" || b.Attempt != 1 || b.LocalRetries != 1 || b.FailReason != nil {
+		t.Fatalf("after the retry: %+v", b)
+	}
+	t.Logf("[db] %s after the retry: placement=%s state=%s attempt=%d local_retries=%d fail_reason=%v", id, b.Placement, b.State, b.Attempt, b.LocalRetries, b.FailReason)
+	if ok, _ := s.FailLocal(ctx, id, "recall@10 0.81 < 0.90"); !ok {
+		t.Fatal("second FailLocal")
+	}
+	if ok, _ := s.RetryLocal(ctx, id); ok {
+		t.Fatal("a second local retry must be refused (local_retries = 1)")
+	}
+	st, _ := state(t, pool, id)
+	t.Logf("[db] %s: state=%s; the second retry was refused — the build is failed for good", id, st)
+	gpu := submit(t, s, r, 1, "gpu", 0, 1<<20)
+	if _, err := pool.Exec(ctx, `UPDATE builds SET state='failed', fail_reason='lease expired on attempt 5 of 5' , attempt=5 WHERE build_id=$1`, gpu); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.RetryLocal(ctx, gpu); !ok {
+		t.Fatal("a gpu build whose retry budget ran out is retryable locally")
+	}
+	b, _, _ = s.GetBuild(ctx, gpu)
+	if b.Placement != "local" || b.State != "running" || b.Attempt != 6 {
+		t.Fatalf("gpu build after the local retry: %+v", b)
+	}
+	t.Logf("[db] %s: a gpu build failed at attempt 5 retries locally at attempt 6 (its own artifact prefix)", gpu)
+}

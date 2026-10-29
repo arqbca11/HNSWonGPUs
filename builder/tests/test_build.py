@@ -33,8 +33,8 @@ def toy():
     st.ensure_bucket()
     st.delete_prefix("")
     rng = np.random.default_rng(7)
-    x = rng.standard_normal((3000, 16)).astype(np.float32)
-    q = rng.standard_normal((200, 16)).astype(np.float32)
+    x = rng.standard_normal((4000, 128)).astype(np.float32)  # 128 dims: recall@10 lands below 1.0, so RECALL_MIN=1.0 refuses
+    q = rng.standard_normal((200, 128)).astype(np.float32)
     st.put_npy("splits/toy/2/vectors/shard_0.npy", x)
     st.put_npy("datasets/toy/queries.npy", q)
     st.put_npy("splits/toy/2/ground_truth/shard_0.npy", groundtruth.exact_topk(q, x, k=100))
@@ -44,13 +44,14 @@ def toy():
 def test_build_gates_and_publishes_manifest_last(toy):
     env, st, x, q = toy
     seen = []
-    orig = st.put_bytes
-    st.put_bytes = lambda name, data, ct="application/octet-stream": (seen.append(name), orig(name, data, ct))[1]  # record the write order
+    orig_bytes, orig_file = st.put_bytes, st.put_file
+    st.put_bytes = lambda name, data, ct="application/octet-stream": (seen.append(name), orig_bytes(name, data, ct))[1]  # record the write order
+    st.put_file = lambda name, path: (seen.append(name), orig_file(name, path))[1]
     progress, phases = [], []
     m = run_build(st, BuildSpec("0:1", 1, "toy", 2, 0, threads=2), progress.append, phases.append)
     print(f"recall@10 {m['recall']:.3f}, index {m['index_bytes']} bytes, build {m['build_s']:.2f} s; writes in order: {seen}; phases {phases}")
     assert m["status"] == "done" and m["kind"] == "hnswlib" and m["recall"] >= 0.9
-    assert m["n_vectors"] == 3000 and m["dim"] == 16 and m["attempt"] == 1
+    assert m["n_vectors"] == 4000 and m["dim"] == 128 and m["attempt"] == 1 and m["recall"] < 1.0
     assert seen == [f"{artifact_prefix('0:1', 1)}/index.bin", f"{artifact_prefix('0:1', 1)}/manifest.json"], "index first, manifest last (invariant 7)"
     assert progress[-1] == 1.0 and len(progress) == 10 and progress == sorted(progress)
     assert phases == ["build", "gate", "publish"]
@@ -61,7 +62,7 @@ def test_build_gates_and_publishes_manifest_last(toy):
     assert hashlib.sha256(blob).hexdigest() == m["index_sha256"]
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "i.bin"); open(p, "wb").write(blob)
-        idx = hnswlib.Index(space="l2", dim=16); idx.load_index(p, max_elements=3000)
+        idx = hnswlib.Index(space="l2", dim=128); idx.load_index(p, max_elements=4000)
         idx.set_ef(100)
         labels, _ = idx.knn_query(q, k=10)
         truth = st.get_npy("splits/toy/2/ground_truth/shard_0.npy")
@@ -90,7 +91,7 @@ def test_cli_exit_codes_and_streams(toy):
     assert [l for l in lines if "progress" in l][-1]["progress"] == 1.0
     assert [l["phase"] for l in lines if "phase" in l] == ["build", "gate", "publish"]
     assert st.exists("artifacts/0:3/2/manifest.json")
-    r = subprocess.run(base + ["--build-id", "0:4", "--attempt", "1"], env={**os.environ, **env, "RECALL_MIN": "1.01"}, capture_output=True, text=True)
+    r = subprocess.run(base + ["--build-id", "0:4", "--attempt", "1"], env={**os.environ, **env, "RECALL_MIN": "1.0"}, capture_output=True, text=True)
     print(f"gate failure: rc={r.returncode}; stdout={r.stdout.strip()}")
     assert r.returncode == 3
     f = json.loads(r.stdout)
@@ -98,3 +99,6 @@ def test_cli_exit_codes_and_streams(toy):
     r = subprocess.run(base + ["--build-id", "9:9", "--attempt", "1", "--shard", "5"], env={**os.environ, **env}, capture_output=True, text=True)
     print(f"missing shard: rc={r.returncode}; stdout={r.stdout.strip()[:100]}")
     assert r.returncode == 1 and json.loads(r.stdout)["status"] == "failed"
+    r = subprocess.run(base + ["--build-id", "0:5", "--attempt", "1"], env={**os.environ, **env, "RECALL_MIN": "1.01"}, capture_output=True, text=True)
+    print(f"RECALL_MIN out of range: rc={r.returncode}; stderr={r.stderr.strip()[:100]}")
+    assert r.returncode == 2 and r.stdout == "" and "RECALL_MIN" in r.stderr

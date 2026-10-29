@@ -5,7 +5,7 @@
 //	GET  /rounds/{id}                            round status: builds, queries, shard reports
 //	POST /builds                                 submit a build; returns placement and estimates
 //	GET  /builds/{id}                            the build row
-//	POST /builds/{id}/done                       a shard finished a local build
+//	POST /builds/{id}/done, POST /builds/{id}/fail                       a shard finished a local build
 //	POST /jobs/{round}/{shard}                   a query arrived at the shard
 //	POST /jobs/{round}/{shard}/{seq}/start       the query began running
 //	POST /jobs/{round}/{shard}/{seq}/done        the query finished
@@ -24,6 +24,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -66,6 +67,7 @@ func New(st *store.Store, pol policy.Policy, cm costmodel.Model, cfg Config, log
 	s.mux.HandleFunc("GET /builds/{id}", s.getBuild)
 	s.mux.HandleFunc("POST /builds/{id}/done", s.localBuildDone)
 	s.mux.HandleFunc("POST /builds/{id}/fail", s.localBuildFail)
+	s.mux.HandleFunc("POST /builds/{id}/retry-local", s.localBuildRetry)
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}", s.jobArrived)
 	s.mux.HandleFunc("POST /shards/{round}/{shard}/report", s.shardReport)
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}/{seq}/start", s.jobStart)
@@ -450,10 +452,11 @@ type ReportRequest struct {
 }
 
 type BuildSummary struct {
-	BuildID   string `json:"build_id"`
-	Placement string `json:"placement"`
-	State     string `json:"state"`
-	Attempt   int32  `json:"attempt"`
+	BuildID      string `json:"build_id"`
+	Placement    string `json:"placement"`
+	State        string `json:"state"`
+	Attempt      int32  `json:"attempt"`
+	LocalRetries int32  `json:"local_retries"` // Phase 4 decision 21
 }
 
 type ReportResponse struct {
@@ -532,8 +535,7 @@ func (s *Server) shardReport(w http.ResponseWriter, r *http.Request) {
 		s.log.Debug("report batch", "round_id", round, "shard_id", shard, "build_id", store.BuildID(shard, round), "records", len(req.Jobs))
 	}
 	writeJSON(w, http.StatusOK, ReportResponse{Build: BuildSummary{
-		BuildID: b.BuildID, Placement: b.Placement, State: b.State, Attempt: b.Attempt,
-	}})
+		BuildID: b.BuildID, Placement: b.Placement, State: b.State, Attempt: b.Attempt, LocalRetries: b.LocalRetries}})
 }
 
 func (s *Server) localBuildDone(w http.ResponseWriter, r *http.Request) {
@@ -570,12 +572,16 @@ func (s *Server) localBuildFail(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	req.Reason = strings.TrimSpace(req.Reason)
 	if req.Reason == "" {
 		writeError(w, http.StatusBadRequest, "reason is required")
 		return
 	}
-	if len(req.Reason) > 500 {
-		req.Reason = req.Reason[:500]
+	// 500 CHARACTERS, not bytes (bug 17): a byte cut can land inside a
+	// multi-byte character, Postgres refuses the invalid UTF-8, the shard
+	// gets a 500 and retries forever, and the round never finishes.
+	if r := []rune(req.Reason); len(r) > 500 {
+		req.Reason = string(r[:500])
 	}
 	ctx := r.Context()
 	ok, err := s.st.FailLocal(ctx, id, req.Reason)
@@ -599,6 +605,34 @@ func (s *Server) localBuildFail(w http.ResponseWriter, r *http.Request) {
 	b, _, _ := s.st.GetBuild(ctx, id)
 	s.log.Warn("local build failed", "build_id", id, "round_id", b.RoundID, "attempt", b.Attempt, "shard_id", b.ShardID, "reason", req.Reason)
 	writeJSON(w, http.StatusOK, map[string]string{"build_id": id, "state": "failed"})
+}
+
+// localBuildRetry: the shard asks to rebuild a terminally failed build on its
+// own CPU, once (Phase 4 decision 21). 200 with the new attempt; 409 when the
+// build is not failed or was already retried.
+func (s *Server) localBuildRetry(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ctx := r.Context()
+	ok, err := s.st.RetryLocal(ctx, id)
+	if err != nil {
+		s.internal(w, "retry local", err)
+		return
+	}
+	b, found, err := s.st.GetBuild(ctx, id)
+	if err != nil {
+		s.internal(w, "get build", err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "no such build")
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusConflict, fmt.Sprintf("build is %s/%s with %d local retries: not retryable", b.Placement, b.State, b.LocalRetries))
+		return
+	}
+	s.log.Warn("local retry of a failed build", "build_id", id, "round_id", b.RoundID, "attempt", b.Attempt, "shard_id", b.ShardID)
+	writeJSON(w, http.StatusOK, BuildSummary{BuildID: id, Placement: b.Placement, State: b.State, Attempt: b.Attempt, LocalRetries: b.LocalRetries})
 }
 
 // ---- follow-up jobs -------------------------------------------------------

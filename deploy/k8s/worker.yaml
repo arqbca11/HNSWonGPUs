@@ -125,7 +125,11 @@ spec:
             # wait out the pod's 30 s grace period (observed: 52 s to restart).
             terminationGracePeriodSeconds: 5
           resources:
-            requests: {cpu: "100m", memory: "128Mi"}
+            # Phase 4: a real hnswlib build holds the shard's vectors, the graph
+            # and the serialised index at once -- about 1 GiB for SIFT's largest
+            # 6-way shard (408k x 128). The Phase 2 limit of 512Mi killed the
+            # container on that build (bug 18).
+            requests: {cpu: "100m", memory: "512Mi"}
             # One card per worker. Extended resources are whole and exclusive;
             # a request equal to the limit is required, so only the limit is set.
-            limits: {memory: "512Mi", kgpu.io/gpu-card: "1"}
+            limits: {memory: "2Gi", kgpu.io/gpu-card: "1"}

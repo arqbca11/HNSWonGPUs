@@ -6,8 +6,11 @@
                                              the shard's vectors, recall-gated (RECALL_MIN, 0.9),
                                              published index.bin then manifest.json under
                                              artifacts/K:R/A/. stdout: the manifest JSON (or
-                                             {"status":"failed","reason"}); stderr: progress
-                                             as JSON lines; exit 0 built, 3 gate failed, 1 error.
+                                             {"status":"failed","reason"}); stderr: JSON lines
+                                             {"progress": p} after each of ten batches and
+                                             {"phase": "build"|"gate"|"publish"}; exit 0 built,
+                                             3 gate failed, 1 any other error (still one document
+                                             on stdout), 2 usage (one line on stderr).
     download  <dataset>                      fetch the HDF5 (resumable), verify size
     split     <dataset> <n_shards> [--zipf S] [--seed P]
                                              write the split locally: vectors per shard + manifest
@@ -184,10 +187,27 @@ def cmd_verify(ds, cfg, args):
 
 def cmd_build(cfg: Config, args) -> int:
     """Exit 0 and the manifest on stdout; 3 and a failure document when the
-    recall gate refuses; progress and phases on stderr as JSON lines."""
+    recall gate refuses; 1 and a failure document for any other error;
+    progress and phases on stderr as JSON lines. Usage errors (a bad
+    RECALL_MIN, threads < 1, a build id with a slash) exit 2 with one line
+    on stderr, like argparse's own."""
+    try:
+        recall_min = float(os.environ.get("RECALL_MIN", "0.9"))
+    except ValueError:
+        print(f"build: RECALL_MIN={os.environ.get('RECALL_MIN')!r} is not a number", file=sys.stderr)
+        return 2
+    if not 0 <= recall_min <= 1:
+        print(f"build: RECALL_MIN={recall_min} is not in [0, 1]", file=sys.stderr)
+        return 2
+    if args.threads < 1 or args.attempt < 0 or args.shard < 0 or args.n_shards < 1:
+        print("build: --threads must be >= 1, --attempt and --shard >= 0, --n-shards >= 1", file=sys.stderr)
+        return 2
+    if "/" in args.build_id or not args.build_id:
+        print(f"build: --build-id {args.build_id!r} must be shard:round, without a slash (it names the artifact prefix)", file=sys.stderr)
+        return 2
     spec = BuildSpec(build_id=args.build_id, attempt=args.attempt, dataset=args.dataset, n_shards=args.n_shards,
                      shard=args.shard, threads=args.threads, m=args.m, ef_construction=args.ef_construction,
-                     recall_k=args.recall_k, ef_search=args.ef_search, recall_min=float(os.environ.get("RECALL_MIN", "0.9")))
+                     recall_k=args.recall_k, ef_search=args.ef_search, recall_min=recall_min)
 
     def progress(p: float) -> None:
         print(json.dumps({"progress": round(p, 4)}), file=sys.stderr, flush=True)
@@ -200,6 +220,12 @@ def cmd_build(cfg: Config, args) -> int:
     except GateFailed as e:
         print(json.dumps({"status": "failed", "reason": str(e), "recall": e.recall, "build_id": spec.build_id, "attempt": spec.attempt}), flush=True)
         return 3
+    except NotFound as e:
+        print(json.dumps({"status": "failed", "reason": f"object not in the store: {e}", "build_id": spec.build_id, "attempt": spec.attempt}), flush=True)
+        return 1
+    except Exception as e:  # noqa: BLE001  exit 1 still carries one document (cross-check F5)
+        print(json.dumps({"status": "failed", "reason": f"{type(e).__name__}: {e}"[:500], "build_id": spec.build_id, "attempt": spec.attempt}), flush=True)
+        return 1
     print(json.dumps(m), flush=True)
     return 0
 
@@ -231,11 +257,7 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     cfg = Config.from_env()
     if args.cmd == "build":
-        try:
-            return cmd_build(cfg, args)
-        except NotFound as e:
-            print(json.dumps({"status": "failed", "reason": f"object not in the store: {e}"}), flush=True)
-            return 1
+        return cmd_build(cfg, args)
     ds = datasets.get(args.dataset)
     steps = {"download": cmd_download, "split": cmd_split, "groundtruth": cmd_groundtruth, "upload": cmd_upload, "verify": cmd_verify}
     try:

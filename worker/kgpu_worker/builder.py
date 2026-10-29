@@ -172,10 +172,10 @@ class HnswlibBuilder:
         out = "".join(out_lines).strip()
         if rc == 3:
             try:
-                reason = json.loads(out).get("reason", out)
+                reason = json.loads(out).get("reason") or out
             except ValueError:
                 reason = out
-            raise GateRefused(reason)
+            raise GateRefused(reason or "the builder's gate refused the build and gave no reason")
         if rc != 0:
             raise RuntimeError(f"builder exited {rc}: {out[:300]}")
         m = json.loads(out)

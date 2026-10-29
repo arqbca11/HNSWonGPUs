@@ -90,7 +90,8 @@ type buildState struct {
 	cancelWhy  string        // why: preempted, or the speculative GPU copy won
 	progress   float32
 	indexReady bool
-	failed     bool
+	failed     bool // terminal: the index will never come (decision 21's fallback runs the index queries anyway)
+	retryAsked bool // the one local retry was requested (decision 21)
 }
 
 type Shard struct {
@@ -267,11 +268,46 @@ func (s *Shard) cpu(ctx context.Context) {
 // nextReady returns the index of the oldest ready query, or -1. Caller holds mu.
 func (s *Shard) nextReady() int {
 	for i, item := range s.queue {
-		if !item.q.NeedsIndex || s.b.indexReady {
+		if !item.q.NeedsIndex || s.b.indexReady || s.b.failed {
+			// failed: the index will never come; the query runs without it
+			// (the exact-scan fallback, decision 21)
 			return i
 		}
 	}
 	return -1
+}
+
+func (s *Shard) countIndexQueued() int {
+	n := 0
+	for _, item := range s.queue {
+		if item.q.NeedsIndex {
+			n++
+		}
+	}
+	return n
+}
+
+// retryLocal asks the scheduler for the one local retry (decision 21) and,
+// if granted, starts the local build at the new attempt; otherwise the
+// build is failed for good. Called with s.mu held; the HTTP call runs
+// without it.
+func (s *Shard) retryLocal() {
+	id := s.b.id
+	s.mu.Unlock()
+	accepted, b, err := s.api.RetryLocal(context.Background(), id)
+	s.mu.Lock()
+	if err != nil {
+		s.err = fmt.Errorf("retry local: %w", err)
+		return
+	}
+	if !accepted {
+		s.b.failed = true
+		s.event("the scheduler refused the local retry: %d queries that need the index will run without it (fallback)", s.countIndexQueued())
+		return
+	}
+	s.b.placement, s.b.state, s.b.attempt = b.Placement, b.State, b.Attempt
+	s.b.localWant, s.b.indexReady = true, false
+	s.event("local retry granted at attempt %d: starting the local build", b.Attempt)
 }
 
 // runQuery occupies the CPU for the query's scaled duration. Timestamps are
@@ -504,10 +540,20 @@ func (s *Shard) apply(b client.BuildSummary) {
 			s.b.cancel, s.b.cancelWhy = true, "the speculative gpu copy finished first"
 			s.event("the speculative gpu copy won: aborting the local build")
 		}
-	case b.State == "failed" && !s.b.failed:
+	case b.State == "failed" && !s.b.failed && !s.b.localBusy:
+		// Phase 4 decision 21: a real build that failed for good is rebuilt
+		// on this CPU once; after that the index queries run without it.
+		if s.cfg.Dataset != "" && b.LocalRetries == 0 && !s.b.retryAsked {
+			s.b.retryAsked = true
+			s.event("build FAILED (attempt %d): retrying locally once", b.Attempt)
+			s.log.Warn("build failed; retrying locally once (decision 21)", "attempt", b.Attempt)
+			s.retryLocal()
+			return
+		}
 		s.b.failed = true
-		s.event("build FAILED (attempt %d): queries that need the index can never run on this shard", b.Attempt)
-		s.log.Error("build failed; needs_index queries are stuck (open question in the design doc)", "attempt", b.Attempt)
+		s.event("build FAILED for good (attempt %d, %d local retries): %d queries that need the index will run without it (fallback)",
+			b.Attempt, b.LocalRetries, s.countIndexQueued())
+		s.log.Error("build failed for good; needs_index queries run without the index (decision 21)", "attempt", b.Attempt, "local_retries", b.LocalRetries)
 	case b.Placement == "gpu" && (b.State == "queued" || b.State == "leased") && s.b.localBusy:
 		s.b.cancel, s.b.cancelWhy = true, "preempted to the gpu queue"
 		s.event("scheduler moved the build to the gpu (%s): aborting the local build", b.State)
@@ -540,8 +586,11 @@ func (s *Shard) fail(err error) {
 // with the output. The child inherits the environment (S3_*, RECALL_MIN).
 func (s *Shard) runRealBuild(ctx context.Context) {
 	started := time.Now()
+	// --attempt is the row's attempt: 0 for a first local build, N+1 for a
+	// local retry (decision 21), so the artifacts never share a prefix with a
+	// stale GPU attempt (invariant 7; cross-check G3)
 	argv := append(append([]string{}, s.cfg.BuilderCmd...), "build",
-		"--build-id", s.b.id, "--attempt", "0", "--dataset", s.cfg.Dataset,
+		"--build-id", s.b.id, "--attempt", strconv.Itoa(int(s.b.attempt)), "--dataset", s.cfg.Dataset,
 		"--n-shards", strconv.Itoa(s.cfg.NShards), "--shard", strconv.Itoa(int(s.w.ShardID)),
 		"--threads", strconv.Itoa(max(s.cfg.Threads, 1)))
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -572,7 +621,10 @@ func (s *Shard) runRealBuild(ctx context.Context) {
 			}
 			s.mu.Lock()
 			if msg.Progress != nil {
-				s.b.progress = float32(*msg.Progress)
+				// clamp: a stray value from the child must never make the
+				// shard's report invalid (the scheduler answers 400 and the
+				// shard would be stuck; cross-check F2)
+				s.b.progress = float32(min(max(*msg.Progress, 0), 1))
 			}
 			s.mu.Unlock()
 		}
@@ -616,6 +668,12 @@ loop:
 	}
 	<-progressDone
 	out := strings.TrimSpace(stdout.String())
+	if waitErr == nil && !manifestSaysDone(out) {
+		// exit 0 without a manifest is a broken builder, not a built index
+		// (parity with the worker, cross-check G2)
+		s.localFailed(ctx, started, "builder exited 0 without a manifest: "+out)
+		return
+	}
 	if waitErr == nil {
 		s.mu.Lock()
 		s.b.progress = 1
@@ -651,8 +709,8 @@ loop:
 }
 
 func (s *Shard) localFailed(ctx context.Context, started time.Time, reason string) {
-	if len(reason) > 500 {
-		reason = reason[:500]
+	if r := []rune(reason); r != nil && len(r) > 500 {
+		reason = string(r[:500]) // characters, not bytes (bug 17)
 	}
 	s.mu.Lock()
 	s.event("local build FAILED after %s: %s", time.Since(started).Round(time.Millisecond), reason)
@@ -670,6 +728,15 @@ func (s *Shard) localFailed(ctx context.Context, started time.Time, reason strin
 	if !accepted {
 		s.event("the scheduler had moved the build on; the failure is moot")
 	}
+}
+
+// manifestSaysDone is true when stdout holds the builder's manifest with
+// status "done".
+func manifestSaysDone(out string) bool {
+	var m struct {
+		Status string `json:"status"`
+	}
+	return json.Unmarshal([]byte(out), &m) == nil && m.Status == "done"
 }
 
 // summarizeManifest pulls the numbers worth a timeline line out of the

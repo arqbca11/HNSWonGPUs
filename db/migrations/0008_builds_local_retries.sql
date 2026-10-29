@@ -1,0 +1,13 @@
+-- Phase 4 step 2 (owner approved 2026-10-29): a failed build is retried on
+-- the shard's own CPU once, then its index queries run without it.
+--
+-- local_retries: how many times the shard rebuilt this build locally after a
+-- terminal failure (the recall gate refused it, or the GPU retry budget ran
+-- out). The retry is allowed only while it is 0, like every other build write
+-- it is a guarded UPDATE, and it moves the row back to local/running at the
+-- NEXT attempt number, so the retry's artifacts get their own prefix and a
+-- stale GPU attempt can never be mistaken for them (invariant 7). After a
+-- second failure the shard runs its needs_index queries anyway -- the
+-- exact-scan fallback a database takes past an unusable index -- and the
+-- round completes with the failure on record (Phase 4 decision 21).
+ALTER TABLE builds ADD COLUMN local_retries int NOT NULL DEFAULT 0;

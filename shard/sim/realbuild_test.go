@@ -153,3 +153,79 @@ func TestRealBuildChildProcess(t *testing.T) {
 		t.Logf("the child (which would have slept 60 s per progress line) was killed on the preempt within %s; no stub process survives; the gpu worker finished the build", time.Since(t0).Round(time.Millisecond))
 	})
 }
+
+// Phase 4 decision 21: a real build that fails for good is rebuilt locally
+// once, at the next attempt; if that fails too, the index queries run
+// without the index and the round completes with the failure on record.
+func TestFailedBuildRetriesOnceThenFallsBack(t *testing.T) {
+	// a stub that refuses at the gate on every run, counting its runs
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "stub.py")
+	counter := filepath.Join(dir, "runs")
+	script := `import json, os, sys
+runs = open(sys.argv[-1]).read().count("x") if os.path.exists(sys.argv[-1]) else 0
+open(sys.argv[-1], "a").write("x")
+print(json.dumps({"progress": 1.0}), file=sys.stderr, flush=True)
+print(json.dumps({"status": "failed", "reason": "recall@10 0.8000 < 0.90 (run %d, attempt %s)" % (runs + 1, sys.argv[sys.argv.index("--attempt") + 1])}), flush=True)
+sys.exit(3)
+`
+	if err := os.WriteFile(stub, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t)
+	h.fakeWorker("tiny", 1, scale)
+	time.Sleep(100 * time.Millisecond)
+	cfg := RoundConfig{
+		Dataset: "stub",
+		Shard: Config{TimeScale: scale, PollInterval: 100 * time.Millisecond, Slice: 20 * time.Millisecond,
+			Dataset: "stub", NShards: 1, BuilderCmd: []string{"python3", stub, "--", counter}, Threads: 1},
+		MinWorkers: 1, WaitWorkers: 5 * time.Second, RoundTimeout: 60 * time.Second,
+	}
+	// the stub ignores the real flags; the counter path is its last argument,
+	// so give it as part of the command and let the build flags follow
+	cfg.Shard.BuilderCmd = []string{"python3", stub}
+	script2 := strings.ReplaceAll(script, `sys.argv[-1]`, `"`+counter+`"`)
+	if err := os.WriteFile(stub, []byte(script2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := workload.Workload{
+		Scenario: workload.Scenario{Name: "test-retry-fallback", NShards: 1, Dim: 128, Stream: workload.StreamProfile{Horizon: 20 * time.Second}},
+		Seed:     1,
+		Shards: []workload.ShardWorkload{{ShardID: 0, NVectors: 100_000, Queries: []workload.Query{
+			q(200*time.Millisecond, 300*time.Millisecond, true, workload.KindSingleShard, 1),
+			q(300*time.Millisecond, 300*time.Millisecond, true, workload.KindSingleShard, 2),
+		}}},
+	}
+	t0 := time.Now()
+	tl, err := RunRound(context.Background(), h.api, w, cfg, h.log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retried, fallback bool
+	for _, e := range tl.Shards[0].Events {
+		t.Logf("  +%5.2fs %s", e.At.Seconds(), e.Msg)
+		retried = retried || strings.Contains(e.Msg, "local retry granted at attempt 1")
+		fallback = fallback || strings.Contains(e.Msg, "will run without it")
+	}
+	s := tl.Shards[0]
+	runs, _ := os.ReadFile(counter)
+	var attempt, retries int32
+	var reason string
+	h.pool.QueryRow(context.Background(), `SELECT attempt, local_retries, fail_reason FROM builds WHERE round_id=$1 AND shard_id=0`, tl.RoundID).Scan(&attempt, &retries, &reason)
+	t.Logf("[db] build: state=%s attempt=%d local_retries=%d fail_reason=%q; the stub ran %d times; round took %s", s.BuildState, attempt, retries, reason, len(runs), time.Since(t0).Round(time.Millisecond))
+	if !retried || !fallback || s.BuildState != "failed" || len(runs) != 2 || attempt != 1 || retries != 1 || !strings.Contains(reason, "attempt 1") {
+		t.Fatalf("want one local retry at attempt 1 (the stub run twice), then failed for good with the fallback; got retried=%v fallback=%v state=%s runs=%d attempt=%d retries=%d reason=%q",
+			retried, fallback, s.BuildState, len(runs), attempt, retries, reason)
+	}
+	for _, ql := range s.Queries {
+		if ql.Started < 0 || ql.Finished < 0 {
+			t.Fatalf("index query %d never ran: the fallback must release it", ql.Seq)
+		}
+	}
+	var finished *time.Time
+	h.pool.QueryRow(context.Background(), `SELECT finished_at FROM rounds WHERE round_id=$1`, tl.RoundID).Scan(&finished)
+	if finished == nil {
+		t.Fatal("the round must complete with the failed build on record")
+	}
+	t.Logf("both index queries ran without the index (the exact-scan fallback) and the round completed; the retry built under attempt 1, its own artifact prefix")
+}

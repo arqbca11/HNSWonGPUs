@@ -67,6 +67,7 @@ class Config:
     model: Model
     builder_cmd: list[str] = field(default_factory=lambda: [sys.executable, "-m", "kgpu_builder"])
     build_threads: int = 8
+    recall_min: float = 0.9
 
     def validate(self) -> None:
         """Raise ConfigError with one clear line on the first bad value."""
@@ -80,6 +81,10 @@ class Config:
             (self.fake_time_scale > 0, "FAKE_TIME_SCALE must be positive"),
             (self.shutdown_finish_budget_s >= 0, "SHUTDOWN_FINISH_BUDGET_SECONDS must be non-negative"),
             (self.log_format in ("json", "text"), "LOG_FORMAT must be json or text"),
+            (self.builder in ("fake", "hnswlib"), "BUILDER must be fake or hnswlib"),
+            (self.build_threads >= 1, "BUILD_THREADS must be at least 1"),
+            (len(self.builder_cmd) >= 1, "BUILDER_CMD must name a command"),
+            (0 <= self.recall_min <= 1, "RECALL_MIN must be a number in [0, 1]"),
             (self.model.a > 0, "COST_A must be positive"),
             (self.model.speedup > 0, "COST_SPEEDUP must be positive"),
             (self.model.gpu_overhead >= 0, "COST_GPU_OVERHEAD must be non-negative"),
@@ -110,6 +115,14 @@ class Config:
             model = Model.from_env(env)
         except ValueError as e:
             raise ConfigError(f"COST_* value is not a number ({e})") from None
+        if env.get("BUILDER_CMD"):
+            import shlex
+            try:
+                builder_cmd = shlex.split(env["BUILDER_CMD"])
+            except ValueError as e:
+                raise ConfigError(f"BUILDER_CMD={env['BUILDER_CMD']!r} does not parse as a command line ({e})") from None
+        else:
+            builder_cmd = [sys.executable, "-m", "kgpu_builder"]
 
         cfg = cls(
             database_url=url,
@@ -121,8 +134,9 @@ class Config:
             heartbeat_interval_s=f("HEARTBEAT_INTERVAL_SECONDS", 5),
             poll_interval_s=f("POLL_INTERVAL_SECONDS", 0.5),
             builder=env.get("BUILDER") or "fake",
-            builder_cmd=(__import__("shlex").split(env["BUILDER_CMD"]) if env.get("BUILDER_CMD") else [sys.executable, "-m", "kgpu_builder"]),
+            builder_cmd=builder_cmd,
             build_threads=int(f("BUILD_THREADS", 8)),
+            recall_min=f("RECALL_MIN", 0.9),
             fake_time_scale=f("FAKE_TIME_SCALE", 1.0),
             shutdown_finish_budget_s=f("SHUTDOWN_FINISH_BUDGET_SECONDS", 5),
             fake_fail_build_ids=frozenset(x.strip() for x in (env.get("FAKE_FAIL_BUILD_IDS") or "").split(",") if x.strip()),

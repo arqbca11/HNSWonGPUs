@@ -1,7 +1,11 @@
 """The real build: hnswlib on one shard's vectors, gated by recall, published
 manifest-last (Phase 4 decisions 2, 3, 4, 17).
 
-    run_build(cfg, store, spec, progress) -> manifest dict
+    run_build(store, spec, progress=None, phase=None) -> manifest dict
+
+Reproducibility: with one thread the same vectors give the same index bytes
+and recall; with several, hnswlib's parallel insertion makes the graph (and
+the recall, slightly) depend on timing (cross-check G10).
 
 Steps, in order: fetch the shard's vectors, the dataset's held-out queries
 and the shard's exact ground truth from the store; build the HNSW graph in
@@ -53,7 +57,15 @@ class GateFailed(Exception):
 
     def __init__(self, recall: float, k: int, threshold: float):
         self.recall, self.k, self.threshold = recall, k, threshold
-        super().__init__(f"recall@{k} {recall:.4f} < {threshold:.2f}")
+        super().__init__(f"recall@{k} {recall:.4f} < {threshold:.4f}")  # same precision both sides (cross-check F6)
+
+
+def _hnswlib_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("hnswlib")
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 
 def artifact_prefix(build_id: str, attempt: int) -> str:
@@ -104,14 +116,18 @@ def run_build(store: Store, spec: BuildSpec, progress: Callable[[float], None] |
         raise GateFailed(recall, spec.recall_k, spec.recall_min)
     if phase:
         phase("publish")
+    prefix = artifact_prefix(spec.build_id, spec.attempt)
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "index.bin")
         idx.save_index(path)
+        del idx  # the graph is on disk now; drop it before the upload (peak memory, bug 18)
+        h = hashlib.sha256()
         with open(path, "rb") as f:
-            blob = f.read()
-    prefix = artifact_prefix(spec.build_id, spec.attempt)
-    t3 = time.time()
-    store.put_bytes(f"{prefix}/index.bin", blob)
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        index_sha256, index_bytes = h.hexdigest(), os.path.getsize(path)
+        t3 = time.time()
+        store.put_file(f"{prefix}/index.bin", path)
     manifest = {
         "status": "done",
         "kind": "hnswlib",
@@ -119,15 +135,15 @@ def run_build(store: Store, spec: BuildSpec, progress: Callable[[float], None] |
         "n_vectors": int(vectors.shape[0]),
         "dim": int(vectors.shape[1]),
         "n_queries": int(queries.shape[0]),
-        "index_bytes": len(blob),
-        "index_sha256": hashlib.sha256(blob).hexdigest(),
+        "index_bytes": index_bytes,
+        "index_sha256": index_sha256,
         "index_key": f"{prefix}/index.bin",
         "recall": recall,
         "fetch_s": fetch_s,
         "build_s": build_s,
         "gate_s": gate_s,
         "upload_s": time.time() - t3,
-        "hnswlib_version": getattr(hnswlib, "__version__", "unknown"),
+        "hnswlib_version": _hnswlib_version(),
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     store.put_json(f"{prefix}/manifest.json", manifest)  # last (invariant 7)

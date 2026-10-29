@@ -115,8 +115,8 @@ def toy_store():
     st.ensure_bucket()
     st.delete_prefix("")
     rng = np.random.default_rng(3)
-    x = rng.standard_normal((3000, 16)).astype(np.float32)
-    q = rng.standard_normal((100, 16)).astype(np.float32)
+    x = rng.standard_normal((4000, 128)).astype(np.float32)  # 128 dims: recall@10 below 1.0, so RECALL_MIN=1.0 refuses
+    q = rng.standard_normal((100, 128)).astype(np.float32)
     st.put_npy("splits/toy/2/vectors/shard_0.npy", x)
     st.put_npy("datasets/toy/queries.npy", q)
     st.put_npy("splits/toy/2/ground_truth/shard_0.npy", groundtruth.exact_topk(q, x, k=100))
@@ -129,7 +129,7 @@ def test_worker_runs_the_real_builder_and_the_gate(db, dsn, toy_store):
     env, st = toy_store
     os.environ.update(env)
     r = new_round(db, n_shards=2, dataset="toy")
-    bid = new_build(db, r, 0, n=3000, dim=16)
+    bid = new_build(db, r, 0, n=4000, dim=128)
     cfg = Config(database_url=dsn, worker_id="gpu-hnsw", node="testnode", mem_bytes=8 << 30, lease_s=5,
                  renew_interval_s=0.5, heartbeat_interval_s=0.5, poll_interval_s=0.05, builder="hnswlib",
                  fake_time_scale=1, shutdown_finish_budget_s=5, fake_fail_build_ids=frozenset(), health_addr="",
@@ -142,10 +142,10 @@ def test_worker_runs_the_real_builder_and_the_gate(db, dsn, toy_store):
     print(f"  [db] {bid}: done; artifact manifest: recall {m['recall']:.3f}, {m['index_bytes']} bytes, build {m['build_s']:.2f} s")
     assert m["recall"] >= 0.9 and st.exists(f"artifacts/{bid}/1/index.bin")
     w.shutdown("test over"); t.join(5)
-    # the gate refusing: RECALL_MIN above 1
+    # the gate refusing: RECALL_MIN at 1.0, which random 128-dim data does not reach
     r2 = new_round(db, n_shards=2, dataset="toy")
-    bid2 = new_build(db, r2, 0, n=3000, dim=16)
-    w2 = Worker(cfg, HnswlibBuilder(cfg.model, cfg.builder_cmd, threads=2, env={"RECALL_MIN": "1.01"}))
+    bid2 = new_build(db, r2, 0, n=4000, dim=128)
+    w2 = Worker(cfg, HnswlibBuilder(cfg.model, cfg.builder_cmd, threads=2, env={"RECALL_MIN": "1.0"}))
     t2 = run_in_thread(w2)
     wait_for(lambda: row(db, bid2)["state"] == "failed", 60, "the gate to refuse")
     reason = db.execute("SELECT fail_reason FROM builds WHERE build_id = %s", (bid2,)).fetchone()[0]

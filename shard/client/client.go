@@ -97,10 +97,11 @@ type ReportRequest struct {
 }
 
 type BuildSummary struct {
-	BuildID   string `json:"build_id"`
-	Placement string `json:"placement"`
-	State     string `json:"state"`
-	Attempt   int32  `json:"attempt"`
+	BuildID      string `json:"build_id"`
+	Placement    string `json:"placement"`
+	State        string `json:"state"`
+	Attempt      int32  `json:"attempt"`
+	LocalRetries int32  `json:"local_retries"` // Phase 4 decision 21
 }
 
 type ReportResponse struct {
@@ -111,6 +112,7 @@ type Round struct {
 	RoundID    int64      `json:"round_id"`
 	Scenario   string     `json:"scenario"`
 	Seed       int64      `json:"seed"`
+	Dataset    *string    `json:"dataset"` // Phase 4 decision 15; nil = a modeled round
 	NShards    int32      `json:"n_shards"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
@@ -199,6 +201,14 @@ func (c *Client) Submit(ctx context.Context, req SubmitBuildRequest) (SubmitBuil
 func (c *Client) LocalDone(ctx context.Context, buildID string) (accepted bool, err error) {
 	code, err := c.do(ctx, "POST", "/builds/"+buildID+"/done", nil, nil, 200, 409)
 	return code == 200, err
+}
+
+// RetryLocal asks the scheduler to move a terminally failed build back to
+// local/running for the shard's one retry (Phase 4 decision 21). accepted is
+// false (409) when the build is not failed or was already retried.
+func (c *Client) RetryLocal(ctx context.Context, buildID string) (accepted bool, b BuildSummary, err error) {
+	code, err := c.do(ctx, "POST", "/builds/"+buildID+"/retry-local", nil, &b, 200, 409)
+	return code == 200, b, err
 }
 
 // LocalFail reports a local build the recall gate refused (Phase 4 decision 19).
