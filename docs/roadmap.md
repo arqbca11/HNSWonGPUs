@@ -246,7 +246,7 @@ Install Prometheus and Grafana with the `kube-prometheus-stack` Helm chart and s
 
 ## Phase 3: Placement policies and experiments
 
-This phase is the core of the project: four policies behind one interface, compared on identical seeded workloads. Jobs are still fake. **Done when** the policy comparison exists for the baseline workload plus the sweeps below.
+This phase is the core of the project: four policies behind one interface, compared on identical seeded workloads. Jobs are still fake. **Done when** the policy comparison exists for the baseline workload plus the sweeps below. *(Done: `scripts/sim-sweep-full.sh`, results under `experiments/results/full/`, the write-up in the Phase 3 design doc and `docs/speedup.md` evidence 5.)*
 
 ### Policy interface
 

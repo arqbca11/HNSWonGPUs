@@ -15,7 +15,7 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1) | Simulated |
+| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **Unknown.** hnswlib (CPU) vs cuVS (GPU) on real hardware is Phase 5 | — |
@@ -116,4 +116,20 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **Consequence for the ledger.** Evidence 2's ~7× and ~20 % are now numbers from a validated instrument, still built on an assumed cost model. The next change to this column comes from Phase 4's measured CPU constants and Phase 5's measured GPU speedup, not from more simulation.
 
-*(Next expected entries: the FULL policy comparison on the validated simulator; Phase 4 — the measured CPU build curve and MinIO throughput replacing A and the bandwidth; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against evidence 3's prediction.)*
+### Evidence 5 — the full policy comparison on the validated simulator (Phase 3 closed)
+
+**Setup.** `scripts/sim-sweep-full.sh`: nine scenarios × five policies × 50 seeds at the baseline, every roadmap sweep axis one at a time around `skewed` and `high_dim` at 30 seeds; 8,711 rounds, all completed; `experiments/results/full/`. The table of results is in the Phase 3 design doc ("The full policy comparison").
+
+**Result, as speedups.** Where the round is horizon-bound (the 6-shard presets at their loads) every policy ties at the 30 s horizon: the *round-level* speedup from offloading is 1.0× there, by construction. Where something else binds:
+
+| Arm | always_gpu → reactive | reactive → clairvoyant (what knowing the future is worth) | The threshold policy |
+| --- | --- | --- | --- |
+| 50 shards on 3 workers | 49.0 → 30.2 s p50: **1.6×** | 30.2 → 30.2: nothing left | 32.7 |
+| dim 1536 | 95.1 → 93.9 p50, 120 → 105.5 p99: 1.01× / **1.14×** | 93.9 → 89.5, 105.5 → 90.4: 5 % / 17 % | 259.6: **2.8× worse** than reactive |
+| dim 768 | 53.2 → 54.3 p50, 67.0 → 58.7 p99: 0.98× / **1.14×** | 54.3 → 52.0, 58.7 → 52.9: 4 % / 11 % | 135.8: 2.5× worse |
+| 1 worker | 32.2 → 30.0: **1.07×** | — | 32.7 |
+| σ = 0.6 | reactive p99 32.8 vs reactive_spec 30.3: **speculation recovers 8 %** | the oracle degrades to 30.8 / 33.4 | 32.7 |
+
+**What it changes in the current-answer table.** Nothing at the median of the current presets (still ~0, physics-bound). The round-level speedup *of the dynamic policy over naive offloading* is now a measured 1.6× at the queue-bound 50-shard arm (evidence 2's 20 % was the production preset at 160 GB workers) and ~1.14× at p99 in the transfer-bound high-dimension arms, with the oracle a further 5–17 % ahead. The fixed threshold is not a contender. All of it inherits the assumed 10× / 2 s / 200 MB/s cost model; Phase 4's calibration and Phase 5's GPU measurement rerun this sweep on measured constants.
+
+*(Next expected entries: Phase 4 — the measured CPU build curve and the object store's throughput replacing A and the bandwidth, and this sweep rerun on them; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against evidence 3's prediction.)*

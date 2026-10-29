@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 3's steps are done (step 7 validated the simulator against the live cluster, decisions 26–30); its FULL policy comparison, the phase's "done when", is still owed. Phase 4 (real CPU builds) has started: step 1, the data, is built — the `builder/` package, the two datasets split 6 and 50 ways with exact ground truth, and RustFS as the object store (Phase 4 decisions 9–14).** Next: Phase 4 step 2, the hnswlib builder CLI and the artifact store; the Phase 3 full comparison can run in parallel. Phase 2 is done, including its two post-close amendments (decisions 39, 40).
+**Phase 3 is done** (step 7 validated the simulator against the live cluster, decisions 26–30; the full policy comparison is `scripts/sim-sweep-full.sh`, written up in the Phase 3 design doc and `docs/speedup.md` evidence 5). **Phase 4 (real CPU builds) is in progress: step 1, the data, is done** — the `builder/` package, the two datasets split 6 and 50 ways with exact ground truth, and RustFS as the object store (Phase 4 decisions 9–14). Next: step 2, the hnswlib builder CLI, the artifact store and the recall gate, with the shard running its local build as a child process. Phase 2 is done, including its two post-close amendments (decisions 39, 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture
@@ -88,6 +88,7 @@ Toolchain (macOS, Homebrew): `brew install go python@3.12 uv libpq kind kubectl 
 | Simulator tests (pure, hand-computed, no database) | `go test -v ./experiments/sim/` |
 | Run a simulated sweep (one CSV row per round) | `go run ./experiments/cmd/sweep -scenarios skewed -policies all -rounds 20 -out rounds.csv` (`-h` lists every sweep axis; `-scenarios all` runs the roadmap's eight) |
 | The committed demo sweep and both plots | `scripts/sim-sweep-demo.sh` (regenerates `experiments/results/demo/`; rerun after changing the simulator, policies or cost model and commit the diff) |
+| The full policy comparison (Phase 3's "done when") | `scripts/sim-sweep-full.sh` (~15 min; `experiments/results/full/`: the baseline at 50 seeds, every roadmap axis at 30; `SEEDS=10` for a quick pass; rerun and commit after the cost model changes) |
 | Plots from any sweep CSV | `cd experiments/analysis && uv run python plot_rounds.py <csv...> -o out.png` (also `plot_sigma.py`) |
 | Print a generated workload | `PRINT_WORKLOAD=1 SCENARIO=skewed N_SHARDS=6 SEED=1 go run ./shard/cmd/shardsim` (presets: uniform, skewed, bimodal, downstream_heavy, staggered, shrinking_pool, high_dim, production, hour_build) |
 | Run the shard simulator against a running scheduler | `SCHEDULER_URL=http://127.0.0.1:8080 TIME_SCALE=10 LOG_FORMAT=text go run ./shard/cmd/shardsim` (env vars at the top of `shard/cmd/shardsim/main.go`) |

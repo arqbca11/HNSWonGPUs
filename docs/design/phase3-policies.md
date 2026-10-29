@@ -331,6 +331,36 @@ A fresh agent wrote 31 subtests from the docs and `go doc` alone (`TestStep7Stra
 | G7: live, `rollout status` returned at 1.1–1.4 s with the new pod already logging the new policy while the old pod was still Ready and draining; the pods-gone-plus-startup-line proof came at 5.2–6.0 s. Bug 15's "returned before the restart began" race did not reproduce in two switches; the drain window alone is ~4 s. | Observation | Decision 30 records both numbers; the runner's wait covers both. |
 | G8: the comparer's workers-per-node was unstated. | Spec gap | The header prints it (1, irrelevant with sharing off) and the envelope's phase count. |
 
+### The full policy comparison (the phase's "done when")
+
+`scripts/sim-sweep-full.sh` on the step 7-validated simulator: the roadmap's eight scenarios plus the shrinking pool × five policies × 50 seeds (the baseline, link sharing on — the Phase 5 pool, decision 22), then every axis of the roadmap's sweep table varied one at a time around `skewed` and `high_dim` at 30 seeds. 8,711 rounds, all completed, byte-identical on rerun; CSVs and the two figures under `experiments/results/full/`. Numbers are p50 / p99 round time in modeled seconds. The cost model is still the assumed one (`docs/speedup.md`).
+
+**Baseline, 50 seeds.** Every scenario except two is a tie across policies, and the two that differ are the static threshold losing:
+
+| Scenario | always_gpu | threshold | reactive | reactive_spec | clairvoyant | What binds |
+| --- | --- | --- | --- | --- | --- | --- |
+| uniform, skewed, staggered, downstream_heavy | 30.0 / 30.3–31.7 (staggered 40.1 / 40.2) | 32.7–43.3 / 34–50 | = always_gpu | = always_gpu | = always_gpu | The 30 s query horizon (40 s staggered): every build is done long before the stream ends, so placement cannot move the round. |
+| bimodal, high_dim, production | 98.3 / 104.7; 537.0 / 541.0; 34,905 / 34,919 | same | same | same | same | One build that fits no worker and must run locally (the presets' own worker memory) sets the round for every policy. |
+| hour_build | 441.7 / 447.8 | 438.9 / 440.2 | 438.9 / 440.2 | same | same | The straggler's GPU path; always_gpu queues the small builds behind it on the second worker. |
+| shrinking_pool | 46.2 / 50.0 | 48.9 / 50.2 | 48.9 / 50.2 | same | same | The killed worker's lease (30 s) requeues its build; always_gpu happened to hold it on the surviving worker. |
+
+**The axes that move the binding constraint are where the policies separate.**
+
+| Axis (skewed unless said) | always_gpu | threshold | reactive | reactive_spec | clairvoyant | Reading |
+| --- | --- | --- | --- | --- | --- | --- |
+| 50 shards on 3 workers | 49.0 / 50.9 | 32.7 / 35.3 | **30.2 / 32.6** | 30.2 / 32.6 | 30.2 / 32.6 | The GPU queue binds: naive always-offload is 60 % slower than keeping small builds local. The step 7 live rounds confirmed both numbers. |
+| dim 768 | 53.2 / 67.0 | 135.8 / 137.3 | 54.3 / 58.7 | 54.3 / 58.7 | **52.0 / 52.9** | Transfer and GPU time rival the horizon; the threshold's fixed cut-off is catastrophic (2.5×); reactive trails the oracle by 4 % at p50 and 11 % at p99. |
+| dim 1536 | 95.1 / 120.0 | 259.6 / 261.1 | 93.9 / 105.5 | 93.9 / 105.5 | **89.5 / 90.4** | Same shape, wider: always_gpu's p99 is 33 % above the oracle's, reactive's 17 %. |
+| 1 worker | 32.2 / 33.2 | 32.7 / 34.2 | **30.0 / 30.5** | 30.0 / 30.5 | 30.0 / 30.3 | An undersized pool: always_gpu queues, reactive keeps the queue short. |
+| load 2× | 32.6 / 34.5 | 44.6 / 46.8 | 33.0 / 35.6 | 33.0 / 35.6 | **32.5 / 34.3** | Queries now outlast the horizon; every policy pays the drain; reactive's first-tick preempts cost it 1 % against always_gpu. |
+| σ 0.6 (estimate error) | 30.0 / 30.3 | 32.7 / 34.2 | 30.0 / **32.8** | 30.0 / **30.3** | 30.8 / 33.4 | The roadmap's hypothesis holds: speculation covers for a bad cost model (reactive_spec's p99 stays at the σ = 0 value, reactive's rises 8 %), and the oracle, noised like everyone, degrades fastest. |
+| zipf 0.5 (flatter sizes) | 30.0 / 30.3 | 42.1 / 43.6 | 30.0 / 30.5 | 30.0 / 30.5 | 30.0 / 30.3 | Flatter sizes put more builds above the threshold's cut-off; everyone else is horizon-bound. |
+| workers per node 1 vs 2; needs_index 0/0.5/1; speedup 10 vs 40; zipf 1.5 | ties | ties | ties | ties | ties | Horizon-bound at these loads: the per-node link term, the needs_index fraction and the GPU speedup cannot be measured where the round is set by the stream. They need the load / 50-shard / dim arms to matter. |
+
+**What reactive does at the baseline, and what it costs.** At every 6-shard preset `reactive` preempts the five or six local builds to the idle GPUs at its first tick ("idle worker, empty queue"), throwing away 8–15 CPU-seconds per round of local work for a round time identical to always_gpu's — the preempt-everything behaviour is harmless to the round at these loads and wasteful of CPU. `reactive_spec` speculates once per round on bimodal (2 wasted GPU-seconds) and nowhere else. Reneging never fires at the baseline. The memory-bound presets (`bimodal`, `high_dim`, `production`) never offload the build that sets the round, so they tie by construction — the finding evidence 1 of the ledger already recorded.
+
+**Conclusions, within the assumed cost model.** (1) Placement matters only when something other than the query horizon binds: the GPU queue (many shards, few workers), transfer (high dimensions) or an undersized pool; there `reactive` beats always-offload by 2–60 % and trails the clairvoyant oracle by 4–17 %, and a fixed size threshold is the worst policy by far. (2) Speculation is what makes the dynamic policy robust to estimate error. (3) The memory filter decides more than any policy: a build that fits no worker sets the round for everyone, so the pool's card memory (decision 26) is the first lever, placement the second. (4) The sweep's "tie" arms are a statement about the presets' loads, not about the axes: measuring the per-node link, needs_index and the GPU speedup needs rounds that are not horizon-bound. Phases 4 and 5 replace the cost model; the comparison is rerun on it (roadmap, Phase 4's closing step).
+
 ## Open questions
 
 - Should `reconsider` be able to pre-empt a leased job (cancel it mid-build to hand the GPU to a worse straggler)? Not in Phase 3. It adds wasted work and the speculation policy already covers the idle-GPU case.
