@@ -53,16 +53,46 @@ ORIG_MEM=$($K get configmap worker -o jsonpath='{.data.WORKER_MEM_BYTES}')
 echo "   cluster before: FAKE_TIME_SCALE=$ORIG_SCALE POLICY=$ORIG_POLICY WORKER_MEM_BYTES=$ORIG_MEM"
 
 CUR_POLICY=""
-set_cluster() { # set_cluster <policy>: patch both ConfigMaps, restart what changed, wait
+# restart_and_verify <deployment> <app label> <expected log fragment>: a
+# `rollout restart` followed at once by `rollout status` can return before the
+# controller has even begun the new rollout (bug 15: the first full run's F and
+# G rounds were served by the PREVIOUS policy's pod), so wait until every pod
+# that existed before the restart is gone, then read the setting back from the
+# new pod's own startup line instead of trusting the ConfigMap.
+restart_and_verify() {
+  local deploy="$1" label="$2" expect="$3" old new
+  old=$($K get pods -l "app=$label" -o name | tr '\n' ' ')
+  $K rollout restart "deployment/$deploy" >/dev/null
+  for _ in $(seq 1 360); do
+    sleep 0.5
+    local gone=1; for p in $old; do $K get "$p" >/dev/null 2>&1 && { gone=0; break; }; done
+    [ "$gone" = 1 ] || continue
+    $K rollout status "deployment/$deploy" --timeout=5s >/dev/null 2>&1 || continue
+    new=$($K get pods -l "app=$label" --field-selector=status.phase=Running -o name)
+    [ -n "$new" ] || continue
+    local ok=1; for p in $new; do $K logs "$p" 2>/dev/null | grep -q -- "$expect" || { ok=0; break; }; done
+    [ "$ok" = 1 ] && return 0
+  done
+  echo "!! $deploy: no new pod reporting $expect within 180 s"; return 1
+}
+set_cluster() { # set_cluster <policy>: patch both ConfigMaps, restart what changed, verify from the pods' own logs
   local policy="$1"
   $K patch configmap worker --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$TIME_SCALE\",\"WORKER_MEM_BYTES\":\"$WORKER_MEM_BYTES\"}}" >/dev/null
   $K patch configmap scheduler --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$TIME_SCALE\",\"POLICY\":\"$policy\"}}" >/dev/null
-  $K rollout restart deployment/scheduler >/dev/null
-  [ -n "$CUR_POLICY" ] || $K rollout restart deployment/worker >/dev/null
-  $K rollout status deployment/scheduler --timeout=180s >/dev/null
-  $K rollout status deployment/worker --timeout=180s >/dev/null
+  [ -n "$CUR_POLICY" ] || restart_and_verify worker worker "\"mem_bytes\": $WORKER_MEM_BYTES"
+  restart_and_verify scheduler scheduler "\"policy\":\"$policy\""
   CUR_POLICY="$policy"
-  echo "   cluster set: FAKE_TIME_SCALE=$TIME_SCALE POLICY=$policy WORKER_MEM_BYTES=$WORKER_MEM_BYTES ($($K get pods -l app=worker --field-selector=status.phase=Running -o name | wc -l | tr -d ' ') workers running)"
+  echo "   cluster set and verified from the new pods' startup lines: FAKE_TIME_SCALE=$TIME_SCALE POLICY=$policy WORKER_MEM_BYTES=$WORKER_MEM_BYTES ($($K get pods -l app=worker --field-selector=status.phase=Running -o name | wc -l | tr -d ' ') workers running)"
+}
+restore() {
+  echo; echo "== restoring the cluster: FAKE_TIME_SCALE=$ORIG_SCALE POLICY=$ORIG_POLICY WORKER_MEM_BYTES=$ORIG_MEM"
+  $K patch configmap worker --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$ORIG_SCALE\",\"WORKER_MEM_BYTES\":\"$ORIG_MEM\"}}" >/dev/null || true
+  $K patch configmap scheduler --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$ORIG_SCALE\",\"POLICY\":\"$ORIG_POLICY\"}}" >/dev/null || true
+  $K scale deployment/worker --replicas=2 >/dev/null || true
+  $K rollout restart deployment/scheduler deployment/worker >/dev/null || true
+  $K rollout status deployment/scheduler --timeout=180s >/dev/null || true
+  $K rollout status deployment/worker --timeout=180s >/dev/null || true
+  echo "   restored; log: $LOG"
 }
 trap restore EXIT
 
