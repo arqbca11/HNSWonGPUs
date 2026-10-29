@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**In progress: step 1, the data, is built.** Replace sleeps with real hnswlib builds on real vectors, add the object store, and replace the cost model's constants with measurements.
+**In progress: step 1 (the data) is done; step 2 (the real build) is being built.** Replace sleeps with real hnswlib builds on real vectors, add the object store, and replace the cost model's constants with measurements.
 
 **Done when** the fitted cost model's error distribution is known, measured on the hardware that stays (the cloud topology without GPUs, below), and the Phase 3 comparison has been rerun on real builds.
 
@@ -76,6 +76,30 @@ flowchart LR
     T["measure the object store's throughput<br/>from the shard VM and a worker"] --> C
 ```
 
+### The build, as the worker and the shard both run it (step 2)
+
+```mermaid
+sequenceDiagram
+    participant C as caller (worker: Python; shard: Go via exec)
+    participant B as python -m kgpu_builder build
+    participant S as object store
+    C->>B: --build-id k:r --attempt a --dataset ds --n-shards n --shard k --threads t
+    B->>S: GET splits/ds/n/vectors/shard_k.npy, queries.npy, ground_truth/shard_k.npy
+    loop 10 batches of add_items
+        B-->>C: stderr {"progress": 0.1 .. 1.0}
+    end
+    B->>B: recall@10 over the held-out queries (ef_search 100) against the exact truth
+    alt recall below RECALL_MIN
+        B-->>C: stdout {"status":"failed","reason":"recall@10 0.84 < 0.90"}; exit 3
+    else
+        B->>S: PUT artifacts/k:r/a/index.bin
+        B->>S: PUT artifacts/k:r/a/manifest.json (last)
+        B-->>C: stdout the manifest; exit 0
+    end
+    Note over C: worker: complete(k:r, a) under the fencing guard / shard: POST /builds/k:r/done
+    Note over C: a kill (preempt, lease lost) leaves at most an orphan index.bin under its own attempt — no manifest, so never a completed build
+```
+
 ## Design decisions
 
 | # | Decision | Alternatives | Why |
@@ -94,6 +118,12 @@ flowchart LR
 | 12 | **The Python for Phase 4 lives in one shared package, `builder/` (`kgpu_builder`, its own uv project)**: the data tools now, the hnswlib builder CLI from step 2; the worker takes it as a path dependency then | Inside the worker's project (shard-side tooling in a package named "worker"); a third project per concern | Decision 3 wants one implementation run by the worker and, via exec, the shard; one package is that implementation. |
 | 13 | **RustFS replaces MinIO as the object store** (`rustfs/rustfs:1.0.4`, pinned; Compose service `objectstore`, a StatefulSet with a 10 GiB claim on kind, NodePort 30900 mapped to the laptop at the next cluster creation; a throwaway container beside Postgres in `scripts/test-db.sh`). Reverses the product named in decision 1, not its shape: still one S3-API server, vectors in and artifacts out. MinIO stopped publishing community images in 2025, archived its repository in 2026, its Docker Hub repositories were deleted in September 2026 and quay.io now refuses anonymous pulls; its last free release carries an authentication-bypass CVE. | SeaweedFS (mature, also passed the store round-trip test, but its S3 gateway needs a separate credentials file and it took ~15 s to come up); a Chainguard build of the last MinIO (the CVE); a MinIO fork | Both candidates were driven by the same `Store` tests before choosing; RustFS is MinIO-shaped (keys by environment, S3 on 9000, console on 9001) and came up instantly. Owner's choice on 2026-10-28. |
 | 14 | **Ground truth is exact and per shard, from the dataset's own held-out queries**: for each shard the top-100 by Euclidean distance over that shard's vectors, by brute force (a chunked matrix product), stored as local indices (`int32 [n_queries, 100]`). The recall gate (decision 4) reads the top-10 of it. | The HDF5's `neighbors` (over the whole dataset, useless per shard); sampling the queries | A query's true neighbours within a shard are what that shard's index is asked for; 10k queries × 1M vectors is seconds with BLAS, so exactness costs nothing. |
+| 15 | **`rounds.dataset` names a round's data** (migration 0007, owner approved): the shard simulator sets it (`DATASET=sift-128`); the split is the round's `n_shards`; a build's vectors are `splits/<dataset>/<n_shards>/vectors/shard_<shard_id>.npy`. NULL is a modeled round (the fake builder). | An environment variable on every process (couples a deployment to one dataset; a round could not say which data it used) | A round names its data as a DDL names its table; the worker learns it with the claim and the build row stays what it was. |
+| 16 | **The split's sizes reach the Go side as committed JSON** (`experiments/workload/splits/<dataset>-<n>.json`, a copy of the split manifest the builder wrote; `SizeDist{Kind: "split", Split: "sift-128"}` makes the generator take every shard's `NVectors` and the scenario's `Dim` from it, the stream draws unchanged). The copy is verifiable against the store by its sha256s. | The shard simulator reading the manifest from the store (an S3 client in Go: a new dependency for one file); the builder CLI printing it (a process start for a number) | Sizes fixed by the split (decision 9) must be the same in the shard simulator, the scheduler's cost model inputs and the discrete-event simulator, offline and deterministically; a 10 KB file in the repo is the cheapest shared truth. The split's rank assignment wins (cross-check G9). |
+| 17 | **The build CLI's contract**: `python -m kgpu_builder build --build-id --attempt --dataset --n-shards --shard --threads [--m 16 --ef-construction 200 --recall-k 10 --ef-search 100]`, `RECALL_MIN` (default 0.9) and the `S3_*` variables from the environment. stdout carries one JSON document, the artifact manifest (or `{"status":"failed","reason"}`); stderr carries progress as JSON lines (`{"progress": p}` after each of ten `add_items` batches, then `{"phase": "gate"}`); exit 0 built and published, 3 recall below the threshold, 2 usage, 1 anything else. Artifacts: `index.bin` then `manifest.json` under `artifacts/<build_id>/<attempt>/` (invariant 7, decision 2); the manifest records build id and attempt, dataset/split/shard, n_vectors, dim, M, ef_construction, threads, index bytes and sha256, recall@k against the exact truth, ef_search, build and gate seconds, the hnswlib version. | Importing the builder in the worker and re-implementing it in Go for the shard (decision 3 rejects it); progress through a file | A process boundary is what both callers can drive and kill; the exit code and one JSON document are the whole interface, so the Go shard needs no Python knowledge beyond "run this, read that". |
+| 18 | **The worker's `HnswlibBuilder` runs the CLI as a subprocess** (`BUILDER=hnswlib`; `BUILDER_CMD` defaults to `python -m kgpu_builder`): stderr progress lines feed the worker's progress callback, `cancel` kills the child (`SIGKILL`: the lease is gone, nothing it writes can be completed), exit 3 becomes the existing `fail` path with the gate's reason (decision 41 of Phase 1), exit 0's manifest becomes the `Artifact`. The worker image is built from the repo root with the builder as a path dependency and hnswlib compiled in a build stage. | Import `kgpu_builder` in-process (one implementation, but then the worker's cancellation and the shard's are different mechanisms) | Parity with the shard: the same process, the same kill, the same exit codes on both sides of the placement decision. |
+| 19 | **The Go shard runs its local build by exec-ing the same CLI** (`BUILDER_CMD`, default `uv run --project <repo>/builder python -m kgpu_builder`; `SHARD_THREADS`, default 2) in its own process group: stderr progress becomes `build_progress` in the shard's reports, a preempt or a won speculation kills the group, exit 0 is `POST /builds/{id}/done`, exit 3 is the new `POST /builds/{id}/fail` with the reason (a local build could not fail before; the recall gate makes it possible). The modeled sleep remains the behaviour when the round has no dataset. | A Go hnswlib binding (a second implementation, the thing decision 3 forbids) | The roadmap's "the Go shard (via exec)"; killing a process group is the real preempt, with real lost work. |
+| 20 | **Queries burn CPU when the round has a dataset** (`QUERY_MODE=burn`, automatic with `DATASET`): a query's modeled duration is spent in a busy loop on the shard's goroutine instead of a sleep, and the shard simulator refuses a time scale other than 1 with a dataset (a real build cannot be sped up). | Keep sleeping (the blocking rule would then be untested, decision 5) | Local builds and queries must compete for the shard's real cores, or the model's central cost is fiction. |
 
 ## Calibration targets from the published figures
 

@@ -1,5 +1,13 @@
-"""python -m kgpu_builder <command> — Phase 4 step 1's data pipeline.
+"""python -m kgpu_builder <command> — Phase 4's data pipeline and the build.
 
+    build     --build-id K:R --attempt A --dataset DS --n-shards N --shard K [--threads 2]
+              [--m 16 --ef-construction 200 --recall-k 10 --ef-search 100]
+                                             the real build (step 2, decision 17): hnswlib over
+                                             the shard's vectors, recall-gated (RECALL_MIN, 0.9),
+                                             published index.bin then manifest.json under
+                                             artifacts/K:R/A/. stdout: the manifest JSON (or
+                                             {"status":"failed","reason"}); stderr: progress
+                                             as JSON lines; exit 0 built, 3 gate failed, 1 error.
     download  <dataset>                      fetch the HDF5 (resumable), verify size
     split     <dataset> <n_shards> [--zipf S] [--seed P]
                                              write the split locally: vectors per shard + manifest
@@ -22,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -31,6 +40,7 @@ import h5py
 import numpy as np
 
 from . import datasets, download as dl, groundtruth, split as sp
+from .build import BuildSpec, GateFailed, run_build
 from .config import Config
 from .store import NotFound, Store
 
@@ -172,9 +182,42 @@ def cmd_verify(ds, cfg, args):
     _log(f"verify: {nv} vector objects, {ng} ground-truth objects (top-{m.ground_truth_k}) and the queries all present with their recorded sha256")
 
 
+def cmd_build(cfg: Config, args) -> int:
+    """Exit 0 and the manifest on stdout; 3 and a failure document when the
+    recall gate refuses; progress and phases on stderr as JSON lines."""
+    spec = BuildSpec(build_id=args.build_id, attempt=args.attempt, dataset=args.dataset, n_shards=args.n_shards,
+                     shard=args.shard, threads=args.threads, m=args.m, ef_construction=args.ef_construction,
+                     recall_k=args.recall_k, ef_search=args.ef_search, recall_min=float(os.environ.get("RECALL_MIN", "0.9")))
+
+    def progress(p: float) -> None:
+        print(json.dumps({"progress": round(p, 4)}), file=sys.stderr, flush=True)
+
+    def phase(name: str) -> None:
+        print(json.dumps({"phase": name}), file=sys.stderr, flush=True)
+
+    try:
+        m = run_build(Store(cfg), spec, progress, phase)
+    except GateFailed as e:
+        print(json.dumps({"status": "failed", "reason": str(e), "recall": e.recall, "build_id": spec.build_id, "attempt": spec.attempt}), flush=True)
+        return 3
+    print(json.dumps(m), flush=True)
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m kgpu_builder", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("build")
+    b.add_argument("--build-id", required=True)
+    b.add_argument("--attempt", type=int, required=True)
+    b.add_argument("--dataset", required=True)
+    b.add_argument("--n-shards", type=int, required=True)
+    b.add_argument("--shard", type=int, required=True)
+    b.add_argument("--threads", type=int, default=2)
+    b.add_argument("--m", type=int, default=16)
+    b.add_argument("--ef-construction", type=int, default=200)
+    b.add_argument("--recall-k", type=int, default=10)
+    b.add_argument("--ef-search", type=int, default=100)
     for name in ("download", "split", "groundtruth", "upload", "verify", "all"):
         sp_ = sub.add_parser(name)
         sp_.add_argument("dataset")
@@ -187,6 +230,12 @@ def main(argv=None) -> int:
             sp_.add_argument("--k", type=int, default=100)
     args = p.parse_args(argv)
     cfg = Config.from_env()
+    if args.cmd == "build":
+        try:
+            return cmd_build(cfg, args)
+        except NotFound as e:
+            print(json.dumps({"status": "failed", "reason": f"object not in the store: {e}"}), flush=True)
+            return 1
     ds = datasets.get(args.dataset)
     steps = {"download": cmd_download, "split": cmd_split, "groundtruth": cmd_groundtruth, "upload": cmd_upload, "verify": cmd_verify}
     try:
