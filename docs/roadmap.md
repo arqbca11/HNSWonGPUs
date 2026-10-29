@@ -344,13 +344,13 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 ### Builder (laptop)
 
-- [ ] Package the builder as a CLI, so the Python worker and the Go shard (via exec) run the same code
-- [ ] Build: download vectors, `init_index(M=16, ef_construction=200)`, `add_items` with a set thread count, save the index
-- [ ] Store artifacts under `build_id/attempt/`, so a stale attempt can never overwrite the winning one
-- [ ] Publish order: upload the index, then write the manifest (build ID, attempt, checksum, parameters, recall), then mark the job complete under the fencing guard
-- [ ] Recall gate: run held-out queries and compare recall@10 with ground truth. Below the threshold, mark the build failed with a reason.
-- [ ] Keep queries simulated, but as a CPU-burning loop instead of a sleep, so they compete with local builds for real
-- [ ] A real preempt: the shard runs the builder as a child process and kills it; the build joins the GPU queue; the worker pulls the vectors from MinIO, builds, publishes; the shard learns of the completion in the reply to its next report, downloads the index and runs the recall gate
+- [x] Package the builder as a CLI, so the Python worker and the Go shard (via exec) run the same code
+- [x] Build: download vectors, `init_index(M=16, ef_construction=200)`, `add_items` with a set thread count, save the index
+- [x] Store artifacts under `build_id/attempt/`, so a stale attempt can never overwrite the winning one
+- [x] Publish order: upload the index, then write the manifest (build ID, attempt, checksum, parameters, recall), then mark the job complete under the fencing guard
+- [x] Recall gate: run held-out queries and compare recall@10 with ground truth. Below the threshold, mark the build failed with a reason.
+- [x] Keep queries simulated, but as a CPU-burning loop instead of a sleep, so they compete with local builds for real
+- [x] A real preempt: the shard runs the builder as a child process and kills it; the build joins the GPU queue; the worker pulls the vectors from MinIO, builds, publishes; the shard learns of the completion in the reply to its next report, downloads the index and runs the recall gate
 
 ### Calibration method (laptop, a rehearsal)
 

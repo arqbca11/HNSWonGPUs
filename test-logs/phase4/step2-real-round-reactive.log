@@ -1,0 +1,48 @@
+== Phase 4 step 2: a real round, dataset sift-128 at 6 shards, 2026-10-29T10:42:17Z, commit 1e53ae1+local changes
+   cluster before: FAKE_TIME_SCALE=10 POLICY=always_gpu BUILDER=fake
+   store for the laptop's shards: http://127.0.0.1:39000
+
+#### sift-128, 6 shards, 2 workers, policy reactive, seed 1: real builds everywhere
+   cluster set and verified: FAKE_TIME_SCALE=1 BUILDER=hnswlib POLICY=reactive
+   == timeline (simulator output)
+      round 227  scenario=skewed seed=1  time_scale=1
+      duration 75.6s real (75.6s modeled)   straggler lag 6.5s   builds: 6 gpu, 0 local, 0 speculative copies   queries: 3411
+      query latency (slowest piece): fan-out p50 1.4s p99 68.9s (n=532)   single-shard p50 14.3s p99 67.8s (n=1262)
+      shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+      0      81632     gpu    1    0.0s     58.1s    67.8s    73.4s    573     67.9s    #############################
+      1      408164    gpu    1    0.0s     0.1s     58.1s    64.5s    592     58.5s    #########################
+      2      136055    gpu    1    0.0s     32.6s    54.1s    59.7s    561     54.1s    #######################
+      3      204082    gpu    1    0.0s     0.4s     32.6s    38.5s    551     32.5s    ###############
+      4      68027     gpu    1    0.0s     63.6s    69.7s    75.6s    567     69.6s    ##############################
+      5      102040    gpu    1    0.0s     54.1s    63.6s    69.1s    567     63.7s    ###########################
+      
+   
+   == round events (simulator log)
+      level=INFO msg="round started" round_id=227 scenario=skewed seed=1 n_shards=6 time_scale=1
+      level=WARN msg="local build aborted" round_id=227 shard_id=5 build_id=5:227 why="preempted to the gpu queue" progress=0
+      level=WARN msg="local build aborted" round_id=227 shard_id=0 build_id=0:227 why="preempted to the gpu queue" progress=0
+      level=WARN msg="local build aborted" round_id=227 shard_id=4 build_id=4:227 why="preempted to the gpu queue" progress=0
+      level=WARN msg="local build aborted" round_id=227 shard_id=2 build_id=2:227 why="preempted to the gpu queue" progress=0
+      level=INFO msg="round finished" round_id=227 duration=1m15.636s duration_modeled=1m15.636s straggler_lag=6.513s builds_gpu=6 builds_local=0 queries=3411
+   
+   == round rows (from the scheduler API)
+      round 227: n_shards=6 finished=2026-10-29T10:43:45.008298Z
+      builds: 0:227=gpu/done@1, 1:227=gpu/done@1, 2:227=gpu/done@1, 3:227=gpu/done@1, 4:227=gpu/done@1, 5:227=gpu/done@1
+      states: done=6 other=0; attempts>1: 0
+      queries recorded: 3411, finished: 3411
+   
+   wall: 77 s
+-- the builds' manifests in the store (recall, bytes, build time, threads):
+Traceback (most recent call last):
+  File "<stdin>", line 5, in <module>
+IndexError: list index out of range
+
+== restoring the cluster: FAKE_TIME_SCALE=10 POLICY=always_gpu BUILDER=fake
+   restored; log: test-logs/phase4/step2-real-round-reactive.log
+-- round 227, reactive: the builds' manifests in the store (added after the run):
+   shard  0 gpu   attempt 1:   81632 vectors, recall@10 0.997,   53.9 MB, build    6.9 s on 8 threads (+fetch 0.2 gate 0.4 upload 0.3)
+   shard  1 gpu   attempt 1:  408164 vectors, recall@10 0.989,  269.6 MB, build   53.3 s on 8 threads (+fetch 0.9 gate 0.7 upload 1.0)
+   shard  2 gpu   attempt 1:  136055 vectors, recall@10 0.995,   89.9 MB, build   18.1 s on 8 threads (+fetch 0.2 gate 0.7 upload 0.4)
+   shard  3 gpu   attempt 1:  204082 vectors, recall@10 0.994,  134.8 MB, build   28.1 s on 8 threads (+fetch 0.3 gate 0.9 upload 0.7)
+   shard  4 gpu   attempt 1:   68027 vectors, recall@10 0.997,   44.9 MB, build    4.7 s on 8 threads (+fetch 0.1 gate 0.3 upload 0.1)
+   shard  5 gpu   attempt 1:  102040 vectors, recall@10 0.996,   67.4 MB, build    7.1 s on 8 threads (+fetch 0.2 gate 0.5 upload 0.3)

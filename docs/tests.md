@@ -804,3 +804,72 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | builder/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact | Recompute rows of SIFT and GIST ground truth in float64. | The stored top-100 is the exact top-100 by distance, and the recall gate's top-10 set is exact (bug 16). |
 | builder/test_xcheck_realdata.py::test_xcheck_cluster_bucket_mirrors_local_splits_read_only | Read-only listing of the kind cluster's `kgpu` bucket through a port-forward. | Every local object is present with the same size; the manifests are identical. |
 
+## Phase 4, step 2: the real build (Python `builder/tests`, `worker/tests`; Go `experiments/workload`, `scheduler/store`, `scheduler/api`, `shard/sim`; the live round by `scripts/k8s-check-p4-step2.sh`). Logs: `phase4/step2b-dataset-localfail.log` (store and API), `phase4/step2-real-round.log` (the live round), `latest.log` for the Python suites
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_build.py::test_build_gates_and_publishes_manifest_last | A toy split (3000 × 16, 200 queries, exact top-100) in the throwaway store; run the build with a write-order spy. | Ten progress steps then the phases build, gate, publish; index.bin written before manifest.json (invariant 7); recall ≥ 0.9; the manifest's bytes and sha256 match the stored index; the reloaded index scores the same recall. |
+| builder/test_build.py::test_gate_failure_writes_nothing | The same with RECALL_MIN above 1. | GateFailed; no object under artifacts/ (decision 4). |
+| builder/test_build.py::test_cli_exit_codes_and_streams | The CLI as a process: a good build, a refused one, a missing shard. | Exit 0 with the manifest on stdout and JSON progress/phase lines on stderr; exit 3 with a failure document and no manifest; exit 1 with a failure document (decision 17). |
+| store/TestRoundDatasetAndLocalFail | A modeled round and a round with a dataset; FailLocal on a local, then again, then on a gpu build. | The dataset round-trips (nil for modeled); FailLocal updates exactly once with the reason, a later CompleteLocal and a fail on a gpu build are refused (decisions 15, 19). |
+| api/TestRoundDatasetAndLocalFailAPI | POST /rounds with and without a dataset; POST /builds/{id}/fail on a local build without a reason, with one, again, on a gpu build, on an unknown id. | 201 and the dataset in GET /rounds (null without); 400, 200 with the reason stored, 409, 409, 404. |
+| workload/TestSplitSizesFromTheCommittedManifest | ApplySplit on skewed at 6 and 50 shards for sift-128; at 7 shards; gist at 6. | Every shard's size is the committed split's and the sum is 1,000,000, dim 128, kind split, the stream still generated; no split at 7 is an error; gist gives dim 960 (decision 16). |
+| worker/test_store.py::test_claim_carries_the_rounds_dataset_and_shard_count | Builds in a modeled round and in a sift-128 round of 6 shards. | The claim reports dataset sift-128 and n_shards 6, or None and the modeled round's count (decision 15). |
+| worker/test_hnswlib_builder.py (stub tests) | A stub command printing progress lines and a manifest, a gate refusal, a crash, or hanging. | Progress 0.2..1.0 then 1.0 and the manifest's index bytes; GateRefused with the reason; RuntimeError with the output; cancel kills the child within 5 s and no child survives; a modeled round is refused (decision 18). |
+| worker/test_hnswlib_builder.py::test_worker_runs_the_real_builder_and_the_gate | A Worker with BUILDER=hnswlib on a toy split in the throwaway store, then with RECALL_MIN above 1. | The build completes with index.bin and manifest.json under its attempt; the second is marked failed with "GateRefused: recall@10 …" and no manifest. |
+| store/TestRetryLocalOnce | FailLocal then RetryLocal on a local build, twice; RetryLocal on a gpu build failed at attempt 5. | The first retry moves the row to local/running at attempt 1 with local_retries 1 and no reason; the second is refused; the gpu build retries locally at attempt 6 (decision 21). |
+| api/TestRetryLocalAPI | retry-local on a running build, after a fail, again, and on an unknown id. | 409, 200 with the summary (attempt 1, local_retries 1), 409, 404. |
+| sim/TestFailedBuildRetriesOnceThenFallsBack | A stub builder that refuses at the gate every time; two index queries behind it. | The shard retries once at attempt 1 (the stub runs twice), the build is failed for good with the retry's reason, both index queries run without the index, the round completes (decision 21). |
+| scripts/k8s-check-p4-step2.sh | sift-128 at 6 shards on the kind cluster under always_gpu and reactive, every build real. | The round completes; every finished build has a manifest in the store with recall ≥ 0.9; local builds ran as child processes on the laptop, GPU builds in the workers. |
+
+## Phase 4, step 2, cross-check of the real build (Go `scheduler/crosscheck` `TestXcP4S2*` with the database; Python `builder/tests/test_xcheck_build.py` against a throwaway store and `worker/tests/test_xcheck_hnswlib.py` with the database and the store). Logs: `phase4/step2-crosscheck-build.log` (Go), `phase4/step2-crosscheck-build-py.log` (Python)
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_xcheck_build.py::test_xcheck_build_success_streams_and_manifest | Run the CLI on a toy split in a throwaway store. | Exit 0. One JSON document on stdout, JSON lines on stderr, ten progress values then the gate line. Every documented field present. The stored manifest equals stdout, and its bytes and sha256 match index.bin (decision 17). |
+| builder/test_xcheck_build.py::test_xcheck_build_manifest_names_the_real_hnswlib_version | The same build. | The manifest names the installed hnswlib version, not "unknown" (F4). |
+| builder/test_xcheck_build.py::test_xcheck_build_publish_order_observed_live | A 50k × 32 build while another thread lists the store continuously. | Nothing appears before the gate line; index.bin is seen alone before manifest.json; a manifest is never seen without its index (invariant 7). |
+| builder/test_xcheck_build.py::test_xcheck_build_sigkill_mid_build_leaves_no_manifest | SIGKILL the CLI after its first progress line. | Nothing at all under artifacts/. |
+| builder/test_xcheck_build.py::test_xcheck_build_second_attempt_never_touches_the_first | Attempt 1, then attempt 2 of the same build. | Attempt 1's objects are byte-identical afterwards; attempt 2 writes only under /2/ (decision 2). |
+| builder/test_xcheck_build.py::test_xcheck_build_threads_1_vs_4_recall | The same shard built with 1 thread twice and with 4 threads. | One thread is reproducible; four threads give comparable recall (G10, recorded). |
+| builder/test_xcheck_build.py::test_xcheck_build_recall_min_boundary | RECALL_MIN set exactly to the measured recall, then one floating-point step above. | Equal passes (exit 0); above refuses (exit 3) and publishes nothing. |
+| builder/test_xcheck_build.py::test_xcheck_build_gate_reason_is_not_misleading | A threshold just above the recall that rounds down at two decimals. | The printed reason reads as a true inequality (F6). |
+| builder/test_xcheck_build.py::test_xcheck_build_gate_flags_k_and_ef_search | --recall-k 5 and --ef-search 5. | The manifest records them, a smaller ef_search lowers recall, and a refusal names recall@5. |
+| builder/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document | A missing shard, dataset, ground truth or query file. | Exit 1 with a failure document naming the missing object; nothing published. |
+| builder/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2 | Missing required flags, non-integer values, an unknown flag. | Exit 2; nothing published. |
+| builder/test_xcheck_build.py::test_xcheck_build_questionable_arguments | --recall-k beyond the truth, RECALL_MIN=abc, threads 0, attempt 0, a negative shard. | Exit 1 still carries the failure document; RECALL_MIN=abc and threads 0 are usage errors (F5, G5). |
+| worker/test_xcheck_hnswlib.py::test_xcheck_hnswlib_env_passthrough_and_argv | A stub builder records its argv and environment. | The decision-17 argv; RECALL_MIN and S3_* reach the child; the Artifact comes from the manifest. |
+| worker/test_xcheck_hnswlib.py::test_xcheck_hnswlib_explicit_env_argument | HnswlibBuilder given an env= argument. | It is laid over the worker's environment (recorded). |
+| worker/test_xcheck_hnswlib.py::test_xcheck_hnswlib_builder_cmd_quoting | BUILDER_CMD with a space in the path and quoted arguments. | Parsed shell-style and passed through intact. |
+| worker/test_xcheck_hnswlib.py::test_xcheck_hnswlib_cancel_kills_a_term_ignoring_child_and_its_grandchild | A stub that ignores SIGTERM, forks a sleeper, then is cancelled. | Cancelled within 5 s; child and grandchild both dead. |
+| worker/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs | Exit 1 with empty stdout, exit 0 with garbage stdout, exit 3 with no document. | Never an Artifact; always a failure with a non-empty reason (F7). |
+| worker/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config | The worker process started with bad RECALL_MIN, BUILD_THREADS, BUILDER or BUILDER_CMD values. | Exit 2 with one line naming the variable before connecting (F3). |
+| worker/test_xcheck_hnswlib.py::test_xcheck_worker_process_argv_env_and_completion | A worker process claims a build in a sift-128 50-shard round with a stub builder. | The child gets dataset, n_shards, shard, attempt 1 and BUILD_THREADS, plus RECALL_MIN and S3_*; the build ends done. |
+| worker/test_xcheck_hnswlib.py::test_xcheck_worker_process_modeled_round_under_hnswlib | BUILDER=hnswlib against a round with no dataset. | The build is failed with a reason naming the missing dataset; the builder never runs. |
+| worker/test_xcheck_hnswlib.py::test_xcheck_worker_process_real_cli_missing_split_fails_readably | The real CLI against an empty bucket. | The build is failed with a reason naming the missing vectors object. |
+| crosscheck/TestXcP4S2RoundDatasetOverHTTP | POST /rounds with sift-128, gist, omitted, "" and null. | GET /rounds/{id} shows the dataset, or null for a modeled round (decision 15). |
+| crosscheck/TestXcP4S2ClientAndStoreCreateRoundWithDataset | The shard client and the store create rounds. | Both store the dataset; "" is nil. |
+| crosscheck/TestXcP4S2FailEndpointGuards | The fail endpoint with a bad body, a GPU build, an unknown id, a valid reason, a repeat, and after done or preempt. | 400 / 409 / 404 / 200 with the reason stored / 409; done after fail is 409 (decision 19). |
+| crosscheck/TestXcP4S2FailEndpointLongReason | Reasons of 500, 600 and 20,000 ASCII characters, plus multi-byte ones. | The build is always failed; at most 500 characters stored, valid UTF-8 (bug 17). |
+| crosscheck/TestXcP4S2FailLocalVersusCompleteLocalRace | FailLocal and CompleteLocal fired together, 100 times. | Exactly one wins each time, and the row agrees with the winner. |
+| crosscheck/TestXcP4S2FailedLocalBuildIsTerminalForTheRound | One shard done, one failed locally, both stream_done. | The round finishes; the stuck needs-index case was recorded (G1, now decision 21). |
+| crosscheck/TestXcP4S2StoreFailReasonsMultiByte | FailLocal and Fail with a 901-byte UTF-8 reason. | Both fail the build. |
+| crosscheck/TestXcP4S2ShardChildProgressReachesTheScheduler | RunRound with a stub that reports progress over 3 s. | Intermediate build_progress values appear in shard_status; the decision-17 argv; exit 0 means done. |
+| crosscheck/TestXcP4S2ShardChildGarbageOnStderr | A stub writing non-JSON text, a string progress, 7 or −1 on stderr. | The build completes, the round is not broken, and progress stays within [0, 1] (F2). |
+| crosscheck/TestXcP4S2ShardChildExit0UnparsableStdout | A stub that exits 0 with a non-manifest stdout. | The build is failed, not done (G2). |
+| crosscheck/TestXcP4S2ShardChildExit3FailsWithTheReason | A stub that exits 3 with a 2,000-character reason. | Failed with the reason, at most 500 characters; the round finishes. |
+| crosscheck/TestXcP4S2ShardChildExit1And2 | A stub that exits 1, then 2. | Failed with "builder exited: exit status N: <stdout>". |
+| crosscheck/TestXcP4S2ShardPreemptKillsTheWholeGroup | A preempt during a stub that ignores SIGTERM and has a grandchild. | Both processes die; the build completes on the GPU. |
+| crosscheck/TestXcP4S2ShardModeledPathUntouchedWithoutDataset | A modeled round with BuilderCmd set. | The builder never runs; the dataset is NULL; the build is done. |
+| crosscheck/TestXcP4S2RunRoundRecordsTheDataset | RunRound with a Dataset. | rounds.dataset is set. |
+| crosscheck/TestXcP4S2RenegedBuildAttemptPrefixVersusStaleGPUAttempt | GPU attempt 1 loses its lease, is reaped, and is reneged to local. | The local CLI does not reuse the stale attempt's artifact prefix (G3). |
+| crosscheck/TestXcP4S2BurnQueriesSpendCPUTime | 2 s of queries with burning, sleeping, and a dataset without burning. | Burning costs about 2 s of process CPU; sleeping almost none (decision 20). |
+| crosscheck/TestXcP4S2ShardsimRefusesTimeScaleWithDataset | shardsim with a DATASET and TIME_SCALE 10, 0.5 or 1.0000001, plus a missing split and an unknown dataset. | Exit 2 with one line and no request to the scheduler. |
+| crosscheck/TestXcP4S2SplitsListsTheCommittedFiles | List the committed splits. | Exactly the JSON files on disk. |
+| crosscheck/TestXcP4S2ApplySplitEveryPresetMatchesTheJSON | Every preset at 6 and 50 shards for both datasets. | Sizes and dim equal the committed JSON; sums are exact; Validate passes (decision 16). |
+| crosscheck/TestXcP4S2SplitModeIsDeterministicAndSeedFreeInSizes | The same seed twice and two different seeds. | Identical output for the same seed; sizes independent of the seed. |
+| crosscheck/TestXcP4S2SplitModeStreamVersusPreset | Split mode against its preset at the same seed. | Records that the query streams and DDL offsets do not coincide (G7). |
+| crosscheck/TestXcP4S2ApplySplitRefusesUncommittedCountsAndDatasets | Uncommitted shard counts and unknown dataset names. | An error, and the scenario is left unchanged. |
+| crosscheck/TestXcP4S2HandBuiltSplitKindWithoutAFile | Kind "split" built by hand with no committed file. | Generate panics rather than producing a workload (G9). |
+| crosscheck/TestXcP4S2ApplySplitOnAStragglerPreset | hour_build in split mode. | The split's sizes win; the straggler is dropped (G8). |
+

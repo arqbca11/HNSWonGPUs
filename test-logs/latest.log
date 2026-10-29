@@ -1,62 +1,1403 @@
 == Go tests against a throwaway Postgres
-date:      2026-10-29 01:54:42 PDT
-commit:    4b58c99 (uncommitted changes)
+date:      2026-10-29 03:36:24 PDT
+commit:    1b268d4 (uncommitted changes)
 go:        go1.27.1
-postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-87499, port 25920)
-go:        go test -p 1 -v -run TestRealBuildChildProcess ./shard/sim/
-objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-87499, port 20800)
-python:    skipped
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-5492, port 34186)
+go:        skipped
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-5492, port 32105)
+python:    uv run pytest -v -rA (worker/, builder/)
 
 Lines starting with 'store_test.go:N:' are the test narrating what it did.
 Lines tagged [db] are the build row as Postgres had it at that moment.
 
-== go test
-=== RUN   TestRealBuildChildProcess
-=== RUN   TestRealBuildChildProcess/ExitZeroIsDoneWithTheManifestSummarised
-    realbuild_test.go:65:   + 0.00s DDL received: submitting; the CPU runs no queries until the placement is known
-    realbuild_test.go:65:   + 0.01s stream exhausted: 1 queries arrived
-    realbuild_test.go:65:   + 0.02s submitted: placement=local (needs 102400000 bytes, largest live worker has 1); cpu_build=20.631s gpu_total=4.639s (modeled); 1 query records from before the DDL to backfill
-    realbuild_test.go:65:   + 0.03s local build started (1.032s scaled)
-    realbuild_test.go:65:   + 0.61s local build done after 578ms: recall@10 0.950, index 12.3 MB, build 0.5s, gate 0.1s
-    realbuild_test.go:65:   + 0.62s index ready (attempt 0, local)
-    realbuild_test.go:65:   + 0.66s query 0 done: single needs_index waited 624ms
-    realbuild_test.go:65:   + 0.66s shard done: build done, stream exhausted, queue empty
-    realbuild_test.go:82: [db] round 1 dataset=stub; the child built (exit 0) -> POST /builds/{id}/done; the index query waited for it
-=== RUN   TestRealBuildChildProcess/ExitThreeIsFailedWithTheGatesReason
-    realbuild_test.go:95:   + 0.00s DDL received: submitting; the CPU runs no queries until the placement is known
-    realbuild_test.go:95:   + 0.01s stream exhausted: 1 queries arrived
-    realbuild_test.go:95:   + 0.03s submitted: placement=local (needs 102400000 bytes, largest live worker has 1); cpu_build=20.631s gpu_total=4.639s (modeled); 1 query records from before the DDL to backfill
-    realbuild_test.go:95:   + 0.04s local build started (1.032s scaled)
-    realbuild_test.go:95:   + 0.61s local build FAILED after 566ms: GateRefused: recall@10 0.8400 < 0.90
-    realbuild_test.go:95:   + 0.65s query 0 done: single  waited 618ms
-    realbuild_test.go:95:   + 0.66s build FAILED (attempt 0): queries that need the index can never run on this shard
-    realbuild_test.go:95:   + 0.67s shard done: build failed, stream exhausted, queue empty
-    realbuild_test.go:103: [db] build failed, fail_reason="GateRefused: recall@10 0.8400 < 0.90" (exit 3 -> POST /builds/{id}/fail); the round still completed because no query needed the index
-=== RUN   TestRealBuildChildProcess/PreemptKillsTheChild
-    realbuild_test.go:123:   [reconsider] preempt 0:3 at progress 20% -> true
-    sim_test.go:102:   [worker big] claimed 0:3 attempt 1, building 232ms
-    realbuild_test.go:137:   + 0.00s DDL received: submitting; the CPU runs no queries until the placement is known
-    realbuild_test.go:137:   + 0.01s stream exhausted: 1 queries arrived
-    realbuild_test.go:137:   + 0.04s submitted: placement=local (needs 102400000 bytes, largest live worker has 1); cpu_build=20.631s gpu_total=4.639s (modeled); 1 query records from before the DDL to backfill
-    realbuild_test.go:137:   + 0.04s local build started (1.032s scaled)
-    realbuild_test.go:137:   + 0.26s scheduler moved the build to the gpu (leased): aborting the local build
-    realbuild_test.go:137:   + 0.27s local build aborted at 20% after 230ms: preempted to the gpu queue (child process killed)
-    realbuild_test.go:137:   + 0.57s index ready (attempt 1, gpu)
-    realbuild_test.go:137:   + 0.60s query 0 done: single needs_index waited 564ms
-    realbuild_test.go:137:   + 0.60s shard done: build done, stream exhausted, queue empty
-    realbuild_test.go:153: the child (which would have slept 60 s per progress line) was killed on the preempt within 939ms; no stub process survives; the gpu worker finished the build
---- PASS: TestRealBuildChildProcess (3.42s)
-    --- PASS: TestRealBuildChildProcess/ExitZeroIsDoneWithTheManifestSummarised (1.20s)
-    --- PASS: TestRealBuildChildProcess/ExitThreeIsFailedWithTheGatesReason (1.11s)
-    --- PASS: TestRealBuildChildProcess/PreemptKillsTheChild (1.11s)
-PASS
-ok  	github.com/arqbca11/HNSWonGPUs/shard/sim	3.765s
+== pytest (worker/)
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-8.4.2, pluggy-1.6.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker
+configfile: pyproject.toml
+testpaths: tests
+collecting ... collected 43 items
 
-== Docker events for container kgpu-test-pg-87499
-  01:54:40  create
-  01:54:40  start
-  01:54:47  kill
-  01:54:48  die
-  01:54:48  destroy
+tests/test_costmodel.py::test_matches_go_defaults PASSED                 [  2%]
+tests/test_costmodel.py::test_env_overrides PASSED                       [  4%]
+tests/test_health.py::test_livez_always_and_healthz_follows_heartbeats PASSED [  6%]
+tests/test_health.py::test_metrics_served_on_the_health_port PASSED      [  9%]
+tests/test_hnswlib_builder.py::test_stub_ok_streams_progress_and_returns_the_manifest PASSED [ 11%]
+tests/test_hnswlib_builder.py::test_stub_passes_the_documented_arguments PASSED [ 13%]
+tests/test_hnswlib_builder.py::test_stub_gate_refusal_becomes_a_failed_build_reason PASSED [ 16%]
+tests/test_hnswlib_builder.py::test_stub_crash_is_an_error_with_the_output PASSED [ 18%]
+tests/test_hnswlib_builder.py::test_cancel_kills_the_child PASSED        [ 20%]
+tests/test_hnswlib_builder.py::test_modeled_round_is_refused PASSED      [ 23%]
+tests/test_hnswlib_builder.py::test_worker_runs_the_real_builder_and_the_gate PASSED [ 25%]
+tests/test_store.py::test_claim_order_and_attempt PASSED                 [ 27%]
+tests/test_store.py::test_fencing_after_reap PASSED                      [ 30%]
+tests/test_store.py::test_memory_filter_and_release PASSED               [ 32%]
+tests/test_store.py::test_heartbeat_upsert PASSED                        [ 34%]
+tests/test_store.py::test_claim_carries_the_rounds_dataset_and_shard_count PASSED [ 37%]
+tests/test_worker.py::test_worker_claims_builds_completes PASSED         [ 39%]
+tests/test_worker.py::test_lease_lost_mid_build_abandons_without_completing PASSED [ 41%]
+tests/test_worker.py::test_sigterm_releases_long_build_and_finishes_short_one PASSED [ 44%]
+tests/test_worker.py::test_two_workers_never_share_a_build PASSED        [ 46%]
+tests/test_worker.py::test_registers_before_first_claim PASSED           [ 48%]
+tests/test_worker.py::test_build_error_marks_failed_with_reason_and_worker_continues PASSED [ 51%]
+tests/test_worker.py::test_bad_config_is_refused_before_connecting PASSED [ 53%]
+tests/test_worker.py::test_survives_lost_database_connections_mid_build PASSED [ 55%]
+tests/test_worker.py::test_renew_outage_past_lease_deadline_assumes_lost PASSED [ 58%]
+tests/test_worker.py::test_waits_for_schema_at_startup PASSED            [ 60%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_env_passthrough_and_argv PASSED [ 62%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_explicit_env_argument PASSED [ 65%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_builder_cmd_quoting PASSED [ 67%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_cancel_kills_a_term_ignoring_child_and_its_grandchild PASSED [ 69%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit1_traceback_empty_stdout] PASSED [ 72%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit0_unparsable_stdout] PASSED [ 74%]
+tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit3_without_document] PASSED [ 76%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-abc-True] PASSED [ 79%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS--3-True] PASSED [ 81%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILDER-nope-True] PASSED [ 83%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILDER_CMD-'unterminated-True] PASSED [ 86%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-1.5-False] PASSED [ 88%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN--1-False] PASSED [ 90%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS-0-False] PASSED [ 93%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_argv_env_and_completion PASSED [ 95%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_modeled_round_under_hnswlib PASSED [ 97%]
+tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_real_cli_missing_split_fails_readably PASSED [100%]
+
+==================================== PASSES ====================================
+___________________________ test_matches_go_defaults ___________________________
+----------------------------- Captured stdout call -----------------------------
+100k x 128: cpu=20.631s gpu_total=4.639s mem=102400000
+_______________ test_livez_always_and_healthz_follows_heartbeats _______________
+----------------------------- Captured stdout call -----------------------------
+/livez before any heartbeat -> 200 {'status': 'alive'}
+/healthz before any heartbeat -> 503 {'status': 'postgres unreachable', 'last_heartbeat_age_s': None}
+/healthz right after a heartbeat -> 200 {'status': 'ok', 'last_heartbeat_age_s': 0.0}
+/healthz 0.45 s later (stale_after 0.3 s) -> 503 {'status': 'postgres unreachable', 'last_heartbeat_age_s': 0.5}
+liveness never depends on Postgres; readiness ages out with the heartbeat
+____________________ test_metrics_served_on_the_health_port ____________________
+----------------------------- Captured stdout call -----------------------------
+/metrics served on the probe port; worker_busy and every builds_total outcome present
+____________ test_stub_ok_streams_progress_and_returns_the_manifest ____________
+----------------------------- Captured stdout call -----------------------------
+progress seen: [0.2, 0.4, 0.6, 0.8, 1.0, 1.0]; artifact: Artifact(build_id='2:7', attempt=1, kind='hnswlib', index_bytes=12345, elapsed_s=0.05616975016891956)
+__________________ test_stub_passes_the_documented_arguments ___________________
+----------------------------- Captured stdout call -----------------------------
+the CLI receives: ['build', '--build-id', '2:7', '--attempt', '1', '--dataset', 'toy', '--n-shards', '2', '--shard', '2', '--threads', '3']
+_____________ test_stub_gate_refusal_becomes_a_failed_build_reason _____________
+----------------------------- Captured stdout call -----------------------------
+GateRefused: recall@10 0.8400 < 0.90
+_________________________ test_cancel_kills_the_child __________________________
+----------------------------- Captured stdout call -----------------------------
+cancelled after 0.53 s (the stub would have hung 60 s per progress line)
+________________ test_worker_runs_the_real_builder_and_the_gate ________________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 0:1: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 4}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:1: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] 0:1: done; artifact manifest: recall 0.957, 2643544 bytes, build 0.30 s
+  [db] build 0:2: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 4}
+  [db] build 0:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-hnsw', 'placement': 'gpu', 'lease_left_s': 5}
+  [db] build 0:2: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] 0:2: failed, reason='GateRefused: recall@10 0.9570 < 1.0000'; artifacts under 0:2: []
+------------------------------ Captured log call -------------------------------
+ERROR    kgpu.worker:worker.py:164 build failed
+Traceback (most recent call last):
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/worker.py", line 159, in _work
+    artifact = self.builder.build(job, progress, cur.cancel)
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/builder.py", line 178, in build
+    raise GateRefused(reason or "the builder's gate refused the build and gave no reason")
+kgpu_worker.builder.GateRefused: recall@10 0.9570 < 1.0000
+_________________________ test_claim_order_and_attempt _________________________
+----------------------------- Captured stdout call -----------------------------
+claim #1 -> Claimed(build_id='2:3', round_id=3, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576, dataset=None, n_shards=100)
+claim #2 -> Claimed(build_id='1:3', round_id=3, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576, dataset=None, n_shards=100)
+claim #3 on the empty queue -> None
+___________________________ test_fencing_after_reap ____________________________
+----------------------------- Captured stdout call -----------------------------
+worker-1 claims -> attempt 1
+  [db] build 1:4: {'state': 'leased', 'attempt': 1, 'lease_owner': 'worker-1', 'placement': 'gpu', 'lease_left_s': 30}
+worker-1 goes silent; the lease expires; the scheduler's reaper runs
+  [db] build 1:4: {'state': 'queued', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+worker-2 claims -> attempt 2
+  [db] build 1:4: {'state': 'leased', 'attempt': 2, 'lease_owner': 'worker-2', 'placement': 'gpu', 'lease_left_s': 30}
+worker-1 wakes up holding attempt 1:
+  renew(1)    -> rejected
+  complete(1) -> rejected
+  fail(1)     -> rejected
+  release(1)  -> rejected
+  [db] build 1:4: {'state': 'leased', 'attempt': 2, 'lease_owner': 'worker-2', 'placement': 'gpu', 'lease_left_s': 30}
+worker-2 renew(2), complete(2) -> accepted
+  [db] build 1:4: {'state': 'done', 'attempt': 2, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+worker-2 complete(2) again -> rejected (already done)
+________________________ test_memory_filter_and_release ________________________
+----------------------------- Captured stdout call -----------------------------
+8 GiB worker skipped the 16 GiB build and took 2:5
+released it
+re-claimed -> attempt 2
+____________________________ test_heartbeat_upsert _____________________________
+----------------------------- Captured stdout call -----------------------------
+two heartbeats, one row, capacity updated
+____________ test_claim_carries_the_rounds_dataset_and_shard_count _____________
+----------------------------- Captured stdout call -----------------------------
+claim #1 -> Claimed(build_id='3:7', round_id=7, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576, dataset='sift-128', n_shards=6)
+claim #2 -> Claimed(build_id='1:6', round_id=6, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576, dataset=None, n_shards=100)
+_____________________ test_worker_claims_builds_completes ______________________
+----------------------------- Captured stdout call -----------------------------
+two queued builds; one worker; fake builds take ~0.09 s each at 50x
+  [db] build 1:8: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:8: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] workers: [('gpu-1', 8589934592)]
+worker exited cleanly; builds_done=2 builds_lost=0
+____________ test_lease_lost_mid_build_abandons_without_completing _____________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:9: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-slow', 'placement': 'gpu', 'lease_left_s': 2}
+worker claimed (attempt 1) and is building
+the scheduler's reaper decides the lease expired, and another worker claims attempt 2
+  [db] build 1:9: {'state': 'leased', 'attempt': 2, 'lease_owner': 'gpu-other', 'placement': 'gpu', 'lease_left_s': 30}
+  [db] build 1:9: {'state': 'leased', 'attempt': 2, 'lease_owner': 'gpu-other', 'placement': 'gpu', 'lease_left_s': 30}
+worker's renew was rejected; it cancelled its build and left the row to gpu-other
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:277 renew rejected: lease lost, cancelling build
+WARNING  kgpu.worker:worker.py:242 lost ownership
+___________ test_sigterm_releases_long_build_and_finishes_short_one ____________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:10: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-term', 'placement': 'gpu', 'lease_left_s': 2}
+SIGTERM arrives with ~0.8 s of build left and a 0.2 s finish budget
+  [db] build 1:10: {'state': 'queued', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+the build went back to the queue immediately (no waiting for the reaper), attempt unchanged; counted as released, not lost
+the worker deregistered itself on the clean exit: pool state no longer counts it
+  [db] build 2:10: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-term2', 'placement': 'gpu', 'lease_left_s': 2}
+SIGTERM arrives with the short build mid-flight and a generous budget
+  [db] build 2:10: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+the short build was finished before exit
+_____________________ test_two_workers_never_share_a_build _____________________
+----------------------------- Captured stdout call -----------------------------
+12 builds, 2 workers: gpu-a did 6, gpu-b did 6, every attempt is 1
+______________________ test_registers_before_first_claim _______________________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:12: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:12: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-first', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] registered_at=10:36:29.760030 claim started_at=10:36:29.760973
+________ test_build_error_marks_failed_with_reason_and_worker_continues ________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:13: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:13: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:13: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:13: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:13: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:13: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:13: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:13: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:13: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] 1:13: failed, reason='RuntimeError: injected failure for 1:13 (FAKE_FAIL_BUILD_IDS)'
+  [db] build 1:13: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  the worker kept going and completed 2:13; the process did not crash
+------------------------------ Captured log call -------------------------------
+ERROR    kgpu.worker:worker.py:164 build failed
+Traceback (most recent call last):
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/worker.py", line 159, in _work
+    artifact = self.builder.build(job, progress, cur.cancel)
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/builder.py", line 84, in build
+    raise RuntimeError(f"injected failure for {job.build_id} (FAKE_FAIL_BUILD_IDS)")
+RuntimeError: injected failure for 1:13 (FAKE_FAIL_BUILD_IDS)
+_________________ test_bad_config_is_refused_before_connecting _________________
+----------------------------- Captured stdout call -----------------------------
+  {'COST_BANDWIDTH': '0'} -> ConfigError(COST_BANDWIDTH must be positive)
+  {'LEASE_SECONDS': '5', 'RENEW_INTERVAL_SECONDS': '5'} -> ConfigError(RENEW_INTERVAL_SECONDS must be less than LEASE_SECONDS)
+  {'FAKE_TIME_SCALE': '-1'} -> ConfigError(FAKE_TIME_SCALE must be positive)
+  {'COST_A': 'fast'} -> ConfigError(COST_* value is not a number (could not convert string to float: 'fast'))
+  {'LOG_FORMAT': 'yaml'} -> ConfigError(LOG_FORMAT must be json or text)
+______________ test_survives_lost_database_connections_mid_build _______________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:14: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+worker claimed and is building; now every one of its connections is killed server-side
+  terminated 3 backend connections (main, renewer, heartbeat)
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:14: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:14: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:14: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 2:14: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+reconnected on every thread, renewed in time, completed attempt 1, then claimed and completed the next build
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:321 postgres unavailable during heartbeat, reconnecting
+WARNING  kgpu.worker:worker.py:233 postgres unavailable during complete, reconnecting
+______________ test_renew_outage_past_lease_deadline_assumes_lost ______________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:15: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:15: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-blackout', 'placement': 'gpu', 'lease_left_s': 1}
+renews failed for longer than the lease: the worker assumed the lease lost and cancelled the build
+  [db] build 1:15: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-blackout', 'placement': 'gpu', 'lease_left_s': 0}
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:262 renew failing past the lease deadline: assuming the lease is lost, cancelling build
+WARNING  kgpu.worker:worker.py:242 lost ownership
+_______________________ test_waits_for_schema_at_startup _______________________
+----------------------------- Captured stdout call -----------------------------
+`workers` table hidden; starting a worker against a database with no schema for it
+  after 1.5 s: worker alive, not registered, no crash
+table restored (the scheduler has 'migrated')
+  [db] worker registered on its next retry
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:300 schema not ready, waiting for the scheduler to migrate
+WARNING  kgpu.worker:worker.py:300 schema not ready, waiting for the scheduler to migrate
+_________________ test_xcheck_hnswlib_env_passthrough_and_argv _________________
+----------------------------- Captured stdout call -----------------------------
+artifact Artifact(build_id='7:42', attempt=2, kind='hnswlib', index_bytes=4096, elapsed_s=0.5079529592767358); progress callbacks [0.5, 1.0]
+child argv: ['build', '--build-id', '7:42', '--attempt', '2', '--dataset', 'sift-128', '--n-shards', '50', '--shard', '7', '--threads', '3']
+child env: RECALL_MIN=0.77 S3_ENDPOINT=http://objects.example:9000 S3_BUCKET=bk S3_ACCESS_KEY=ak
+__________________ test_xcheck_hnswlib_explicit_env_argument ___________________
+----------------------------- Captured stdout call -----------------------------
+env={RECALL_MIN: 0.5, S3_ENDPOINT: given} with RECALL_MIN=0.77 and XCHECK_MARK in the worker's environment -> child sees RECALL_MIN=0.5, S3_ENDPOINT=http://given:1, XCHECK_MARK=inherited, PATH set: True
+___________________ test_xcheck_hnswlib_builder_cmd_quoting ____________________
+----------------------------- Captured stdout call -----------------------------
+BUILDER_CMD='\'/private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-37/test_xcheck_hnswlib_builder_cm0/dir with space/my stub.sh\' --flag \'two words\' "x y"' -> builder_cmd ['/private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-37/test_xcheck_hnswlib_builder_cm0/dir with space/my stub.sh', '--flag', 'two words', 'x y']
+child argv: ['--flag', 'two words', 'x y', 'build', '--build-id', '0:5', '--attempt', '1', '--dataset', 'sift-128', '--n-shards', '6', '--shard', '0', '--threads', '1']
+__ test_xcheck_hnswlib_cancel_kills_a_term_ignoring_child_and_its_grandchild ___
+----------------------------- Captured stdout call -----------------------------
+cancel: build() returned after 0.05s with Cancelled; child 5574 alive=False; grandchild 5576 alive=False
+_____ test_xcheck_hnswlib_odd_child_outputs[exit1_traceback_empty_stdout] ______
+----------------------------- Captured stdout call -----------------------------
+exit1_traceback_empty_stdout: RuntimeError: 'builder exited 1: '
+________ test_xcheck_hnswlib_odd_child_outputs[exit0_unparsable_stdout] ________
+----------------------------- Captured stdout call -----------------------------
+exit0_unparsable_stdout: JSONDecodeError: 'Expecting value: line 1 column 1 (char 0)'
+________ test_xcheck_hnswlib_odd_child_outputs[exit3_without_document] _________
+----------------------------- Captured stdout call -----------------------------
+exit3_without_document: GateRefused: "the builder's gate refused the build and gave no reason"
+______ test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-abc-True] ______
+----------------------------- Captured stdout call -----------------------------
+RECALL_MIN='abc': exit 2; output (1 lines): ["bad config: RECALL_MIN='abc' is not a number"]
+_____ test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS--3-True] _____
+----------------------------- Captured stdout call -----------------------------
+BUILD_THREADS='-3': exit 2; output (1 lines): ['bad config: BUILD_THREADS must be at least 1']
+_______ test_xcheck_worker_refuses_bad_builder_config[BUILDER-nope-True] _______
+----------------------------- Captured stdout call -----------------------------
+BUILDER='nope': exit 2; output (1 lines): ['bad config: BUILDER must be fake or hnswlib']
+_ test_xcheck_worker_refuses_bad_builder_config[BUILDER_CMD-'unterminated-True] _
+----------------------------- Captured stdout call -----------------------------
+BUILDER_CMD="'unterminated": exit 2; output (1 lines): ['bad config: BUILDER_CMD="\'unterminated" does not parse as a command line (No closing quotation)']
+_____ test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-1.5-False] ______
+----------------------------- Captured stdout call -----------------------------
+RECALL_MIN='1.5': exit 2; output (1 lines): ['bad config: RECALL_MIN must be a number in [0, 1]']
+  (spec silent on RECALL_MIN='1.5'; recorded only)
+______ test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN--1-False] ______
+----------------------------- Captured stdout call -----------------------------
+RECALL_MIN='-1': exit 2; output (1 lines): ['bad config: RECALL_MIN must be a number in [0, 1]']
+  (spec silent on RECALL_MIN='-1'; recorded only)
+_____ test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS-0-False] _____
+----------------------------- Captured stdout call -----------------------------
+BUILD_THREADS='0': exit 2; output (1 lines): ['bad config: BUILD_THREADS must be at least 1']
+  (spec silent on BUILD_THREADS='0'; recorded only)
+______________ test_xcheck_worker_process_argv_env_and_completion ______________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 7:16: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] fail_reason=None
+child argv: ['build', '--build-id', '7:16', '--attempt', '1', '--dataset', 'sift-128', '--n-shards', '50', '--shard', '7', '--threads', '3']
+child env: RECALL_MIN=0.77 S3_ENDPOINT=http://objects.example:9000 S3_BUCKET=bk
+____________ test_xcheck_worker_process_modeled_round_under_hnswlib ____________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 2:17: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] fail_reason='RuntimeError: 2:17: a modeled round (no dataset) cannot be built by hnswlib; run BUILDER=fake'
+worker log tail: ['03:36:43.217 ERROR build failed build_id=2:17 attempt=1 round_id=17', '03:36:43.218 INFO  marked failed build_id=2:17 attempt=1 round_id=17 reason=RuntimeError: 2:17: a modeled round (no dataset) cannot be built by hnswlib; run BUILDER=fake', '03:36:43.230 INFO  shutdown requested why=signal 15', '03:36:43.231 INFO  deregistered worker_id=xc-hnsw', '03:36:43.231 INFO  worker stopped worker_id=xc-hnsw builds_done=0 builds_lost=0 builds_released=0']
+stub runs: 0
+_______ test_xcheck_worker_process_real_cli_missing_split_fails_readably _______
+----------------------------- Captured stdout call -----------------------------
+  [db] build 3:18: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] fail_reason='RuntimeError: builder exited 1: {"status": "failed", "reason": "object not in the store: \'splits/sift-128/6/vectors/shard_3.npy\'", "build_id": "3:18", "attempt": 1}'
+worker log tail: ['03:36:43.642 INFO  marked failed build_id=3:18 attempt=1 round_id=18 reason=RuntimeError: builder exited 1: {"status": "failed", "reason": "object not in the store: \'splits/sift-128/6/vectors/shard_3.npy\'", "build_id": "3:18", "attempt": 1}', '03:36:43.706 INFO  shutdown requested why=signal 15', '03:36:43.707 INFO  deregistered worker_id=xc-hnsw', '03:36:43.707 INFO  worker stopped worker_id=xc-hnsw builds_done=0 builds_lost=0 builds_released=0']
+=========================== short test summary info ============================
+PASSED tests/test_costmodel.py::test_matches_go_defaults
+PASSED tests/test_costmodel.py::test_env_overrides
+PASSED tests/test_health.py::test_livez_always_and_healthz_follows_heartbeats
+PASSED tests/test_health.py::test_metrics_served_on_the_health_port
+PASSED tests/test_hnswlib_builder.py::test_stub_ok_streams_progress_and_returns_the_manifest
+PASSED tests/test_hnswlib_builder.py::test_stub_passes_the_documented_arguments
+PASSED tests/test_hnswlib_builder.py::test_stub_gate_refusal_becomes_a_failed_build_reason
+PASSED tests/test_hnswlib_builder.py::test_stub_crash_is_an_error_with_the_output
+PASSED tests/test_hnswlib_builder.py::test_cancel_kills_the_child
+PASSED tests/test_hnswlib_builder.py::test_modeled_round_is_refused
+PASSED tests/test_hnswlib_builder.py::test_worker_runs_the_real_builder_and_the_gate
+PASSED tests/test_store.py::test_claim_order_and_attempt
+PASSED tests/test_store.py::test_fencing_after_reap
+PASSED tests/test_store.py::test_memory_filter_and_release
+PASSED tests/test_store.py::test_heartbeat_upsert
+PASSED tests/test_store.py::test_claim_carries_the_rounds_dataset_and_shard_count
+PASSED tests/test_worker.py::test_worker_claims_builds_completes
+PASSED tests/test_worker.py::test_lease_lost_mid_build_abandons_without_completing
+PASSED tests/test_worker.py::test_sigterm_releases_long_build_and_finishes_short_one
+PASSED tests/test_worker.py::test_two_workers_never_share_a_build
+PASSED tests/test_worker.py::test_registers_before_first_claim
+PASSED tests/test_worker.py::test_build_error_marks_failed_with_reason_and_worker_continues
+PASSED tests/test_worker.py::test_bad_config_is_refused_before_connecting
+PASSED tests/test_worker.py::test_survives_lost_database_connections_mid_build
+PASSED tests/test_worker.py::test_renew_outage_past_lease_deadline_assumes_lost
+PASSED tests/test_worker.py::test_waits_for_schema_at_startup
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_env_passthrough_and_argv
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_explicit_env_argument
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_builder_cmd_quoting
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_cancel_kills_a_term_ignoring_child_and_its_grandchild
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit1_traceback_empty_stdout]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit0_unparsable_stdout]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_hnswlib_odd_child_outputs[exit3_without_document]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-abc-True]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS--3-True]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILDER-nope-True]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILDER_CMD-'unterminated-True]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN-1.5-False]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[RECALL_MIN--1-False]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_refuses_bad_builder_config[BUILD_THREADS-0-False]
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_argv_env_and_completion
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_modeled_round_under_hnswlib
+PASSED tests/test_xcheck_hnswlib.py::test_xcheck_worker_process_real_cli_missing_split_fails_readably
+============================= 43 passed in 19.39s ==============================
+== pytest (builder/)
+============================= test session starts ==============================
+platform darwin -- Python 3.12.15, pytest-8.4.2, pluggy-1.7.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder
+configfile: pyproject.toml
+testpaths: tests
+collecting ... collected 114 items
+
+tests/test_build.py::test_build_gates_and_publishes_manifest_last PASSED [  0%]
+tests/test_build.py::test_gate_failure_writes_nothing PASSED             [  1%]
+tests/test_build.py::test_cli_exit_codes_and_streams PASSED              [  2%]
+tests/test_groundtruth.py::test_exact_topk_matches_naive_loop_and_chunking_is_invisible PASSED [  3%]
+tests/test_groundtruth.py::test_k_is_clamped_to_shard_size PASSED        [  4%]
+tests/test_groundtruth.py::test_recall_at_by_hand PASSED                 [  5%]
+tests/test_split.py::test_zipf_sizes_sum_and_shape PASSED                [  6%]
+tests/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid PASSED [  7%]
+tests/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded PASSED [  7%]
+tests/test_split.py::test_write_split_round_trips_with_sha256 PASSED     [  8%]
+tests/test_store.py::test_bytes_json_npy_round_trip_and_listing PASSED   [  9%]
+tests/test_store.py::test_ensure_bucket_is_idempotent PASSED             [ 10%]
+tests/test_xcheck_build.py::test_xcheck_build_success_streams_and_manifest PASSED [ 11%]
+tests/test_xcheck_build.py::test_xcheck_build_manifest_names_the_real_hnswlib_version PASSED [ 12%]
+tests/test_xcheck_build.py::test_xcheck_build_publish_order_observed_live PASSED [ 13%]
+tests/test_xcheck_build.py::test_xcheck_build_sigkill_mid_build_leaves_no_manifest PASSED [ 14%]
+tests/test_xcheck_build.py::test_xcheck_build_second_attempt_never_touches_the_first PASSED [ 14%]
+tests/test_xcheck_build.py::test_xcheck_build_threads_1_vs_4_recall PASSED [ 15%]
+tests/test_xcheck_build.py::test_xcheck_build_recall_min_boundary PASSED [ 16%]
+tests/test_xcheck_build.py::test_xcheck_build_gate_reason_is_not_misleading PASSED [ 17%]
+tests/test_xcheck_build.py::test_xcheck_build_gate_flags_k_and_ef_search PASSED [ 18%]
+tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_shard] PASSED [ 19%]
+tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_dataset] PASSED [ 20%]
+tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_ground_truth] PASSED [ 21%]
+tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_queries] PASSED [ 21%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change0] PASSED [ 22%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change1] PASSED [ 23%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change2] PASSED [ 24%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change3] PASSED [ 25%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change4] PASSED [ 26%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change5] PASSED [ 27%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change6] PASSED [ 28%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change7] PASSED [ 28%]
+tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change8] PASSED [ 29%]
+tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[recall_k_beyond_truth] PASSED [ 30%]
+tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[recall_min_not_a_number] PASSED [ 31%]
+tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[threads_zero] PASSED [ 32%]
+tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[attempt_zero] PASSED [ 33%]
+tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[negative_shard] PASSED [ 34%]
+tests/test_xcheck_cli.py::test_xcheck_cli_unknown_dataset_is_a_clear_error PASSED [ 35%]
+tests/test_xcheck_cli.py::test_xcheck_cli_download_refuses_an_oversized_file PASSED [ 35%]
+tests/test_xcheck_cli.py::test_xcheck_cli_download_accepts_a_complete_file_without_network PASSED [ 36%]
+tests/test_xcheck_cli.py::test_xcheck_cli_download_with_a_truncated_file_tries_to_resume PASSED [ 37%]
+tests/test_xcheck_cli.py::test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file PASSED [ 38%]
+tests/test_xcheck_cli.py::test_xcheck_cli_split_manifest_covers_ground_truth PASSED [ 39%]
+tests/test_xcheck_cli.py::test_xcheck_cli_split_is_deterministic PASSED  [ 40%]
+tests/test_xcheck_cli.py::test_xcheck_cli_groundtruth_before_split_fails PASSED [ 41%]
+tests/test_xcheck_cli.py::test_xcheck_cli_gist_train_limit_with_a_small_file PASSED [ 42%]
+tests/test_xcheck_cli.py::test_xcheck_cli_all_cannot_run_on_a_custom_file PASSED [ 42%]
+tests/test_xcheck_cli.py::test_xcheck_cli_upload_verify_and_tamper PASSED [ 43%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_against_direct_float64_reference PASSED [ 44%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_is_exact_with_a_large_common_offset PASSED [ 45%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_sift_like_integer_vectors_with_ties PASSED [ 46%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_duplicate_vectors_and_the_query_itself PASSED [ 47%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_k_larger_than_shard_and_single_vector_shard PASSED [ 48%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_far_queries_still_get_k_answers PASSED [ 49%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_chunk_sizes_do_not_change_the_answer PASSED [ 50%]
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_float64_and_float16_inputs PASSED [ 50%]
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_by_hand PASSED   [ 51%]
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_duplicates_in_found_count_once PASSED [ 52%]
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_k_beyond_stored_width PASSED [ 53%]
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_found_narrower_than_k PASSED [ 54%]
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-6] PASSED [ 55%]
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-50] PASSED [ 56%]
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-6] PASSED [ 57%]
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-50] PASSED [ 57%]
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-6] PASSED [ 58%]
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-50] PASSED [ 59%]
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-6] PASSED [ 60%]
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-50] PASSED [ 61%]
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-6] PASSED [ 62%]
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-50] PASSED [ 63%]
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-6] PASSED [ 64%]
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-50] PASSED [ 64%]
+tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[sift-128] PASSED [ 65%]
+tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[gist-960-300k] PASSED [ 66%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-6] PASSED [ 67%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-50] PASSED [ 68%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-6] PASSED [ 69%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-50] PASSED [ 70%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-smallest-40] PASSED [ 71%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-largest-3] PASSED [ 71%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-50-smallest-200] PASSED [ 72%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-6-largest-5] PASSED [ 73%]
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-50-smallest-300] PASSED [ 74%]
+tests/test_xcheck_realdata.py::test_xcheck_cluster_bucket_mirrors_local_splits_read_only SKIPPED [ 75%]
+tests/test_xcheck_split.py::test_xcheck_zipf_1m_over_6_by_hand PASSED    [ 76%]
+tests/test_xcheck_split.py::test_xcheck_design_doc_example_sizes_match_the_rule PASSED [ 77%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000000-50-1.0] PASSED [ 78%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-6-1.0] PASSED [ 78%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-50-1.0] PASSED [ 79%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000-3-2.0] PASSED [ 80%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[999999-7-2.0] PASSED [ 81%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000003-6-1.0] PASSED [ 82%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[10007-5-0.0] PASSED [ 83%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-0.5] PASSED [ 84%]
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-1.5] PASSED [ 85%]
+tests/test_xcheck_split.py::test_xcheck_zipf_edge_cases PASSED           [ 85%]
+tests/test_xcheck_split.py::test_xcheck_zipf_small_total_never_empties_a_shard PASSED [ 86%]
+tests/test_xcheck_split.py::test_xcheck_zipf_fewer_vectors_than_shards PASSED [ 87%]
+tests/test_xcheck_split.py::test_xcheck_plan_ranks_offsets_and_recorded_fields PASSED [ 88%]
+tests/test_xcheck_split.py::test_xcheck_plan_seed_only_permutes PASSED   [ 89%]
+tests/test_xcheck_split.py::test_xcheck_plan_zipf_exponent_two_and_zero PASSED [ 90%]
+tests/test_xcheck_split.py::test_xcheck_write_split_bytes_sha_and_manifest PASSED [ 91%]
+tests/test_xcheck_split.py::test_xcheck_write_split_from_h5py_dataset PASSED [ 92%]
+tests/test_xcheck_store.py::test_xcheck_store_large_object_round_trip PASSED [ 92%]
+tests/test_xcheck_store.py::test_xcheck_store_listing_and_deleting_beyond_1000_keys PASSED [ 93%]
+tests/test_xcheck_store.py::test_xcheck_store_overwrite_replaces PASSED  [ 94%]
+tests/test_xcheck_store.py::test_xcheck_store_missing_key PASSED         [ 95%]
+tests/test_xcheck_store.py::test_xcheck_store_delete_prefix_empty_on_empty_bucket PASSED [ 96%]
+tests/test_xcheck_store.py::test_xcheck_store_prefix_is_a_string_prefix PASSED [ 97%]
+tests/test_xcheck_store.py::test_xcheck_store_artifact_keys_with_a_colon PASSED [ 98%]
+tests/test_xcheck_store.py::test_xcheck_store_npy_dtypes_and_shapes PASSED [ 99%]
+tests/test_xcheck_store.py::test_xcheck_store_wrong_credentials_fail PASSED [100%]
+
+==================================== PASSES ====================================
+_________________ test_build_gates_and_publishes_manifest_last _________________
+----------------------------- Captured stdout call -----------------------------
+recall@10 0.955, index 2643544 bytes, build 0.29 s; writes in order: ['artifacts/0:1/1/index.bin', 'artifacts/0:1/1/manifest.json']; phases ['build', 'gate', 'publish']
+the published index reloads and scores recall@10 0.955 again
+_______________________ test_gate_failure_writes_nothing _______________________
+----------------------------- Captured stdout call -----------------------------
+refused: recall@10 0.9550 < 1.0100
+_______________________ test_cli_exit_codes_and_streams ________________________
+----------------------------- Captured stdout call -----------------------------
+ok build: rc=0; stderr lines=13; stdout={"status": "done", "kind": "hnswlib", "build_id": "0:3", "attempt": 2, "dataset": "toy", "n_shards": 2, "shard": 0, "thr...
+gate failure: rc=3; stdout={"status": "failed", "reason": "recall@10 0.9550 < 1.0000", "recall": 0.955, "build_id": "0:4", "attempt": 1}
+missing shard: rc=1; stdout={"status": "failed", "reason": "object not in the store: 'splits/toy/2/vectors/shard_5.npy'", "build
+RECALL_MIN out of range: rc=2; stderr=build: RECALL_MIN=1.01 is not in [0, 1]
+_________ test_exact_topk_matches_naive_loop_and_chunking_is_invisible _________
+----------------------------- Captured stdout call -----------------------------
+700 queries x 3000 vectors: chunked top-10 equals the naive loop at 8 probed queries and is chunk-size independent
+________________________ test_zipf_sizes_sum_and_shape _________________________
+----------------------------- Captured stdout call -----------------------------
+1M across 6 shards, s=1: [408164, 204082, 136055, 102040, 81632, 68027]
+1M across 50 shards: largest 222262, smallest 4445, sum 1000000
+____________ test_plan_permutes_ranks_and_is_contiguous_and_seeded _____________
+----------------------------- Captured stdout call -----------------------------
+shard -> rank, offset, size: [(0, 5, 0, 81632), (1, 1, 81632, 408164), (2, 3, 489796, 136055), (3, 2, 625851, 204082), (4, 6, 829933, 68027), (5, 4, 897960, 102040)]
+___________________ test_write_split_round_trips_with_sha256 ___________________
+----------------------------- Captured stdout call -----------------------------
+4 shards written, manifest round-trips, every shard equals its contiguous slice
+__________________ test_bytes_json_npy_round_trip_and_listing __________________
+----------------------------- Captured stdout call -----------------------------
+bytes, JSON and .npy round-trip through MinIO; listing, exists and delete_prefix behave
+________________ test_xcheck_build_success_streams_and_manifest ________________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-00f47d79fb: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 3:7 --attempt 2 --dataset xtoy --n-shards 2 --shard 1 --threads 2  ->  exit 0 in 0.35s
+stdout (1 line(s)): {"status": "done", "kind": "hnswlib", "build_id": "3:7", "attempt": 2, "dataset": "xtoy", "n_shards": 2, "shard": 1, "threads": 2, "m": 16, "ef_construction": 200, "recall_k": 10, "ef_search": 100, "recall_min": 0.9, "n_vectors": 3000, "dim": 16, "n_queries": 200, "index_bytes": 638852, "index_sha256": "8bb2b3f51efb8ce868abf15b1b88ad8f28c177d06b00594a501d43b959a303f1", "index_key": "artifacts/3:7/
+stderr lines: ['{"phase": "build"}', '{"progress": 0.1}', '{"progress": 0.2}', '{"progress": 0.3}', '{"progress": 0.4}', '{"progress": 0.5}', '{"progress": 0.6}', '{"progress": 0.7}', '{"progress": 0.8}', '{"progress": 0.9}', '{"progress": 1.0}', '{"phase": "gate"}', '{"phase": "publish"}']
+progress values: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]; phases: ['build', 'gate', 'publish']
+documented manifest fields missing from stdout: []
+store now holds under artifacts/: ['artifacts/3:7/2/index.bin', 'artifacts/3:7/2/manifest.json']
+index.bin: 638852 bytes sha256 8bb2b3f51efb8ce8..; manifest says 638852 / 8bb2b3f51efb8ce8..; stored manifest == stdout: True
+__________ test_xcheck_build_manifest_names_the_real_hnswlib_version ___________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-39f4fcd3a5: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:1 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 2  ->  exit 0 in 0.30s
+manifest hnswlib_version='0.8.0'; the installed distribution is hnswlib 0.8.0
+________________ test_xcheck_build_publish_order_observed_live _________________
+----------------------------- Captured stdout call -----------------------------
+(bucket xcb-4de5acdcc0: dataset xtoy, 1 shards of 50000 x 32, 300 queries, exact top-100)
+build exit 0; distinct listings the poller saw, in order:
+  +  0.000s  []
+  +  3.073s  ['artifacts/0:9/1/index.bin']
+  +  3.082s  ['artifacts/0:9/1/index.bin', 'artifacts/0:9/1/manifest.json']
+stderr {'phase': 'gate'} read at +2.899s
+poller observed the index-only state 1 time(s) (the window is the manifest upload)
+____________ test_xcheck_build_sigkill_mid_build_leaves_no_manifest ____________
+----------------------------- Captured stdout call -----------------------------
+(bucket xcb-e50b31455a: dataset xtoy, 1 shards of 50000 x 32, 300 queries, exact top-100)
+killed with SIGKILL after stderr '{"progress": 0.1}'; exit -9; artifacts/ now holds []
+___________ test_xcheck_build_second_attempt_never_touches_the_first ___________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-7334bb6a74: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 1:4 --attempt 1 --dataset xtoy --n-shards 2 --shard 1 --threads 2  ->  exit 0 in 0.33s
+ran: -m kgpu_builder build --build-id 1:4 --attempt 2 --dataset xtoy --n-shards 2 --shard 1 --threads 4  ->  exit 0 in 0.33s
+after attempt 1: ['artifacts/1:4/1/index.bin', 'artifacts/1:4/1/manifest.json']
+after attempt 2: ['artifacts/1:4/1/index.bin', 'artifacts/1:4/1/manifest.json', 'artifacts/1:4/2/index.bin', 'artifacts/1:4/2/manifest.json']
+  artifacts/1:4/1/index.bin: before 051f35ce295e.. after 051f35ce295e..
+  artifacts/1:4/1/manifest.json: before 174f2438f131.. after 174f2438f131..
+___________________ test_xcheck_build_threads_1_vs_4_recall ____________________
+----------------------------- Captured stdout call -----------------------------
+(bucket xcb-6f16dbf134: dataset xtoy, 1 shards of 20000 x 32, 300 queries, exact top-100)
+ran: -m kgpu_builder build --build-id 0:21 --attempt 1 --dataset xtoy --n-shards 1 --shard 0 --threads 1 --ef-search 30  ->  exit 0 in 1.92s
+ran: -m kgpu_builder build --build-id 0:24 --attempt 1 --dataset xtoy --n-shards 1 --shard 0 --threads 4 --ef-search 30  ->  exit 0 in 0.77s
+ran: -m kgpu_builder build --build-id 0:21 --attempt 2 --dataset xtoy --n-shards 1 --shard 0 --threads 1 --ef-search 30  ->  exit 0 in 1.85s
+threads=1 (twice): [(0.7923333333333333, '07ed079a2647c59420883e2e04fef2e3d47bca30d814160e74bb84c3b592367d'), (0.7923333333333333, '07ed079a2647c59420883e2e04fef2e3d47bca30d814160e74bb84c3b592367d')]
+threads=4: [(0.797, 'a66c67dbd3b6e435ca59cf0318bea19893109e455dc8363151e866171cf43ecf')]
+threads 1 deterministic across runs: True; threads 4 same recall as 1: False; same index bytes: False
+____________________ test_xcheck_build_recall_min_boundary _____________________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-bb7690e711: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:30 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 10  ->  exit 0 in 0.35s
+ran: -m kgpu_builder build --build-id 0:30 --attempt 2 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 10  ->  exit 0 in 0.33s
+measured recall with RECALL_MIN=0, threads 1, twice: 0.4885 and 0.4885
+ran: -m kgpu_builder build --build-id 0:30 --attempt 3 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 10  ->  exit 0 in 0.34s
+RECALL_MIN=0.4885 (exactly the recall): exit 0, stdout {"status": "done", "kind": "hnswlib", "build_id": "0:30", "attempt": 3, "dataset": "xtoy", "n_shards": 2, "shard": 0, "threads": 1, "m": 4, "ef_construction": 200, "recall_k": 10, "ef_search": 10, "re
+ran: -m kgpu_builder build --build-id 0:30 --attempt 4 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 10  ->  exit 3 in 0.31s
+RECALL_MIN=0.48850000000000005 (one ulp above): exit 3, stdout {"status": "failed", "reason": "recall@10 0.4885 < 0.4885", "recall": 0.4885, "build_id": "0:30", "attempt": 4}
+artifacts/: ['artifacts/0:30/1/index.bin', 'artifacts/0:30/1/manifest.json', 'artifacts/0:30/2/index.bin', 'artifacts/0:30/2/manifest.json', 'artifacts/0:30/3/index.bin', 'artifacts/0:30/3/manifest.json']
+_______________ test_xcheck_build_gate_reason_is_not_misleading ________________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-45d591cb90: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:31 --attempt 5 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 5  ->  exit 0 in 0.35s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 6 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 6  ->  exit 0 in 0.33s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 7 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 7  ->  exit 0 in 0.32s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 8 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 8  ->  exit 0 in 0.33s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 9 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 9  ->  exit 0 in 0.35s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 10 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 10  ->  exit 0 in 0.33s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 12 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 12  ->  exit 0 in 0.35s
+ran: -m kgpu_builder build --build-id 0:31 --attempt 100 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 12  ->  exit 3 in 0.31s
+recall 0.533 at ef_search 12, RECALL_MIN 0.5331: exit 3, reason 'recall@10 0.5330 < 0.5331'
+the reason's two numbers: [0.533, 0.5331]; reads as a true inequality: True
+_________________ test_xcheck_build_gate_flags_k_and_ef_search _________________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-6ed9220196: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:40 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4  ->  exit 0 in 0.34s
+ran: -m kgpu_builder build --build-id 0:40 --attempt 2 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --recall-k 5  ->  exit 0 in 0.34s
+ran: -m kgpu_builder build --build-id 0:40 --attempt 3 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --ef-search 5  ->  exit 0 in 0.33s
+default       : recall_k=10 ef_search=100 m=4 recall=0.9555
+--recall-k 5  : recall_k=5 ef_search=100 m=4 recall=0.969
+--ef-search 5 : recall_k=10 ef_search=5 m=4 recall=0.4885
+ran: -m kgpu_builder build --build-id 0:40 --attempt 4 --dataset xtoy --n-shards 2 --shard 0 --threads 1 --m 4 --recall-k 5 --ef-search 5  ->  exit 3 in 0.33s
+--recall-k 5 refused: {'status': 'failed', 'reason': 'recall@5 0.3460 < 1.0000', 'recall': 0.346, 'build_id': '0:40', 'attempt': 4}
+_ test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_shard] _
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-628240c249: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 5:50 --attempt 1 --dataset xtoy --n-shards 2 --shard 7 --threads 2  ->  exit 1 in 0.20s
+missing_shard: stdout '{"status": "failed", "reason": "object not in the store: \'splits/xtoy/2/vectors/shard_7.npy\'", "build_id": "5:50", "attempt": 1}'; stderr tail ''; artifacts []
+_ test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_dataset] _
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-b6cb96cf1c: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 5:50 --attempt 1 --dataset no-such-dataset --n-shards 2 --shard 0 --threads 2  ->  exit 1 in 0.20s
+missing_dataset: stdout '{"status": "failed", "reason": "object not in the store: \'splits/no-such-dataset/2/vectors/shard_0.npy\'", "build_id": "5:50", "attempt": 1}'; stderr tail ''; artifacts []
+_ test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_ground_truth] _
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-3da4d9b7cf: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 5:50 --attempt 1 --dataset xtoy --n-shards 2 --shard 1 --threads 2  ->  exit 1 in 0.20s
+missing_ground_truth: stdout '{"status": "failed", "reason": "object not in the store: \'splits/xtoy/2/ground_truth/shard_1.npy\'", "build_id": "5:50", "attempt": 1}'; stderr tail ''; artifacts []
+_ test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_queries] _
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-3cf4b979ee: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 5:50 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 2  ->  exit 1 in 0.20s
+missing_queries: stdout '{"status": "failed", "reason": "object not in the store: \'datasets/xtoy/queries.npy\'", "build_id": "5:50", "attempt": 1}'; stderr tail ''; artifacts []
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change0] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-cfd7835027: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('drop', '--build-id'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder build: error: the following arguments are required: --build-id'
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change1] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-776d002d73: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('drop', '--attempt'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder build: error: the following arguments are required: --attempt'
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change2] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-0de102d6b8: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('drop', '--dataset'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder build: error: the following arguments are required: --dataset'
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change3] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-46dd456aa7: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('drop', '--n-shards'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder build: error: the following arguments are required: --n-shards'
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change4] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-e7cea69193: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('drop', '--shard'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder build: error: the following arguments are required: --shard'
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change5] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-53197aa05c: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('set', '--attempt', 'x'): exit 2; stdout ''; stderr last line "python -m kgpu_builder build: error: argument --attempt: invalid int value: 'x'"
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change6] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-dd1a721ec0: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('set', '--threads', 'two'): exit 2; stdout ''; stderr last line "python -m kgpu_builder build: error: argument --threads: invalid int value: 'two'"
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change7] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-cd68eb207e: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('set', '--shard', '1.5'): exit 2; stdout ''; stderr last line "python -m kgpu_builder build: error: argument --shard: invalid int value: '1.5'"
+_____________ test_xcheck_build_bad_arguments_exit_2[argv_change8] _____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-b256fbcc4d: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+('add', '--no-such-flag'): exit 2; stdout ''; stderr last line 'python -m kgpu_builder: error: unrecognized arguments: --no-such-flag'
+_______ test_xcheck_build_questionable_arguments[recall_k_beyond_truth] ________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-4640ce561c: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:60 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 2 --recall-k 200  ->  exit 1 in 0.30s
+recall_k_beyond_truth: exit 1; stdout '{"status": "failed", "reason": "ValueError: k=200 exceeds the stored width (found 200, truth 100)", "build_id": "0:60", "attempt": 1}'; stderr last line '{"phase": "gate"}'; artifacts []
+______ test_xcheck_build_questionable_arguments[recall_min_not_a_number] _______
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-fa1ffd0736: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:60 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 2  ->  exit 2 in 0.15s
+     usage error on stderr: build: RECALL_MIN='abc' is not a number
+recall_min_not_a_number: exit 2; stdout ''; stderr last line "build: RECALL_MIN='abc' is not a number"; artifacts []
+____________ test_xcheck_build_questionable_arguments[threads_zero] ____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-7b91b1a31e: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:60 --attempt 1 --dataset xtoy --n-shards 2 --shard 0 --threads 0  ->  exit 2 in 0.15s
+     usage error on stderr: build: --threads must be >= 1, --attempt and --shard >= 0, --n-shards >= 1
+threads_zero: exit 2; stdout ''; stderr last line 'build: --threads must be >= 1, --attempt and --shard >= 0, --n-shards >= 1'; artifacts []
+____________ test_xcheck_build_questionable_arguments[attempt_zero] ____________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-1287173579: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:60 --attempt 0 --dataset xtoy --n-shards 2 --shard 0 --threads 2  ->  exit 0 in 0.31s
+attempt_zero: exit 0; stdout '{"status": "done", "kind": "hnswlib", "build_id": "0:60", "attempt": 0, "dataset": "xtoy", "n_shards": 2, "shard": 0, "threads": 2, "m": 16, "ef_construction": '; stderr last line '{"phase": "publish"}'; artifacts ['artifacts/0:60/0/index.bin', 'artifacts/0:60/0/manifest.json']
+  NOTE: attempt_zero was accepted and published
+___________ test_xcheck_build_questionable_arguments[negative_shard] ___________
+---------------------------- Captured stdout setup -----------------------------
+(bucket xcb-9d709e78ee: dataset xtoy, 2 shards of 3000 x 16, 200 queries, exact top-100)
+----------------------------- Captured stdout call -----------------------------
+ran: -m kgpu_builder build --build-id 0:60 --attempt 1 --dataset xtoy --n-shards 2 --shard -1 --threads 2  ->  exit 2 in 0.15s
+     usage error on stderr: build: --threads must be >= 1, --attempt and --shard >= 0, --n-shards >= 1
+negative_shard: exit 2; stdout ''; stderr last line 'build: --threads must be >= 1, --attempt and --shard >= 0, --n-shards >= 1'; artifacts []
+_______________ test_xcheck_cli_unknown_dataset_is_a_clear_error _______________
+----------------------------- Captured stdout call -----------------------------
+did: split glove-100 6 (not in the catalogue)
+  expected: non-zero exit naming the known datasets (help: 'Datasets: sift-128, gist-960-300k')
+  seen: rc=1
+      unknown dataset 'glove-100'; known: sift-128, gist-960-300k
+______________ test_xcheck_cli_download_refuses_an_oversized_file ______________
+----------------------------- Captured stdout call -----------------------------
+did: download sift-128 with a 525128289-byte file in place (catalogue: 525128288)
+  expected: non-zero exit, file not accepted
+  seen: rc=1
+      /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_cli_download_refus0/ann-benchmarks/sift-128-euclidean.hdf5 is 525128289 bytes, larger than the catalogue's 525128288: delete it and retry
+_______ test_xcheck_cli_download_accepts_a_complete_file_without_network _______
+----------------------------- Captured stdout call -----------------------------
+did: download sift-128 with a file of exactly the catalogue's size and the network blocked
+  expected: rc 0, no fetch (size verified)
+  seen: rc=0
+      sift-128: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_cli_download_accep0/ann-benchmarks/sift-128-euclidean.hdf5 already complete (525128288 bytes)
+________ test_xcheck_cli_download_with_a_truncated_file_tries_to_resume ________
+----------------------------- Captured stdout call -----------------------------
+did: download sift-128 with a 1000-byte file in place, network blocked by a dead proxy
+  expected: non-zero exit (resume fails), short file not declared complete
+  seen: rc=1, file now 1000 bytes
+      sift-128: resuming at 1000 bytes
+      download: <urlopen error [Errno 61] Connection refused>
+__________ test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file ___________
+----------------------------- Captured stdout call -----------------------------
+did: split sift-128 6 --zipf 2 --seed 7 on a synthetic 1000x128 file
+  rc=0
+      sift-128: 1000 vectors x 128 across 6 shards, zipf s=2.0, rank permutation seed 7
+        shard  0: rank  6,       18 vectors,     0.0 MB -> vectors/shard_0.npy
+        shard  1: rank  3,       75 vectors,     0.0 MB -> vectors/shard_1.npy
+        shard  2: rank  1,      671 vectors,     0.3 MB -> vectors/shard_2.npy
+        shard  3: rank  5,       26 vectors,     0.0 MB -> vectors/shard_3.npy
+        shard  4: rank  2,      168 vectors,     0.1 MB -> vectors/shard_4.npy
+        shard  5: rank  4,       42 vectors,     0.0 MB -> vectors/shard_5.npy
+      split written in 0.0 s: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_cli_split_and_grou0/splits/sift-128/6; 20 queries
+  manifest: n_vectors=1000 zipf_exponent=2.0 perm_seed=7 sizes by shard=[18, 75, 671, 26, 168, 42] ranks=[6, 3, 1, 5, 2, 4]
+  vectors are the contiguous train slices, sha256 match, queries.npy = the HDF5 test array
+did: groundtruth sift-128 6 --k 15
+  rc=0
+  each ground_truth/shard_k.npy is int32 [20, 15], local indices, the exact top-15 by float64 distance (ties by distance)
+______________ test_xcheck_cli_split_manifest_covers_ground_truth ______________
+----------------------------- Captured stdout call -----------------------------
+did: split + groundtruth; objects under the split: 12; sha256 entries in manifest.json: 12
+  objects with no sha256 anywhere in the manifest: []
+____________________ test_xcheck_cli_split_is_deterministic ____________________
+----------------------------- Captured stdout call -----------------------------
+did: split sift-128 6 twice; manifests identical (incl. sha256): True
+________________ test_xcheck_cli_groundtruth_before_split_fails ________________
+----------------------------- Captured stdout call -----------------------------
+did: groundtruth with no split on disk
+  expected: non-zero exit
+  seen: rc=1
+      groundtruth: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_cli_groundtruth_be0/splits/sift-128/6/manifest.json not found — run the earlier steps first (download, split, groundtruth)
+______________ test_xcheck_cli_gist_train_limit_with_a_small_file ______________
+----------------------------- Captured stdout call -----------------------------
+did: split gist-960-300k 6 on a 500-row file (train_limit 300,000)
+  seen: rc=1, manifest n_vectors=None
+      /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_cli_gist_train_lim0/ann-benchmarks/gist-960-euclidean.hdf5: 500 train rows, fewer than the 300000 the catalogue takes for gist-960-300k
+_______________ test_xcheck_cli_all_cannot_run_on_a_custom_file ________________
+----------------------------- Captured stdout call -----------------------------
+did: all sift-128 6 on the synthetic 1000-row file, network blocked
+  seen: rc=1
+      == download
+      sift-128: resuming at 524288 bytes
+      all: <urlopen error [Errno 61] Connection refused>
+___________________ test_xcheck_cli_upload_verify_and_tamper ___________________
+----------------------------- Captured stdout call -----------------------------
+did: upload sift-128 6 to a fresh bucket xcheck-cli-1f7a266c
+  rc=0
+        put splits/sift-128/6/ground_truth/shard_4.npy (0.0 MB)
+        put splits/sift-128/6/vectors/shard_5.npy (0.1 MB)
+        put splits/sift-128/6/ground_truth/shard_5.npy (0.0 MB)
+      uploaded 0.6 MB in 0.1 s (7 MB/s) to http://127.0.0.1:32105/xcheck-cli-1f7a266c/splits/sift-128/6
+  bucket holds 15 objects: ['datasets/sift-128/manifest.json', 'datasets/sift-128/queries.npy', 'splits/sift-128/6/ground_truth/shard_0.npy', 'splits/sift-128/6/ground_truth/shard_1.npy', 'splits/sift-128/6/ground_truth/shard_2.npy', 'splits/sift-128/6/ground_truth/shard_3.npy', 'splits/sift-128/6/ground_truth/shard_4.npy', 'splits/sift-128/6/ground_truth/shard_5.npy', 'splits/sift-128/6/manifest.json', 'splits/sift-128/6/vectors/shard_0.npy', 'splits/sift-128/6/vectors/shard_1.npy', 'splits/sift-128/6/vectors/shard_2.npy', 'splits/sift-128/6/vectors/shard_3.npy', 'splits/sift-128/6/vectors/shard_4.npy', 'splits/sift-128/6/vectors/shard_5.npy']
+  every object equals its local file byte for byte (decision 9 layout)
+did: verify on the intact upload: rc=0 (expected 0)
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 6 vector objects, 6 ground-truth objects (top-100) and the queries all present with their recorded sha256
+did: flipped the last byte of splits/sift-128/6/vectors/shard_2.npy (size unchanged) and ran verify
+  expected: non-zero exit
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 1 problem(s)
+did: flipped the last byte of splits/sift-128/6/ground_truth/shard_1.npy and ran verify
+  expected: non-zero exit (help: 'every object present with the manifest's size/sha256')
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 1 problem(s)
+did: deleted datasets/sift-128/queries.npy and ran verify
+  expected: non-zero exit
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128: MISSING ('datasets/sift-128/queries.npy')
+      verify: 1 problem(s)
+______________ test_xcheck_topk_against_direct_float64_reference _______________
+----------------------------- Captured stdout call -----------------------------
+did: exact_topk 40 queries over 2500 random vectors (dim 24), k=20, chunk=7
+  expected: indices of a float64 argsort of |x - q|; seen: identical for all 40 rows (max dist err 0.00e+00)
+_____________ test_xcheck_topk_is_exact_with_a_large_common_offset _____________
+----------------------------- Captured stdout call -----------------------------
+did: 25 queries over 3000 vectors at offset 1000 (dim 128), k=10
+  expected: the float64 reference order in every row
+  seen: 0 of 25 rows differ; recall@10 of the stored truth against the exact truth = 1.000
+_____________ test_xcheck_topk_sift_like_integer_vectors_with_ties _____________
+----------------------------- Captured stdout call -----------------------------
+did: 30 integer queries over 4000 integer vectors in {0..3}^6, k=50
+  e.g. query 0: 134 vectors at or within the 50th distance -> ties at the boundary
+  expected: a valid top-50 nearest first (tie order unspecified); seen: valid
+___________ test_xcheck_topk_duplicate_vectors_and_the_query_itself ____________
+----------------------------- Captured stdout call -----------------------------
+did: query = shard vector 3, which is duplicated at 17 and 150
+  expected first three = {3, 17, 150} (distance 0); seen [150, 17, 3, 181, 95]
+_________ test_xcheck_topk_k_larger_than_shard_and_single_vector_shard _________
+----------------------------- Captured stdout call -----------------------------
+did: k=100 over a 7-vector shard -> shape (3, 7); expected (3, 7), each row a permutation of 0..6 nearest first
+did: k=100 over a 1-vector shard -> [[0], [0], [0]]; expected [[0],[0],[0]]
+_______________ test_xcheck_topk_far_queries_still_get_k_answers _______________
+----------------------------- Captured stdout call -----------------------------
+did: two queries far outside the data (1e4 and -3e3 per coordinate), k=30
+  seen shape (2, 30); checking against float64 reference
+____________ test_xcheck_topk_chunk_sizes_do_not_change_the_answer _____________
+----------------------------- Captured stdout call -----------------------------
+did: exact_topk with chunk 1, 2, 52, 53, 54, 4096 over 53 queries; all identical: True
+_________________ test_xcheck_topk_float64_and_float16_inputs __________________
+----------------------------- Captured stdout call -----------------------------
+did: float64 vectors and queries, k=10; expected the float64 argsort; seen identical
+________________________ test_xcheck_recall_at_by_hand _________________________
+----------------------------- Captured stdout call -----------------------------
+recall@2: expected 0.25 seen 0.25; recall@4: expected 0.5 seen 0.5
+_____________ test_xcheck_recall_at_duplicates_in_found_count_once _____________
+----------------------------- Captured stdout call -----------------------------
+found [0,0,0] vs truth [0,1,2] at k=3: the docstring's ∩ is a set -> expected 1/3, seen 0.3333333333333333
+_________________ test_xcheck_recall_at_k_beyond_stored_width __________________
+----------------------------- Captured stdout call -----------------------------
+recall_at(k=200, truth width 100) raised ValueError: k=200 exceeds the stored width (found 250, truth 100)
+_________________ test_xcheck_recall_at_found_narrower_than_k __________________
+----------------------------- Captured stdout call -----------------------------
+recall_at(found width 4, k=10) raised ValueError: k=10 exceeds the stored width (found 4, truth 10)
+__________ test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-6] ___________
+----------------------------- Captured stdout call -----------------------------
+sift-128/6: n_vectors=1000000 s=1.0 seed=1
+  sizes by rank (seen)     [408164, 204082, 136055, 102040, 81632, 68027]...[81632, 68027]
+  hand Zipf, top-remainder [408164, 204082, 136055, 102040, 81632, 68027]...[81632, 68027]
+__________ test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-50] __________
+----------------------------- Captured stdout call -----------------------------
+sift-128/50: n_vectors=1000000 s=1.0 seed=1
+  sizes by rank (seen)     [222262, 111131, 74088, 55566, 44453, 37044]...[4535, 4445]
+  hand Zipf, top-remainder [222262, 111131, 74088, 55566, 44453, 37044]...[4535, 4445]
+________ test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-6] ________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/6: n_vectors=300000 s=1.0 seed=1
+  sizes by rank (seen)     [122449, 61225, 40817, 30612, 24489, 20408]...[24489, 20408]
+  hand Zipf, top-remainder [122449, 61225, 40817, 30612, 24489, 20408]...[24489, 20408]
+_______ test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-50] ________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/50: n_vectors=300000 s=1.0 seed=1
+  sizes by rank (seen)     [66679, 33340, 22227, 16670, 13336, 11114]...[1360, 1333]
+  hand Zipf, top-remainder [66679, 33340, 22227, 16670, 13336, 11114]...[1360, 1333]
+_______ test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-6] _______
+----------------------------- Captured stdout call -----------------------------
+sift-128/6: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+______ test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-50] _______
+----------------------------- Captured stdout call -----------------------------
+sift-128/50: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+____ test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-6] _____
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/6: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+____ test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-50] ____
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/50: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+_____________ test_xcheck_real_sha256_of_some_objects[sift-128-6] ______________
+----------------------------- Captured stdout call -----------------------------
+sift-128/6 vectors/shard_4.npy: manifest 5ffd872a0a3e7399…  on disk 5ffd872a0a3e7399…
+_____________ test_xcheck_real_sha256_of_some_objects[sift-128-50] _____________
+----------------------------- Captured stdout call -----------------------------
+sift-128/50 vectors/shard_7.npy: manifest 49a25ce8ac700de0…  on disk 49a25ce8ac700de0…
+___________ test_xcheck_real_sha256_of_some_objects[gist-960-300k-6] ___________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/6 vectors/shard_4.npy: manifest d7cb8b37819c0adf…  on disk d7cb8b37819c0adf…
+gist-960-300k/6 vectors/shard_1.npy: manifest 2e2eb54c70983607…  on disk 2e2eb54c70983607…
+__________ test_xcheck_real_sha256_of_some_objects[gist-960-300k-50] ___________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/50 vectors/shard_7.npy: manifest a7368b31a6d4d5d2…  on disk a7368b31a6d4d5d2…
+______ test_xcheck_real_queries_match_hdf5_and_dataset_manifest[sift-128] ______
+----------------------------- Captured stdout call -----------------------------
+sift-128: queries.npy (10000, 128) float32; HDF5 test (10000, 128); dataset manifest n_queries=10000 n_train_used=1000000
+___ test_xcheck_real_queries_match_hdf5_and_dataset_manifest[gist-960-300k] ____
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k: queries.npy (1000, 960) float32; HDF5 test (1000, 960); dataset manifest n_queries=1000 n_train_used=300000
+_______________ test_xcheck_real_ground_truth_shapes[sift-128-6] _______________
+----------------------------- Captured stdout call -----------------------------
+sift-128/6: every ground_truth/shard_k.npy is int32 [10000, 100] with values in [0, shard size)
+______________ test_xcheck_real_ground_truth_shapes[sift-128-50] _______________
+----------------------------- Captured stdout call -----------------------------
+sift-128/50: every ground_truth/shard_k.npy is int32 [10000, 100] with values in [0, shard size)
+____________ test_xcheck_real_ground_truth_shapes[gist-960-300k-6] _____________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/6: every ground_truth/shard_k.npy is int32 [1000, 100] with values in [0, shard size)
+____________ test_xcheck_real_ground_truth_shapes[gist-960-300k-50] ____________
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/50: every ground_truth/shard_k.npy is int32 [1000, 100] with values in [0, shard size)
+_____ test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-smallest-40] _____
+----------------------------- Captured stdout call -----------------------------
+sift-128/6 smallest shard 4 (68027 vectors): 40 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+______ test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-largest-3] ______
+----------------------------- Captured stdout call -----------------------------
+sift-128/6 largest shard 1 (408164 vectors): 3 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+____ test_xcheck_real_ground_truth_rows_are_exact[sift-128-50-smallest-200] ____
+----------------------------- Captured stdout call -----------------------------
+sift-128/50 smallest shard 7 (4445 vectors): 200 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+___ test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-6-largest-5] ____
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/6 largest shard 1 (122449 vectors): 5 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+_ test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-50-smallest-300] __
+----------------------------- Captured stdout call -----------------------------
+gist-960-300k/50 smallest shard 7 (1333 vectors): 300 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+______________________ test_xcheck_zipf_1m_over_6_by_hand ______________________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(1_000_000, 6, 1.0)
+  expected (hand, remainder to top ranks): [408164, 204082, 136055, 102040, 81632, 68027]
+  seen: [408164, 204082, 136055, 102040, 81632, 68027]
+_____________ test_xcheck_design_doc_example_sizes_match_the_rule ______________
+----------------------------- Captured stdout call -----------------------------
+design doc says: [408164, 204082, 136055, 102040, 81632, 68027] (sum 1000000)
+  code produces:   [408164, 204082, 136055, 102040, 81632, 68027] (sum 1000000)
+______________ test_xcheck_zipf_matches_hand_rule[1000000-50-1.0] ______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(1000000, 50, 1.0)
+  N/H(n,s) = 222261.472; expected top 222262, seen top 222262
+  expected [222262, 111131, 74088, 55566, 44453, 37044, 31752, 27783]...
+  seen     [222262, 111131, 74088, 55566, 44453, 37044, 31752, 27783]...
+_______________ test_xcheck_zipf_matches_hand_rule[300000-6-1.0] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(300000, 6, 1.0)
+  N/H(n,s) = 122448.980; expected top 122449, seen top 122449
+  expected [122449, 61225, 40817, 30612, 24489, 20408]
+  seen     [122449, 61225, 40817, 30612, 24489, 20408]
+______________ test_xcheck_zipf_matches_hand_rule[300000-50-1.0] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(300000, 50, 1.0)
+  N/H(n,s) = 66678.442; expected top 66679, seen top 66679
+  expected [66679, 33340, 22227, 16670, 13336, 11114, 9526, 8335]...
+  seen     [66679, 33340, 22227, 16670, 13336, 11114, 9526, 8335]...
+________________ test_xcheck_zipf_matches_hand_rule[1000-3-2.0] ________________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(1000, 3, 2.0)
+  N/H(n,s) = 734.694; expected top 735, seen top 735
+  expected [735, 184, 81]
+  seen     [735, 184, 81]
+_______________ test_xcheck_zipf_matches_hand_rule[999999-7-2.0] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(999999, 7, 2.0)
+  N/H(n,s) = 661463.785; expected top 661464, seen top 661464
+  expected [661464, 165366, 73496, 41342, 26459, 18373, 13499]
+  seen     [661464, 165366, 73496, 41342, 26459, 18373, 13499]
+______________ test_xcheck_zipf_matches_hand_rule[1000003-6-1.0] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(1000003, 6, 1.0)
+  N/H(n,s) = 408164.490; expected top 408165, seen top 408165
+  expected [408165, 204083, 136055, 102041, 81632, 68027]
+  seen     [408165, 204083, 136055, 102041, 81632, 68027]
+_______________ test_xcheck_zipf_matches_hand_rule[10007-5-0.0] ________________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(10007, 5, 0.0)
+  N/H(n,s) = 2001.400; expected top 2002, seen top 2002
+  expected [2002, 2002, 2001, 2001, 2001]
+  seen     [2002, 2002, 2001, 2001, 2001]
+_______________ test_xcheck_zipf_matches_hand_rule[123457-9-0.5] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(123457, 9, 0.5)
+  N/H(n,s) = 26240.814; expected top 26241, seen top 26241
+  expected [26241, 18556, 15151, 13121, 11735, 10712, 9918, 9277]...
+  seen     [26241, 18556, 15151, 13121, 11735, 10712, 9918, 9277]...
+_______________ test_xcheck_zipf_matches_hand_rule[123457-9-1.5] _______________
+----------------------------- Captured stdout call -----------------------------
+did: zipf_sizes(123457, 9, 1.5)
+  N/H(n,s) = 62869.144; expected top 62870, seen top 62870
+  expected [62870, 22228, 12100, 7859, 5623, 4277, 3394, 2778]...
+  seen     [62870, 22228, 12100, 7859, 5623, 4277, 3394, 2778]...
+_________________________ test_xcheck_zipf_edge_cases __________________________
+----------------------------- Captured stdout call -----------------------------
+zipf_sizes(12345, 1, 1.0): expected [12345] seen [12345]
+zipf_sizes(12345, 1, 0.0): expected [12345] seen [12345]
+zipf_sizes(10, 3, 0.0): expected [4, 3, 3] seen [4, 3, 3]
+zipf_sizes(11, 3, 0.0): expected [4, 4, 3] seen [4, 4, 3]
+zipf_sizes(6, 6, 1.0): expected [1, 1, 1, 1, 1, 1] seen [1, 1, 1, 1, 1, 1]
+zipf_sizes(50, 50, 2.0): expected [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] seen [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+______________ test_xcheck_zipf_small_total_never_empties_a_shard ______________
+----------------------------- Captured stdout call -----------------------------
+zipf_sizes(20, 6, 2.0) -> [13, 3, 1, 1, 1, 1]  (pure floor rule: [14, 4, 2, 0, 0, 0])
+zipf_sizes(60, 50, 1.0) -> [9, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  (pure floor rule: [14, 7, 5, 4, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+zipf_sizes(100, 50, 2.0) -> [49, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  (pure floor rule: [62, 16, 7, 4, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+zipf_sizes(7, 4, 1.5) -> [4, 1, 1, 1]  (pure floor rule: [5, 2, 0, 0])
+__________________ test_xcheck_zipf_fewer_vectors_than_shards __________________
+----------------------------- Captured stdout call -----------------------------
+zipf_sizes(3, 6, 1.0) raised ValueError: cannot split 3 vectors across 6 shards
+______________ test_xcheck_plan_ranks_offsets_and_recorded_fields ______________
+----------------------------- Captured stdout call -----------------------------
+did: plan(sift-128, N=1000000, n=6, s=1, seed=1)
+  shard 0: rank 5 offset 0 size 81632
+  shard 1: rank 1 offset 81632 size 408164
+  shard 2: rank 3 offset 489796 size 136055
+  shard 3: rank 2 offset 625851 size 204082
+  shard 4: rank 6 offset 829933 size 68027
+  shard 5: rank 4 offset 897960 size 102040
+  expected (from the committed split): shard 1 holds rank 1 (408,164)
+_____________________ test_xcheck_plan_seed_only_permutes ______________________
+----------------------------- Captured stdout call -----------------------------
+did: plan 50-way with seeds 1..10; distinct rank assignments: 10 of 10; sorted sizes identical for all
+_________________ test_xcheck_plan_zipf_exponent_two_and_zero __________________
+----------------------------- Captured stdout call -----------------------------
+plan(1000 over 3, s=0.0): sizes [334, 333, 333], exponent recorded 0.0
+plan(1000 over 3, s=2.0): sizes [735, 184, 81], exponent recorded 2.0
+________________ test_xcheck_write_split_bytes_sha_and_manifest ________________
+----------------------------- Captured stdout call -----------------------------
+did: write_split of 997x16 float32 into 5 shards under /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-38/test_xcheck_write_split_bytes_0
+  files written: ['manifest.json', 'vectors/shard_0.npy', 'vectors/shard_1.npy', 'vectors/shard_2.npy', 'vectors/shard_3.npy', 'vectors/shard_4.npy']
+  manifest sha256 keys: ['vectors/shard_0.npy', 'vectors/shard_1.npy', 'vectors/shard_2.npy', 'vectors/shard_3.npy', 'vectors/shard_4.npy']; each matches the bytes on disk
+  manifest.json round-trips: True
+__________________ test_xcheck_write_split_from_h5py_dataset ___________________
+----------------------------- Captured stdout call -----------------------------
+did: the same split from a numpy array and from an h5py dataset
+  sha256 equal: True
+__________________ test_xcheck_store_large_object_round_trip ___________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-3809dc9a9c on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: put 48 MiB + 123 bytes of random data; size() says 50331771; got back 50331771 bytes; equal: True
+did: put_npy of a 100,000 x 128 float32 array -> returned 51200128; size() 51200128; get_npy equal: True, dtype float32
+___________ test_xcheck_store_listing_and_deleting_beyond_1000_keys ____________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-99eec051bd on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: put 2345 small objects under many/
+  list('many/') returned 2345 keys (expected 2345, sorted set equal: True)
+did: delete_prefix('many/') -> returned 2345; keys left 0 (expected 2345 and 0)
+_____________________ test_xcheck_store_overwrite_replaces _____________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-8dee7dc983 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: put o/x twice; get -> b'second'; size 6; list ['o/x']
+________________________ test_xcheck_store_missing_key _________________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-c0619c9021 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: exists('nope/x') -> False (expected False)
+  get_bytes('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  get_json('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  get_npy('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  size('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+____________ test_xcheck_store_delete_prefix_empty_on_empty_bucket _____________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-9a32e4e3a2 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: delete_prefix('') on an empty bucket -> 0 (expected 0, no error); list('') -> []
+_________________ test_xcheck_store_prefix_is_a_string_prefix __________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-2aaecf12c2 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: keys p/5/a, p/50/a, p/5x
+  list('p/5') -> ['p/5/a']
+  delete_prefix('p/5') -> 1; left ['p/50/a', 'p/5x']
+  (string-prefix semantics: callers must pass a trailing '/')
+_________________ test_xcheck_store_artifact_keys_with_a_colon _________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-1eb1692c1e on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: put artifacts/3:17/1/index.bin and artifacts/3:17/2/manifest.json; list -> ['artifacts/3:17/1/index.bin', 'artifacts/3:17/2/manifest.json']; get -> b'index', {'build_id': '3:17', 'attempt': 2}
+___________________ test_xcheck_store_npy_dtypes_and_shapes ____________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-459d6e67c6 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+  i32: put shape (3, 4) int32 -> got (3, 4) int32, equal True
+  f32: put shape (0, 128) float32 -> got (0, 128) float32, equal True
+  f64: put shape () float64 -> got () float64, equal True
+  u8: put shape (256,) uint8 -> got (256,) uint8, equal True
+  fortran: put shape (2, 3) float32 -> got (2, 3) float32, equal True
+___________________ test_xcheck_store_wrong_credentials_fail ___________________
+---------------------------- Captured stdout setup -----------------------------
+(fresh bucket xcheck-d4bb6085e2 on http://127.0.0.1:32105)
+----------------------------- Captured stdout call -----------------------------
+did: put with wrong keys -> ClientError: An error occurred (InvalidAccessKeyId) when calling the PutObject operation: The Access Key Id you p
+=========================== short test summary info ============================
+PASSED tests/test_build.py::test_build_gates_and_publishes_manifest_last
+PASSED tests/test_build.py::test_gate_failure_writes_nothing
+PASSED tests/test_build.py::test_cli_exit_codes_and_streams
+PASSED tests/test_groundtruth.py::test_exact_topk_matches_naive_loop_and_chunking_is_invisible
+PASSED tests/test_groundtruth.py::test_k_is_clamped_to_shard_size
+PASSED tests/test_groundtruth.py::test_recall_at_by_hand
+PASSED tests/test_split.py::test_zipf_sizes_sum_and_shape
+PASSED tests/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid
+PASSED tests/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded
+PASSED tests/test_split.py::test_write_split_round_trips_with_sha256
+PASSED tests/test_store.py::test_bytes_json_npy_round_trip_and_listing
+PASSED tests/test_store.py::test_ensure_bucket_is_idempotent
+PASSED tests/test_xcheck_build.py::test_xcheck_build_success_streams_and_manifest
+PASSED tests/test_xcheck_build.py::test_xcheck_build_manifest_names_the_real_hnswlib_version
+PASSED tests/test_xcheck_build.py::test_xcheck_build_publish_order_observed_live
+PASSED tests/test_xcheck_build.py::test_xcheck_build_sigkill_mid_build_leaves_no_manifest
+PASSED tests/test_xcheck_build.py::test_xcheck_build_second_attempt_never_touches_the_first
+PASSED tests/test_xcheck_build.py::test_xcheck_build_threads_1_vs_4_recall
+PASSED tests/test_xcheck_build.py::test_xcheck_build_recall_min_boundary
+PASSED tests/test_xcheck_build.py::test_xcheck_build_gate_reason_is_not_misleading
+PASSED tests/test_xcheck_build.py::test_xcheck_build_gate_flags_k_and_ef_search
+PASSED tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_shard]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_dataset]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_ground_truth]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_missing_inputs_exit_1_with_a_failure_document[missing_queries]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change0]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change1]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change2]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change3]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change4]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change5]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change6]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change7]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_bad_arguments_exit_2[argv_change8]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[recall_k_beyond_truth]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[recall_min_not_a_number]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[threads_zero]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[attempt_zero]
+PASSED tests/test_xcheck_build.py::test_xcheck_build_questionable_arguments[negative_shard]
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_unknown_dataset_is_a_clear_error
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_refuses_an_oversized_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_accepts_a_complete_file_without_network
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_with_a_truncated_file_tries_to_resume
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_manifest_covers_ground_truth
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_is_deterministic
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_groundtruth_before_split_fails
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_gist_train_limit_with_a_small_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_all_cannot_run_on_a_custom_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_upload_verify_and_tamper
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_against_direct_float64_reference
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_is_exact_with_a_large_common_offset
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_sift_like_integer_vectors_with_ties
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_duplicate_vectors_and_the_query_itself
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_k_larger_than_shard_and_single_vector_shard
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_far_queries_still_get_k_answers
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_chunk_sizes_do_not_change_the_answer
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_float64_and_float16_inputs
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_by_hand
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_duplicates_in_found_count_once
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_k_beyond_stored_width
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_found_narrower_than_k
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[sift-128]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[gist-960-300k]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-smallest-40]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-largest-3]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-50-smallest-200]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-6-largest-5]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-50-smallest-300]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_1m_over_6_by_hand
+PASSED tests/test_xcheck_split.py::test_xcheck_design_doc_example_sizes_match_the_rule
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000000-50-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-6-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-50-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000-3-2.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[999999-7-2.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000003-6-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[10007-5-0.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-0.5]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-1.5]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_edge_cases
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_small_total_never_empties_a_shard
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_fewer_vectors_than_shards
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_ranks_offsets_and_recorded_fields
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_seed_only_permutes
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_zipf_exponent_two_and_zero
+PASSED tests/test_xcheck_split.py::test_xcheck_write_split_bytes_sha_and_manifest
+PASSED tests/test_xcheck_split.py::test_xcheck_write_split_from_h5py_dataset
+PASSED tests/test_xcheck_store.py::test_xcheck_store_large_object_round_trip
+PASSED tests/test_xcheck_store.py::test_xcheck_store_listing_and_deleting_beyond_1000_keys
+PASSED tests/test_xcheck_store.py::test_xcheck_store_overwrite_replaces
+PASSED tests/test_xcheck_store.py::test_xcheck_store_missing_key
+PASSED tests/test_xcheck_store.py::test_xcheck_store_delete_prefix_empty_on_empty_bucket
+PASSED tests/test_xcheck_store.py::test_xcheck_store_prefix_is_a_string_prefix
+PASSED tests/test_xcheck_store.py::test_xcheck_store_artifact_keys_with_a_colon
+PASSED tests/test_xcheck_store.py::test_xcheck_store_npy_dtypes_and_shapes
+PASSED tests/test_xcheck_store.py::test_xcheck_store_wrong_credentials_fail
+SKIPPED [1] tests/test_xcheck_realdata.py:190: XCHECK_CLUSTER_S3 unset (a port-forward to the kind cluster's objectstore)
+======================= 113 passed, 1 skipped in 49.62s ========================
+
+== Docker events for container kgpu-test-pg-5492
+  03:36:23  create
+  03:36:23  start
+  03:37:33  kill
+  03:37:33  die
+  03:37:33  destroy
 
 == Result: PASS

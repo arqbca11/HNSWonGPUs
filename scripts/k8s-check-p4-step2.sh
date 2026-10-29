@@ -85,7 +85,8 @@ for policy in $POLICIES; do
     scripts/k8s-round.sh | sed -n '/^== timeline/,/^== scheduler log/p' | grep -v '^== scheduler log' | sed 's/^/   /'
   echo "   wall: $(( $(date +%s) - t0 )) s"
   echo "-- the builds' manifests in the store (recall, bytes, build time, threads):"
-  (cd builder && uv run --quiet python - "$dir" <<'PY'
+  absdir="$PWD/$dir"
+  (cd builder && uv run --quiet python - "$absdir" <<'PY'
 import json, sys, glob
 from kgpu_builder.config import Config
 from kgpu_builder.store import Store

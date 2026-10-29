@@ -6,6 +6,34 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
+## 18. The first real round stalled for 30 minutes: a Phase 2 memory limit killed the worker on the big build, and a failed build had nowhere to go
+
+**Found** live, in the first run of `scripts/k8s-check-p4-step2.sh` (Phase 4 step 2): five of six SIFT-128 builds finished, the 408,164-vector straggler failed with "lease expired on attempt 5 of 5: retry budget exhausted", both worker pods had restarted two and three times, and the round then waited on that shard's index queries until the 30-minute timeout. Fixed in commit `1e53ae1` (the limit, the upload, and decision 21's retry and fallback, which could not be split from it cleanly). **Related:** entry 15 (the same step's method lesson: the harness measured a system other than the intended one — here, a resource limit sized for a sleep); the Phase 1 open question "what does a failed build mean for the round", answered at last by decision 21.
+
+**Symptom.** The worker's Kubernetes memory limit was 512 MiB, set in Phase 2 for a builder that sleeps. A real hnswlib build of the largest 6-way shard holds the shard's 209 MB of vectors, the ~270 MB graph and, as written, the serialised index read back into memory as one blob — over a gigabyte in a Python process. The kernel killed the container; Kubernetes restarted it; the lease expired; the reaper requeued; the next worker died the same way; after five attempts the build was marked failed. Then the second half: the shard's queries that needed the index waited for an index that would never come, and the round's completion rule, satisfied on the builds (done or failed), was not satisfied on the shard (its stream never drained).
+
+**Cause, two layers.** (1) Resource limits in the manifests encode the fake builder's needs, and nothing re-derived them when the builder became real — the same class as bug 15's stale images: the deployment described a system other than the one being measured. (2) The failure path had never been exercised by a real failure: the Phase 1 doc deferred "what a failed build means" to Phase 4 "when the recall gate makes failure real", and Phase 4's cross-check reproduced the hang (its G1) hours before the live run did.
+
+**Fix.** The worker's limit is 2 GiB with a 512 MiB request (decision 22), and the builder streams the index from disk to the store in parts and drops the graph before uploading, so the peak is the vectors plus the graph. The failure path is decision 21: a terminally failed build is rebuilt on the shard's own CPU once, at the next attempt number (its own artifact prefix); if that fails too, the shard runs its index queries without the index — the exact-scan fallback a database takes past an unusable index — and the round completes with the failure on record. `builds.local_retries` (migration 0008) keeps the "once" in Postgres.
+
+**In production.** An index build that crashes its worker on the largest table, five times, and then leaves every query on that shard hanging is a sev-1 with two root causes that look like one symptom. The limit is the kind of setting a cluster inherits from a template and nobody revisits until a real workload meets it.
+
+**Lesson.** When a fake component becomes real, re-derive every resource number that was sized for the fake — memory limits, timeouts, retry budgets — from the real thing's measurements, and run the failure path once on purpose before it runs on its own. The cross-check that flagged the hang in a test was right; the live run only made it expensive.
+
+## 17. The fail endpoint truncated the reason by bytes and could make a build unfailable
+
+**Found** by the Phase 4 step 2 cross-check agent (`TestXcP4S2FailEndpointLongReason`): a reason of one ASCII character followed by 300 three-byte characters (901 bytes) made `POST /builds/{id}/fail` answer `500 {"error":"fail local failed"}` and leave the build running. Fixed in commit `1e53ae1` (`scheduler/api/api.go`, `shard/sim/shard.go`). **Related:** entry 15 (a harness detail — here, a client retrying a 5xx — turning a small mistake into a stuck round).
+
+**Symptom.** The endpoint capped the reason at 500 *bytes* with a byte slice. A cut that lands inside a multi-byte UTF-8 character produces an invalid string; Postgres refuses it for a `text` column; the handler reports an internal error; the shard's client treats a 5xx as transient and retries; the build stays `running` and the round never finishes. Real gate reasons are ASCII today, so nothing live hit it.
+
+**Cause.** Length in Go is bytes; a "500-character limit" written as `s[:500]` is a 500-byte limit. The shard did the same before sending.
+
+**Fix.** Both sides cut by runes (`[]rune(s)[:500]`); the endpoint also trims whitespace and refuses an empty reason. The limit is now stated in decision 19 and the API table.
+
+**In production.** Any text field an application truncates by bytes before a UTF-8 column is this bug waiting for its first non-ASCII input; the nasty part is not the lost characters but the write that fails and the client that keeps retrying it.
+
+**Lesson.** Truncate text by characters, never by bytes, and never let a validation failure on the server's side surface as a retryable error to the client.
+
 ## 16. The "exact" ground truth was computed in float32 and was wrong away from the origin
 
 **Found** by the Phase 4 step 1 cross-check agent with an independent float64 reference (`test_xcheck_topk_is_exact_with_a_large_common_offset`, and the real-data rows in `test_xcheck_real_ground_truth_rows_are_exact`). Fixed in commit `a75d169`, `builder/kgpu_builder/groundtruth.py`. **Related:** entry 14 (an instrument that measured something other than what it claimed, caught by hand arithmetic before anyone read the code); entry 15 (the same step's `verify` reported ground truth "intact" without a hash to check it against — the false-success shape again, fixed in the same cross-check round).

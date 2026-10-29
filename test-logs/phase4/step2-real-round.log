@@ -1,0 +1,55 @@
+== Phase 4 step 2: a real round, dataset sift-128 at 6 shards, 2026-10-29T10:39:21Z, commit 1b268d4+local changes
+Image: "kgpu-scheduler:dev" with ID "sha256:a00cc35027597d2567bfdb8928ab743502887069409afb13687bc812746f1597" not yet present on node "kgpu-worker", loading...
+Image: "kgpu-scheduler:dev" with ID "sha256:a00cc35027597d2567bfdb8928ab743502887069409afb13687bc812746f1597" not yet present on node "kgpu-worker2", loading...
+Image: "kgpu-scheduler:dev" with ID "sha256:a00cc35027597d2567bfdb8928ab743502887069409afb13687bc812746f1597" not yet present on node "kgpu-control-plane", loading...
+Image: "kgpu-scheduler:dev" with ID "sha256:a00cc35027597d2567bfdb8928ab743502887069409afb13687bc812746f1597" not yet present on node "kgpu-worker4", loading...
+Image: "kgpu-scheduler:dev" with ID "sha256:a00cc35027597d2567bfdb8928ab743502887069409afb13687bc812746f1597" not yet present on node "kgpu-worker3", loading...
+Image: "kgpu-worker:dev" with ID "sha256:77310c82750c96552f4c5d1cf175ff7f99fa356cadbb409211b4670b60d4b7e6" not yet present on node "kgpu-worker", loading...
+Image: "kgpu-worker:dev" with ID "sha256:77310c82750c96552f4c5d1cf175ff7f99fa356cadbb409211b4670b60d4b7e6" not yet present on node "kgpu-worker2", loading...
+Image: "kgpu-worker:dev" with ID "sha256:77310c82750c96552f4c5d1cf175ff7f99fa356cadbb409211b4670b60d4b7e6" not yet present on node "kgpu-control-plane", loading...
+Image: "kgpu-worker:dev" with ID "sha256:77310c82750c96552f4c5d1cf175ff7f99fa356cadbb409211b4670b60d4b7e6" not yet present on node "kgpu-worker4", loading...
+Image: "kgpu-worker:dev" with ID "sha256:77310c82750c96552f4c5d1cf175ff7f99fa356cadbb409211b4670b60d4b7e6" not yet present on node "kgpu-worker3", loading...
+   images rebuilt and loaded; manifests applied
+   cluster before: FAKE_TIME_SCALE=10 POLICY=always_gpu BUILDER=fake
+   store for the laptop's shards: http://127.0.0.1:39000
+
+#### sift-128, 6 shards, 2 workers, policy always_gpu, seed 1: real builds everywhere
+   cluster set and verified: FAKE_TIME_SCALE=1 BUILDER=hnswlib POLICY=always_gpu
+   == timeline (simulator output)
+      round 226  scenario=skewed seed=1  time_scale=1
+      duration 69.6s real (69.6s modeled)   straggler lag 16.6s   builds: 6 gpu, 0 local, 0 speculative copies   queries: 3411
+      query latency (slowest piece): fan-out p50 2.0s p99 63.5s (n=532)   single-shard p50 0.1s p99 62.7s (n=1262)
+      shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+      0      81632     gpu    1    0.0s     8.3s     15.7s    30.0s    573     15.9s    ############
+      1      408164    gpu    1    0.0s     10.0s    61.4s    67.5s    592     61.5s    #############################
+      2      136055    gpu    1    0.0s     47.0s    63.7s    69.6s    561     64.0s    ##############################
+      3      204082    gpu    1    0.0s     15.7s    47.0s    53.0s    551     47.0s    ######################
+      4      68027     gpu    1    0.0s     0.5s     8.3s     30.0s    567     8.7s     ############
+      5      102040    gpu    1    0.0s     0.3s     10.0s    30.0s    567     10.2s    ############
+      
+   
+   == round events (simulator log)
+      level=INFO msg="round started" round_id=226 scenario=skewed seed=1 n_shards=6 time_scale=1
+      level=INFO msg="round finished" round_id=226 duration=1m9.605s duration_modeled=1m9.605s straggler_lag=16.605s builds_gpu=6 builds_local=0 queries=3411
+   
+   == round rows (from the scheduler API)
+      round 226: n_shards=6 finished=2026-10-29T10:41:21.475365Z
+      builds: 0:226=gpu/done@1, 1:226=gpu/done@1, 2:226=gpu/done@1, 3:226=gpu/done@1, 4:226=gpu/done@1, 5:226=gpu/done@1
+      states: done=6 other=0; attempts>1: 0
+      queries recorded: 3411, finished: 3411
+   
+   wall: 72 s
+-- the builds' manifests in the store (recall, bytes, build time, threads):
+Traceback (most recent call last):
+  File "<stdin>", line 5, in <module>
+IndexError: list index out of range
+
+== restoring the cluster: FAKE_TIME_SCALE=10 POLICY=always_gpu BUILDER=fake
+   restored; log: test-logs/phase4/step2-real-round.log
+-- round 226, always_gpu: the builds' manifests in the store (added after the run; the script's listing had a wrong relative path):
+   shard  0 gpu   attempt 1:   81632 vectors, recall@10 0.997,   53.9 MB, build    5.3 s on 8 threads (+fetch 0.2 gate 0.5 upload 0.3)
+   shard  1 gpu   attempt 1:  408164 vectors, recall@10 0.988,  269.6 MB, build   47.2 s on 8 threads (+fetch 0.7 gate 0.7 upload 0.8)
+   shard  2 gpu   attempt 1:  136055 vectors, recall@10 0.995,   89.9 MB, build   14.5 s on 8 threads (+fetch 0.2 gate 0.4 upload 0.2)
+   shard  3 gpu   attempt 1:  204082 vectors, recall@10 0.994,  134.8 MB, build   27.3 s on 8 threads (+fetch 0.5 gate 0.6 upload 0.6)
+   shard  4 gpu   attempt 1:   68027 vectors, recall@10 0.997,   44.9 MB, build    5.9 s on 8 threads (+fetch 0.2 gate 0.5 upload 0.3)
+   shard  5 gpu   attempt 1:  102040 vectors, recall@10 0.996,   67.4 MB, build    8.1 s on 8 threads (+fetch 0.2 gate 0.4 upload 0.2)

@@ -111,6 +111,15 @@ One entry per action the system takes, pointing at the code that decides it, the
 - The object store itself: RustFS (decision 13) — `deploy/compose.yaml` service `objectstore`; `deploy/k8s/objectstore.yaml` (Secret `objectstore` with the endpoint, keys and bucket; NodePort 30900; a StatefulSet); the kind port mapping in `deploy/kind/cluster.yaml`; a throwaway one in `scripts/test-db.sh`.
 - Putting the data on the cluster: `scripts/phase4-data.sh`.
 
+### Step 2: the real build, on both sides of the placement
+- The build itself: `builder/kgpu_builder/build.py` (`run_build`: fetch, `build_index` in ten batches, `gate`, publish index then manifest; `GateFailed`) behind `cli.py`'s `build` command (exit 0/3/1, stdout manifest, stderr progress; decision 17).
+- A round's data: `rounds.dataset` (migration 0007, decision 15) — set in `shard/sim/round.go` from `RoundConfig.Dataset`, stored by `store.CreateRoundWithDataset`, read by the worker's `store.claim` into `Job.dataset`/`n_shards`.
+- The split sizes on the Go side: `experiments/workload/splits.go` (`ApplySplit`, kind `split`; the JSON copies under `experiments/workload/splits/`; decision 16).
+- The worker's real build: `worker/kgpu_worker/builder.py` `HnswlibBuilder.build` — the CLI in a process group, progress from stderr, `cancel` → `killpg`, exit 3 → `GateRefused` → the worker's existing fail path (decision 18). Config: `BUILDER`, `BUILDER_CMD`, `BUILD_THREADS`, `RECALL_MIN`, `S3_*`.
+- The shard's real build: `shard/sim/shard.go` `runRealBuild` (exec in a process group; progress into `b.progress`; cancel → `SIGKILL` the group; exit 0 → `LocalDone`, exit 3 → `LocalFail` with the gate's reason; decision 19) and `burn` for queries (decision 20); the scheduler side is `store.FailLocal` behind `POST /builds/{id}/fail`.
+- A failed build's second chance (decision 21): `store.RetryLocal` behind `POST /builds/{id}/retry-local` (guarded on `local_retries = 0`, the row back to local/running at the next attempt), asked by the shard's `retryLocal` from `apply` when the summary says failed; after that `nextReady` releases the needs-index queries (the fallback) and the round completes with the failure on record.
+- Running it: `scripts/k8s-check-p4-step2.sh` (the cluster at time scale 1 with `BUILDER=hnswlib`, the laptop's shards with `DATASET` and `BUILDER_CMD`).
+
 ## Observability and configuration
 
 ### Metrics
