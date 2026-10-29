@@ -28,3 +28,8 @@ docs/kubernetes-intro.md
 # Phase 3 step 7: the live rounds' per-round timeline JSONs (large; the saved
 # log test-logs/phase3/step7-validation.log carries the comparison).
 experiments/results/step7-timelines/
+
+# a `go build ./experiments/cmd/<name>` run from the repo root drops the binary here
+/validate
+/sweep
+/scheduler-bin
