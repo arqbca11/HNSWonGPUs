@@ -75,14 +75,18 @@ type Config struct {
 	NoiseSeed      int64   // sub-seed for the noise draws; the workload seed is mixed in
 	KillWorkerAtS  float64 // >0: at this time the busiest worker dies (shrinking_pool)
 	MaxModeledS    float64 // safety cap; default 24 h modeled (the production preset's local builds run ~9.6 h)
-	// TickPhaseS, if > 0, is when the FIRST reconsider tick fires (modeled
-	// seconds after the round starts, at most ReconsiderS); later ticks
-	// follow every ReconsiderS. Zero means ReconsiderS: a ticker started at
-	// the round's start. The live scheduler's ticker runs from process
-	// start, so a live round begins at an arbitrary phase in [0, ReconsiderS)
-	// — and which builds the first tick preempts, hence the GPU queue's
-	// order, depends on it (step 7 finding, decision 29). The comparer
-	// replays several phases and reports the envelope.
+	// TickPhaseS, if in (0, ReconsiderS], is when the FIRST reconsider tick
+	// fires (modeled seconds after the round starts); later ticks follow
+	// every ReconsiderS. Zero, negative, or above ReconsiderS all mean the
+	// default, ReconsiderS: a ticker started at the round's start. The live
+	// scheduler's ticker runs from process start, so a live round begins at
+	// an arbitrary phase in [0, ReconsiderS) — and which builds the first
+	// tick preempts, hence the GPU queue's order, depends on it (step 7
+	// finding, decision 29). The comparer replays several phases and reports
+	// the envelope. An earlier tick shifts a preempted build's own finish by
+	// exactly the phase difference; what its SHARD learns moves on the
+	// report grid (PollS steps), so a shard's finish and the wasted CPU
+	// shift by the difference rounded up to the next report.
 	TickPhaseS float64
 }
 

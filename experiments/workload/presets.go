@@ -34,8 +34,10 @@ const (
 	// presetHourBuild is the straggler size of the hour_build preset: at the
 	// cost model's default A = 1.4e-7 s per n·ln(n)·dim and dim 128, a
 	// 12.3M-vector CPU build is 1.4e-7 × 12.3e6 × ln(12.3e6) × 128 ≈ 3,600 s,
-	// one modeled hour; on the GPU it is 6 min plus a 69 s transfer, and its
-	// modeled memory need (2 × 6.3 GB) fits a 24 GiB worker (decision 26).
+	// one modeled hour; on the GPU it is 362 s plus a 71 s transfer (12.3M ×
+	// (512 B of vectors out + 640 B of index back) at 200 MB/s), 433 s in
+	// all, and its modeled memory need (2 × 6.3 GB = 11.7 GiB) fits a 24 GiB
+	// worker (decision 26).
 	presetHourBuild = 12_300_000
 	// approxGraphBytesPerVector is the HNSW layer-0 graph per vector at M=16
 	// (2*M links of 4 bytes). With float32 vectors that is 128*4 + 128 = 640 B
@@ -144,8 +146,8 @@ func PresetWithShards(name string, n int) (Scenario, error) {
 		sc.Pool.WorkerMemBytes = 80 << 30
 	case "hour_build":
 		// The skewed workload with its largest build replaced by one of a
-		// modeled hour on the shard's CPU (12.3M vectors at dim 128; 6 min
-		// plus a 69 s transfer on a GPU). Built for Phase 3 step 7: the one
+		// modeled hour on the shard's CPU (12.3M vectors at dim 128; 362 s
+		// plus a 71 s transfer on a GPU). Built for Phase 3 step 7: the one
 		// live round long enough that the control plane's 2 s reconsider
 		// tick and 0.5 s report cadence are a rounding error against the
 		// build, as they are in production, yet short enough to run on the

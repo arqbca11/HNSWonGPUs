@@ -19,7 +19,7 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **Unknown.** hnswlib (CPU) vs cuVS (GPU) on real hardware is Phase 5 | — |
-| Does the simulator's number survive contact with the live stack? | **Yes, within ~2 s at 50 shards and within 0.3 s over a 7-minute round**: 15 of 15 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
+| Does the simulator's number survive contact with the live stack? | **Yes, within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds**: 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
 ## The assumption underneath everything
 
@@ -100,16 +100,17 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 ### Evidence 4 — the live kind cluster reproduces the simulator's rounds (Phase 3 step 7)
 
-**Setup.** `scripts/k8s-check-step7.sh`: the kind cluster at `FAKE_TIME_SCALE=1` (so the live 0.5 s report, 2 s reconsider tick and 10 s lease are the modeled seconds the simulator defaults to), images rebuilt from the checkout, 24 GiB modeled worker memory on both sides (decision 26), every policy switch verified from the scheduler pod's startup line (bug 15). Seven configurations, fifteen rounds; each live round's timeline replayed by `experiments/cmd/validate` from the same scenario and seed with link sharing off (decision 22). Log: `test-logs/phase3/step7-validation.log`; the table is in the Phase 3 design doc, step 7.
+**Setup.** `scripts/k8s-check-step7.sh` (eight configurations, eighteen rounds; H added after the step's cross-check): the kind cluster at `FAKE_TIME_SCALE=1` (so the live 0.5 s report, 2 s reconsider tick and 10 s lease are the modeled seconds the simulator defaults to), images rebuilt from the checkout, 24 GiB modeled worker memory on both sides (decision 26), every policy switch verified from the scheduler pod's startup line (bug 15). Each live round's timeline replayed by `experiments/cmd/validate` from the same scenario and seed with link sharing off (decision 22). Log: `test-logs/phase3/step7-validation.log`; the table is in the Phase 3 design doc, step 7.
 
-**Result.** 15/15 agree within max(2 s, 5 %), one of them only inside the tick-phase envelope (decision 29):
+**Result.** 18/18 agree within max(2 s, 5 %), one of them only inside the tick-phase envelope (decision 29):
 
 | Regime | Live − simulated | Example |
 | --- | --- | --- |
 | Horizon-bound (skewed 6/2, both policies at 50/3 under reactive) | +0.01 s | 30.01 vs 30.00 |
 | Queue-bound (skewed 50/3 always_gpu) | +0.2 .. +2.1 s, live slower | 51.96 vs 49.84 |
 | Transfer-bound at 1536 dims (high_dim 6/2 reactive) | −1.9 .. −13.6 s; envelope over tick phases 90.6..105.6 s contains every live round | 91.58 vs 105.13 (default phase), 90.63..105.63 (envelope) |
-| One modeled hour on the CPU, 7 min on the GPU (hour_build, both policies) | +0.2 s over 438 s | 438.42 vs 438.20 |
+| One modeled hour on the CPU, 433 s on the GPU (71 s transfer + 362 s build; hour_build, both policies) | +0.2 s over 438 s | 438.42 vs 438.20 |
+| Memory-bound (high_dim at the preset's 1.13 GB workers: the two largest builds fit no worker and build locally, both sides) | +0.7 .. +0.8 s over 537 s | 536.82 vs 536.06 |
 
 **What it does and does not validate.** The live workers are fake: they sleep for the cost model's times, so this is a validation of the *mechanics* the simulator replays — report latency, claim order, preemption and reneging at the tick, lease renewal over minutes, the transfer term's arithmetic — not of the 10×/2 s/200 MB/s cost model, which both sides share and Phases 4–5 replace. The systematic +1.4 s at 50 shards is control-plane latency (50 shards' reports and claims through one HTTP server and Postgres) the simulator does not model; it is 3 % of a 50 s round and would be 0.04 % of an hour-long one. The submit order of 50 concurrent shards and the ticker's phase are the two live inputs the simulator cannot know; the first only permutes which shard finishes k-th, the second can reorder a preempted queue and is reported as an envelope. No simulator or cost-model constant was changed to obtain these numbers.
 

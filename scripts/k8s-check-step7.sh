@@ -20,6 +20,7 @@
 #   TIME_SCALE=10 ONLY=A scripts/k8s-check-step7.sh
 #   SKIP_HOUR=1 scripts/k8s-check-step7.sh     # without the two hour_build rounds
 #   SKIP_BUILD=1 ...                           # don't rebuild/load the images first (they must already match the checkout)
+# A single configuration (ONLY=X) writes test-logs/phase3/step7-validation-x.log.
 #
 # Runs under caffeinate on macOS: a sleeping laptop pauses Docker Desktop and
 # the shard simulator, leases expire, and every GPU build in flight restarts.
@@ -28,11 +29,12 @@ cd "$(dirname "$0")/.."
 if [ -z "${KGPU_CAFFEINATED:-}" ] && command -v caffeinate >/dev/null; then
   KGPU_CAFFEINATED=1 exec caffeinate -i "$0" "$@"
 fi
-LOG=test-logs/phase3/step7-validation.log
+ONLY="${ONLY:-}"; SKIP_HOUR="${SKIP_HOUR:-0}"
+# a single configuration gets its own log, so it never overwrites the full run's
+LOG="${LOG:-test-logs/phase3/step7-validation${ONLY:+-$(echo "$ONLY" | tr 'A-Z' 'a-z')}.log}"
 OUT=experiments/results/step7-timelines
 TIME_SCALE="${TIME_SCALE:-1}"
-ONLY="${ONLY:-}"; SKIP_HOUR="${SKIP_HOUR:-0}"
-WORKER_MEM_BYTES=25769803776 # 24 GiB, decision 26; the simulator side is told the same
+MEM_24G=25769803776 # 24 GiB, decision 26; the simulator side is told the same number
 K="kubectl -n kgpu"
 mkdir -p "$(dirname "$LOG")" "$OUT"
 exec > >(tee "$LOG") 2>&1
@@ -52,7 +54,7 @@ ORIG_POLICY=$($K get configmap scheduler -o jsonpath='{.data.POLICY}')
 ORIG_MEM=$($K get configmap worker -o jsonpath='{.data.WORKER_MEM_BYTES}')
 echo "   cluster before: FAKE_TIME_SCALE=$ORIG_SCALE POLICY=$ORIG_POLICY WORKER_MEM_BYTES=$ORIG_MEM"
 
-CUR_POLICY=""
+CUR_POLICY=""; CUR_MEM=""
 # restart_and_verify <deployment> <app label> <expected log fragment>: a
 # `rollout restart` followed at once by `rollout status` can return before the
 # controller has even begun the new rollout (bug 15: the first full run's F and
@@ -75,14 +77,14 @@ restart_and_verify() {
   done
   echo "!! $deploy: no new pod reporting $expect within 180 s"; return 1
 }
-set_cluster() { # set_cluster <policy>: patch both ConfigMaps, restart what changed, verify from the pods' own logs
-  local policy="$1"
-  $K patch configmap worker --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$TIME_SCALE\",\"WORKER_MEM_BYTES\":\"$WORKER_MEM_BYTES\"}}" >/dev/null
+set_cluster() { # set_cluster <policy> <worker mem bytes>: patch both ConfigMaps, restart what changed, verify from the pods' own logs
+  local policy="$1" mem="$2"
+  $K patch configmap worker --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$TIME_SCALE\",\"WORKER_MEM_BYTES\":\"$mem\"}}" >/dev/null
   $K patch configmap scheduler --type merge -p "{\"data\":{\"FAKE_TIME_SCALE\":\"$TIME_SCALE\",\"POLICY\":\"$policy\"}}" >/dev/null
-  [ -n "$CUR_POLICY" ] || restart_and_verify worker worker "\"mem_bytes\": $WORKER_MEM_BYTES"
-  restart_and_verify scheduler scheduler "\"policy\":\"$policy\""
-  CUR_POLICY="$policy"
-  echo "   cluster set and verified from the new pods' startup lines: FAKE_TIME_SCALE=$TIME_SCALE POLICY=$policy WORKER_MEM_BYTES=$WORKER_MEM_BYTES ($($K get pods -l app=worker --field-selector=status.phase=Running -o name | wc -l | tr -d ' ') workers running)"
+  [ "$CUR_MEM" = "$mem" ] || restart_and_verify worker worker "\"mem_bytes\": $mem"
+  [ "$CUR_POLICY" = "$policy" ] || restart_and_verify scheduler scheduler "\"policy\":\"$policy\""
+  CUR_POLICY="$policy"; CUR_MEM="$mem"
+  echo "   cluster set and verified from the new pods' startup lines: FAKE_TIME_SCALE=$TIME_SCALE POLICY=$policy WORKER_MEM_BYTES=$mem ($($K get pods -l app=worker --field-selector=status.phase=Running -o name | wc -l | tr -d ' ') workers running)"
 }
 restore() {
   echo; echo "== restoring the cluster: FAKE_TIME_SCALE=$ORIG_SCALE POLICY=$ORIG_POLICY WORKER_MEM_BYTES=$ORIG_MEM"
@@ -97,11 +99,11 @@ restore() {
 trap restore EXIT
 
 FAILS=0
-run_config() { # run_config <name> <scenario> <n_shards> <workers> <policy> <seed> <rounds> <timeout> <what it checks>
-  local name="$1" scenario="$2" shards="$3" workers="$4" policy="$5" seed="$6" rounds="$7" timeout="$8" what="$9"
+run_config() { # run_config <name> <scenario> <n_shards> <workers> <policy> <seed> <rounds> <timeout> <worker mem bytes> <what it checks>
+  local name="$1" scenario="$2" shards="$3" workers="$4" policy="$5" seed="$6" rounds="$7" timeout="$8" mem="$9" what="${10}"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return; fi
-  echo; echo "#### configuration $name: $scenario, $shards shards, $workers workers, policy $policy, seeds $seed..$((seed+rounds-1)) — $what"
-  [ "$CUR_POLICY" = "$policy" ] || set_cluster "$policy"
+  echo; echo "#### configuration $name: $scenario, $shards shards, $workers workers, policy $policy, worker memory $mem B, seeds $seed..$((seed+rounds-1)) — $what"
+  [ "$CUR_POLICY" = "$policy" ] && [ "$CUR_MEM" = "$mem" ] || set_cluster "$policy" "$mem"
   local dir="$OUT/$name"; rm -rf "$dir"; mkdir -p "$dir"
   local t0=$(date +%s)
   if TIMELINE_DIR="$dir" TIME_SCALE="$TIME_SCALE" SCENARIO="$scenario" N_SHARDS="$shards" WORKERS="$workers" SEED="$seed" ROUNDS="$rounds" ROUND_TIMEOUT="$timeout" \
@@ -110,19 +112,24 @@ run_config() { # run_config <name> <scenario> <n_shards> <workers> <policy> <see
   fi
   echo "   live run took $(( $(date +%s) - t0 )) s wall for $rounds round(s)"
   echo "-- simulator replay with the live cadences (sharing off, decision 22):"
-  go run ./experiments/cmd/validate -timelines "$dir" -policy "$policy" -workers "$workers" -worker_mem_gb 24 -lease_s 10 | sed 's/^/   /'
+  go run ./experiments/cmd/validate -timelines "$dir" -policy "$policy" -workers "$workers" -worker_mem_gb "$(python3 -c "print($mem/2**30)")" -lease_s 10 | sed 's/^/   /'
 }
 
-# name  scenario    shards workers policy      seed rounds timeout  what
-run_config A  skewed      6  2 always_gpu 1 3 10m "the baseline: horizon-bound 30 s rounds, every build on a GPU"
-run_config B  skewed      6  2 always_gpu 1 1 10m "the same seed again, for the live stack's own jitter (compare with A's first row)"
-run_config C  skewed     50  3 always_gpu 1 3 15m "50 shards on 3 workers: the GPU queue binds, FCFS waits and a straggler lag"
-run_config D  skewed     50  3 reactive   1 3 15m "the same with reactive: most builds stay local, a few offload; the policy path end to end"
-run_config E  high_dim    6  2 reactive   1 3 15m "1536 dims: transfer rivals the GPU build, memory refuses the largest, preemption acts"
+# high_dim's own pool memory (experiments/workload/presets.go): fits builds up to
+# 0.9 x the size range by the generator's estimate, so the top of the range is
+# refused — the memory filter end to end, which 24 GiB never exercises (cross-check F2).
+MEM_HIGH_DIM=1128960000
+# name  scenario    shards workers policy      seed rounds timeout  worker mem     what
+run_config A  skewed      6  2 always_gpu 1 3 10m "$MEM_24G"      "the baseline: horizon-bound 30 s rounds, every build on a GPU"
+run_config B  skewed      6  2 always_gpu 1 1 10m "$MEM_24G"      "the same seed again, for the live stack's own jitter (compare with A's first row)"
+run_config C  skewed     50  3 always_gpu 1 3 15m "$MEM_24G"      "50 shards on 3 workers: the GPU queue binds, FCFS waits and a straggler lag"
+run_config D  skewed     50  3 reactive   1 3 15m "$MEM_24G"      "the same with reactive: most builds stay local, a few offload; the policy path end to end"
+run_config E  high_dim    6  2 reactive   1 3 15m "$MEM_24G"      "1536 dims at 24 GiB: transfer rivals the GPU build and preemption acts; nothing is refused for memory"
 if [ "$SKIP_HOUR" != 1 ]; then
-run_config F  hour_build  6  2 always_gpu 1 1 90m "one modeled hour on a CPU, ~7 min on a GPU: the cadence-to-build ratio of production (decision 27)"
-run_config G  hour_build  6  2 reactive   1 1 90m "the same straggler under reactive: offloaded at submit, the small builds kept local"
+run_config F  hour_build  6  2 always_gpu 1 1 90m "$MEM_24G"      "one modeled hour on a CPU, ~7 min on a GPU: the cadence-to-build ratio of production (decision 27)"
+run_config G  hour_build  6  2 reactive   1 1 90m "$MEM_24G"      "the same straggler under reactive: offloaded at submit, the small builds kept local"
 fi
+run_config H  high_dim    6  2 reactive   1 3 15m "$MEM_HIGH_DIM" "1536 dims at the preset's 1.13 GB workers: the two largest builds fit no worker and must build locally — the memory filter live vs simulated"
 
 echo
 [ "$FAILS" = 0 ] && echo "== Result: all live runs completed (agreement is per round above; a disagreement is a finding, not a failure)" || { echo "== Result: FAIL ($FAILS configuration(s) did not complete)"; exit 1; }

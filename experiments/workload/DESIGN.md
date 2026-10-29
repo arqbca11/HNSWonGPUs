@@ -51,7 +51,7 @@ All presets: Dim 128, mean query 20 ms, piece σ = 1.0, local DDL 0.005/s/shard 
 | `shrinking_pool` | as skewed | all at once | as skewed | 2 / 3; the runner removes a worker mid-round | Reneging queued jobs back to local. The workload is identical to `skewed` (same draws for the same seed; only `Name` differs). The worker loss is a runtime event the contract does not describe. |
 | `high_dim` | as skewed at **dim 1536** | all at once | as skewed | 2 / 3, worker memory fits builds up to 0.9·Max by the generator's estimate | Transfer rivals the GPU build; memory refuses the top of the range (Phase 3 decision 25). |
 | `production` | Zipf s = 1.0, [1M, 10M] at dim 1536 | all at once | u = 0.4, horizon **10 min**, mean query **50 ms** | 2 / 3, **80 GB** per worker | Hour-long CPU builds: sunk cost and preemption loss are real. **Simulator only** (decision 25). |
-| `hour_build` | as skewed, with the largest shard **replaced by 12.3M vectors** (a modeled hour on its CPU; 6 min + 69 s transfer on a GPU; ~11.5 GiB modeled memory, fits a 24 GiB worker) | all at once | as skewed | 2 / 3 | Phase 3 step 7's live validation round: the cadence-to-build ratio of production in a round that is ~8 min when the straggler is offloaded, an hour if it is not (decision 27). |
+| `hour_build` | as skewed, with the largest shard **replaced by 12.3M vectors** (a modeled hour on its CPU; 362 s + 71 s transfer = 433 s on a GPU; 11.7 GiB modeled memory, fits a 24 GiB worker) | all at once | as skewed | 2 / 3 | Phase 3 step 7's live validation round: the cadence-to-build ratio of production in a round that is ~8 min when the straggler is offloaded, an hour if it is not (decision 27). |
 
 ## Open questions
 

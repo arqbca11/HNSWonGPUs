@@ -694,4 +694,43 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | k8s-check-step7 C, D | skewed 50/3 under always_gpu and reactive, seeds 1–3. | Round time and straggler lag agree; the order-free per-shard max is small while the by-shard max is the submit-order lottery. |
 | k8s-check-step7 E | high_dim 6/2 reactive, seeds 1–3. | Agree with the default phase or inside the tick-phase envelope (decision 29). |
 | k8s-check-step7 F, G | hour_build 6/2 under always_gpu and reactive, seed 1: a modeled hour on a CPU, ~7 min on a GPU. | The straggler's GPU path (lease renewals over minutes, the transfer term, the index backlog's wait) agrees to within seconds; the runner proves which policy ran from the pod's startup line (bug 15). |
+| k8s-check-step7 H | high_dim 6/2 reactive at the preset's own 1.13 GB worker memory, seeds 1–3 (added after the cross-check's F2). | The two largest builds fit no worker and build locally on both sides; the memory filter's live placement and timing agree with the simulator. |
+
+## Phase 3, step 7, cross-check of the validation (Go, `scheduler/crosscheck`, `TestStep7Straggler` / `TestStep7TickPhase` / `TestStep7ShardPlacement` / `TestStep7Comparer` pure; `TestStep7KindPolicySwitch` needs `KGPU_KIND=1`). Log: `phase3/step7-crosscheck-validation.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| crosscheck/TestStep7Straggler/PresetNamesEndWithHourBuild | List the presets. | The roadmap's eight in order, then hour_build. |
+| crosscheck/TestStep7Straggler/HourBuildIsSkewedWithRank1Grown | hour_build against skewed at 2, 6, 13 and 50 shards, six seeds each. | Only skewed's largest shard changes, to 12.3M; sizes, DDL offsets and query streams are otherwise identical; Validate passes (decision 27). |
+| crosscheck/TestStep7Straggler/HourBuildScenarioIsSkewedPlusStraggler | Compare the two scenarios field by field. | Identical apart from name and Straggler; 2/3 workers of 24 GiB at dim 128 (decisions 26, 27). |
+| crosscheck/TestStep7Straggler/StragglerOnUniformTiesGoToLowestID | A straggler on six equal uniform shards. | Shard 0 gets it (ties go to the lowest id). |
+| crosscheck/TestStep7Straggler/StragglerOnRandomUniformAndBimodal | A 5M straggler on uniform, near-tied uniform, bimodal, staggered and high_dim, four seeds each. | The largest draw (lowest id on ties) alone is replaced; no other draw moves. |
+| crosscheck/TestStep7Straggler/StragglerZeroOrNegativeIsOff | Straggler = −5. | Workload identical to no straggler. |
+| crosscheck/TestStep7Straggler/StragglerCostModelNumbers | Cost model on 12.3M × 128 against the docs. | About an hour on CPU; fits 24 GiB, not 8; transfer 71 s, build 362 s, total 433 s, 11.7 GiB (F1 corrected the docs). |
+| crosscheck/TestStep7TickPhase/FirstTickAtPhaseShiftsPreemptionByHand | One local build preempted at the first tick, eight phases. | Round = p + GPU total; wasted CPU = first report after p (decision 29). |
+| crosscheck/TestStep7TickPhase/EverythingDownstreamShiftsOnTheReportGrid | Same, with queries behind the build and an unrelated GPU shard, at on-grid phases. | Shard finish, round and wasted CPU shift by exactly 2 − p; the unrelated shard does not move. |
+| crosscheck/TestStep7TickPhase/OffGridPhaseShiftIsQuantizedByReports | The query case at p = 0.7. | Finish 5.65 s by hand: the shift snaps to the 0.5 s report grid (1.5 s, not 1.3 s; G2). |
+| crosscheck/TestStep7TickPhase/OutOfRangePhaseBehavesAsDefault | Phases −1, −0.5, just over 2, 2.5, 3, 100. | Exactly the default result (G1). |
+| crosscheck/TestStep7TickPhase/PhaseIsRelativeToConfiguredInterval | ReconsiderS = 4 with phases 0, 4, 3, 0.5. | The phase is bounded by the configured interval, not by 2. |
+| crosscheck/TestStep7TickPhase/LaterTicksFollowEveryInterval | Preempt on the second tick. | The second tick fires at p + ReconsiderS. |
+| crosscheck/TestStep7TickPhase/DeterministicUnderAnyPhase | high_dim seed 2 reactive, twice per phase. | Identical results (invariant 10). |
+| crosscheck/TestStep7TickPhase/AlwaysGPUIsPhaseInvariant | always_gpu on five scenarios at five phases. | Identical results apart from Events. |
+| crosscheck/TestStep7ShardPlacement/ConsistentWithBuildCountsAcrossPresetsAndPolicies | 8 presets × 6/50 shards × 4 policies. | One entry per shard; gpu/local counts equal BuildsGPU/BuildsLocal; no "" in a completed round. |
+| crosscheck/TestStep7ShardPlacement/ShardOrderMatchesSizes | static_threshold on hour_build. | Straggler "gpu", small builds "local", at their own index. |
+| crosscheck/TestStep7ShardPlacement/IncompleteRoundLeavesUnfinishedEmpty | All builds local with a 100 s cap. | Incomplete; the unfinished hour-long build reads "". |
+| crosscheck/TestStep7ShardPlacement/KilledPoolLeavesQueuedEmpty | The only worker killed at 0.1 s. | Incomplete; every placement "", counts 0. |
+| crosscheck/TestStep7Comparer/AgreesWithTheSimulatorsOwnReplay | Timeline equal to the simulator's replay. | "agree", exit 0 with -strict, sim_s equals sim.Run. |
+| crosscheck/TestStep7Comparer/ReplaysReactiveHighDimLikeSimRun | high_dim reactive seeds 1–3 at 24 GiB. | Comparer equals sim.Run equals results row E. |
+| crosscheck/TestStep7Comparer/WorkerMemFlagIsHonoured | Same timeline with and without -worker_mem_gb 24. | Default is the preset's memory (536.06); the flag gives 93.27. |
+| crosscheck/TestStep7Comparer/RowEAndHMemory | Memory needs of high_dim against 24 GiB and the preset's 1.13 GB. | Nothing refused at 24 GiB (E, as reworded); the two largest refused at the preset's (H). F2 corrected the claim. |
+| crosscheck/TestStep7Comparer/ResultsTableReproduces | Rerun A, C, D, F, G from their seeds. | Simulated column reproduced to 0.01 s. |
+| crosscheck/TestStep7Comparer/RefusesWorkloadMismatch | Six tampered timelines. | Each refused, exit 1, with a message. |
+| crosscheck/TestStep7Comparer/ScalesCadencesByTimeScale | Scale-10 timeline with wall cadences 0.05/0.2/1, then 0.5/2/10. | Default replay first; modeled 5/20/100 second; live printed in modeled seconds. |
+| crosscheck/TestStep7Comparer/ToleranceIsMaxOf2sAnd5Percent | Deltas of ±1.9 / ±2.2 on 30 s and ±21 / +23 on 438 s; tolerance flags. | Agreement band is max(2 s, 5 %); the flags move it. |
+| crosscheck/TestStep7Comparer/ExitCodeIsZeroOnDisagreementUnlessStrict | One agreeing and one disagreeing round. | Exit 0 and "1/2"; exit 1 with -strict. |
+| crosscheck/TestStep7Comparer/PlacementDifferenceAloneDoesNotDisagree | Same round time, one shard local live. | Still agree; the 5/1 split is printed. |
+| crosscheck/TestStep7Comparer/EnvelopeContainsDefaultReplay | high_dim seeds 1–3. | Envelope contains the default replay and matches row E's envelopes. |
+| crosscheck/TestStep7Comparer/ProbesWhereTheSpecIsSilent | Reversed shard order, no -policy, empty directory, a reactive round compared as always_gpu. | Behaviour recorded (G3–G5): after the triage the first and last are refused. |
+| crosscheck/TestStep7Comparer/InsideEnvelopeOutsideToleranceVerdict | Live 91.58 against default 105.13; live 80. | "agree within tick-phase envelope"; DISAGREE. |
+| crosscheck/TestStep7KindPolicySwitch | Live kind: POLICY always_gpu → reactive → always_gpu with rollout restart, timing `rollout status` against the pod-log proof; restored afterwards. | The new pod's startup line names the policy. When status returned (about 1.3 s) the old-policy pod was still alive and draining; proof came at about 5.5 s (decision 30, bug 15, G7). |
 

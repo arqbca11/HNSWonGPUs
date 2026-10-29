@@ -25,6 +25,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -47,7 +48,8 @@ func main() {
 		tolFrac     = flag.Float64("tol_frac", 0.05, "agreement tolerance as a fraction of the simulated round time")
 		strict      = flag.Bool("strict", false, "exit 1 if any round disagrees")
 		perShard    = flag.Bool("shards", true, "print the per-shard finish table")
-		phases      = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29) and report the round-time envelope; the main row is the default phase")
+		phases      = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase")
+		trustPolicy = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
 	)
 	flag.Parse()
 	if *dir == "" || *polName == "" {
@@ -96,9 +98,30 @@ func main() {
 		}
 		w := workload.Generate(sc, tl.Seed)
 		for i, s := range w.Shards {
+			if int(tl.Shards[i].ShardID) != i {
+				log.Fatalf("%s: position %d holds shard_id %d — shards must be listed in id order", f, i, tl.Shards[i].ShardID)
+			}
 			if s.NVectors != tl.Shards[i].NVectors {
 				log.Fatalf("%s: shard %d has %d vectors live but %d regenerated — not the same workload (scenario %q seed %d)",
 					f, i, tl.Shards[i].NVectors, s.NVectors, tl.Scenario, tl.Seed)
+			}
+		}
+		// Which policy decided the live round? The timeline carries no policy
+		// field, but every submit event quotes the policy's own reason, and
+		// each policy words it differently (bug 15 was seen through exactly
+		// this). Refuse a timeline whose reasons belong to another policy.
+		if !*trustPolicy {
+			for _, s := range tl.Shards {
+				for _, ev := range s.Events {
+					m := submitReason.FindStringSubmatch(ev.Msg)
+					if m == nil {
+						continue
+					}
+					if by := policyOfReason(m[1]); by != "" && by != policyFamily(*polName) {
+						log.Fatalf("%s: shard %d's submit reason %q is %s's wording, not %s's — the live round ran under another policy (bug 15); pass -trust_policy to override",
+							f, s.ShardID, m[1], by, *polName)
+					}
+				}
 			}
 		}
 		cfg := esim.Config{
@@ -148,8 +171,8 @@ func main() {
 		rows = append(rows, r)
 	}
 
-	fmt.Printf("validate: %s policy=%s workers=%d worker_mem=%.0fGiB cadences(wall s): poll=%.2g reconsider=%.2g lease=%.2g; tolerance max(%.1f s, %.0f%%)\n",
-		rows[0].tl.Scenario, *polName, *workers, *workerMemGB, *pollS, *reconsiderS, *leaseS, *tolS, *tolFrac*100)
+	fmt.Printf("validate: %s policy=%s workers=%d worker_mem=%.0fGiB (0 = the preset's) cadences(wall s): poll=%.2g reconsider=%.2g lease=%.2g; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(%.1f s, %.0f%%); envelope over %d tick phases\n",
+		rows[0].tl.Scenario, *polName, *workers, *workerMemGB, *pollS, *reconsiderS, *leaseS, *tolS, *tolFrac*100, *phases)
 	fmt.Printf("%-6s %-5s %-5s %9s %9s %8s | %9s %9s | %-11s %-11s | %-22s %-10s %-17s %s\n",
 		"round", "seed", "scale", "live_s", "sim_s", "delta_s", "live_lag", "sim_lag", "live g/l", "sim g/l", "worst shard (live-sim)", "sorted max", "phase envelope", "verdict")
 	agreeN := 0
@@ -204,4 +227,38 @@ func roundID(path string) int {
 	var id int
 	fmt.Sscanf(base, "%d", &id)
 	return id
+}
+
+// submitReason captures the policy's reason from the shard's submit event
+// ("submitted: placement=gpu (always_gpu); cpu_build=...").
+var submitReason = regexp.MustCompile(`^submitted: placement=\w+ \((.*)\); cpu_build=`)
+
+// policyOfReason names the policy family whose Decide writes this reason, or
+// "" when the wording is shared (the memory filter's "needs N bytes, largest
+// live worker has M" is written by every policy).
+func policyOfReason(r string) string {
+	switch {
+	case r == "always_gpu":
+		return "always_gpu"
+	case strings.HasPrefix(r, "oracle:"):
+		return "clairvoyant"
+	case strings.Contains(r, "; reconsider "):
+		return "reactive"
+	case strings.Contains(r, " threshold "):
+		return "static_threshold"
+	}
+	return ""
+}
+
+// policyFamily folds the configured name to the family that writes its
+// submit reasons: reactive_spec decides submits exactly like reactive.
+func policyFamily(name string) string {
+	base, _, _ := strings.Cut(name, ":")
+	if base == "reactive_spec" {
+		return "reactive"
+	}
+	if base == "" {
+		return "always_gpu"
+	}
+	return base
 }

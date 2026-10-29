@@ -1,0 +1,100 @@
+== Phase 3 step 7: simulator vs live kind cluster, time scale 1, 2026-10-29T02:18:04Z
+   cluster before: FAKE_TIME_SCALE=10 POLICY=always_gpu WORKER_MEM_BYTES=25769803776
+
+#### configuration H: high_dim, 6 shards, 2 workers, policy reactive, worker memory 1128960000 B, seeds 1..3 — 1536 dims at the preset's 1.13 GB workers: the two largest builds fit no worker and must build locally — the memory filter live vs simulated
+   cluster set and verified from the new pods' startup lines: FAKE_TIME_SCALE=1 POLICY=reactive WORKER_MEM_BYTES=1128960000 (2 workers running)
+   == timeline (simulator output)
+      round 222  scenario=high_dim seed=1  time_scale=1
+      duration 536.8s real (536.8s modeled)   straggler lag 495.3s   builds: 4 gpu, 2 local, 0 speculative copies   queries: 3412
+      query latency (slowest piece): fan-out p50 510.8s p99 524.7s (n=532)   single-shard p50 15.1s p99 524.1s (n=1260)
+      shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+      0      200000    local  0    0.0s     0.0s     525.0s   536.8s   557     524.9s   ##############################
+      1      66667     gpu    1    0.0s     1.3s     23.3s    30.4s    568     23.4s    #
+      2      40000     gpu    1    0.0s     18.0s    31.6s    37.7s    578     32.1s    ##
+      3      50000     gpu    1    0.0s     1.3s     18.0s    30.0s    552     18.1s    #
+      4      33333     gpu    1    0.0s     23.4s    34.9s    41.6s    585     35.2s    ##
+      5      100000    local  0    0.0s     0.0s     247.6s   260.5s   572     247.5s   ##############
+      
+      round 223  scenario=high_dim seed=2  time_scale=1
+      duration 537.6s real (537.6s modeled)   straggler lag 493.5s   builds: 4 gpu, 2 local, 0 speculative copies   queries: 3670
+      query latency (slowest piece): fan-out p50 512.9s p99 524.6s (n=581)   single-shard p50 16.8s p99 523.5s (n=1353)
+      shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+      0      200000    local  0    0.0s     0.0s     525.0s   537.6s   626     524.9s   ##############################
+      1      50000     gpu    1    0.0s     1.5s     18.2s    29.9s    579     18.4s    #
+      2      40000     gpu    1    0.0s     23.7s    37.3s    44.1s    606     37.5s    ##
+      3      33333     gpu    1    0.0s     18.2s    29.8s    36.8s    617     30.0s    ##
+      4      100000    local  0    0.0s     0.0s     247.6s   260.4s   623     247.6s   ##############
+      5      66667     gpu    1    0.0s     1.6s     23.7s    31.4s    619     23.6s    #
+      
+      round 224  scenario=high_dim seed=3  time_scale=1
+      duration 538.2s real (538.2s modeled)   straggler lag 497.4s   builds: 4 gpu, 2 local, 0 speculative copies   queries: 3466
+      query latency (slowest piece): fan-out p50 512.0s p99 524.9s (n=549)   single-shard p50 13.1s p99 524.0s (n=1279)
+      shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+      0      66667     gpu    1    0.0s     12.4s    34.5s    40.8s    573     34.5s    ##
+      1      100000    local  0    0.0s     0.0s     247.6s   259.4s   583     247.6s   ##############
+      2      50000     gpu    1    0.0s     0.9s     17.6s    30.0s    586     18.1s    #
+      3      200000    local  0    0.0s     0.0s     525.0s   538.2s   602     525.0s   ##############################
+      4      33333     gpu    1    0.0s     0.9s     12.4s    30.0s    556     12.6s    #
+      5      40000     gpu    1    0.0s     17.6s    31.2s    37.6s    566     31.3s    ##
+      
+   
+   == round events (simulator log)
+      level=INFO msg="round started" round_id=222 scenario=high_dim seed=1 n_shards=6 time_scale=1
+      level=WARN msg="local build aborted" round_id=222 shard_id=2 build_id=2:222 why="preempted to the gpu queue" progress=0.01214405188265239
+      level=WARN msg="local build aborted" round_id=222 shard_id=1 build_id=1:222 why="preempted to the gpu queue" progress=0.006953502747477031
+      level=WARN msg="local build aborted" round_id=222 shard_id=3 build_id=3:222 why="preempted to the gpu queue" progress=0.01038171880103839
+      level=WARN msg="local build aborted" round_id=222 shard_id=4 build_id=4:222 why="preempted to the gpu queue" progress=0.01617949130586218
+      level=INFO msg="round finished" round_id=222 duration=8m56.821s duration_modeled=8m56.821s straggler_lag=8m15.26s builds_gpu=4 builds_local=2 queries=3412
+      level=INFO msg="round started" round_id=223 scenario=high_dim seed=2 n_shards=6 time_scale=1
+      level=WARN msg="local build aborted" round_id=223 shard_id=2 build_id=2:223 why="preempted to the gpu queue" progress=0.017668618159476894
+      level=WARN msg="local build aborted" round_id=223 shard_id=1 build_id=1:223 why="preempted to the gpu queue" progress=0.0138434754671893
+      level=WARN msg="local build aborted" round_id=223 shard_id=3 build_id=3:223 why="preempted to the gpu queue" progress=0.022917420212195908
+      level=WARN msg="local build aborted" round_id=223 shard_id=5 build_id=5:223 why="preempted to the gpu queue" progress=0.011379995177000321
+      level=INFO msg="round finished" round_id=223 duration=8m57.642s duration_modeled=8m57.642s straggler_lag=8m13.511s builds_gpu=4 builds_local=2 queries=3670
+      level=INFO msg="round started" round_id=224 scenario=high_dim seed=3 n_shards=6 time_scale=1
+      level=WARN msg="local build aborted" round_id=224 shard_id=0 build_id=0:224 why="preempted to the gpu queue" progress=0.0063319033390480855
+      level=WARN msg="local build aborted" round_id=224 shard_id=2 build_id=2:224 why="preempted to the gpu queue" progress=0.009532601174205305
+      level=WARN msg="local build aborted" round_id=224 shard_id=4 build_id=4:224 why="preempted to the gpu queue" progress=0.01624167090879863
+      level=WARN msg="local build aborted" round_id=224 shard_id=5 build_id=5:224 why="preempted to the gpu queue" progress=0.014373395916531355
+      level=INFO msg="round finished" round_id=224 duration=8m58.211s duration_modeled=8m58.211s straggler_lag=8m17.405s builds_gpu=4 builds_local=2 queries=3466
+   
+   live run took 1622 s wall for 3 round(s)
+-- simulator replay with the live cadences (sharing off, decision 22):
+   validate: high_dim policy=reactive workers=2 worker_mem=1GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+   round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+   222    1     1        536.82    536.06    +0.76 |    495.26    495.85 | 4/2         4/2         | shard 3     -8.27 s         0.76 s   536.06..536.06  agree
+   223    2     1        537.64    536.81    +0.83 |    493.51    496.22 | 4/2         4/2         | shard 2    +14.30 s         1.54 s   536.81..536.81  agree
+   224    3     1        538.21    537.48    +0.73 |    497.41    497.13 | 4/2         4/2         | shard 5     +7.61 s         6.20 s   537.48..537.48  agree
+   summary: 3/3 rounds agree; live - sim: mean +0.78 s, max |delta| 0.83 s
+   
+   round 222 seed 1, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                              0      200000     local/0         local          536.82       536.06    +0.76
+                                              1      66667      gpu  /1         gpu             30.43        30.95    -0.51
+                                              2      40000      gpu  /1         gpu             37.73        29.99    +7.75
+                                              3      50000      gpu  /1         gpu             30.00        38.27    -8.27
+                                              4      33333      gpu  /1         gpu             41.56        42.14    -0.58
+                                              5      100000     local/0         local          260.52       259.79    +0.73
+                                              mean |delta| 3.10 s by shard, max |delta| 0.76 s with both sides' finishes sorted (order-free); sim: preempts=4 reneges=0 speculations=0
+   
+   round 223 seed 2, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                              0      200000     local/0         local          537.64       536.81    +0.83
+                                              1      50000      gpu  /1         gpu             29.85        29.84    +0.01
+                                              2      40000      gpu  /1         gpu             44.13        29.83   +14.30
+                                              3      33333      gpu  /1         gpu             36.81        36.85    -0.04
+                                              4      100000     local/0         local          260.41       259.67    +0.74
+                                              5      66667      gpu  /1         gpu             31.39        44.33   -12.94
+                                              mean |delta| 4.81 s by shard, max |delta| 1.54 s with both sides' finishes sorted (order-free); sim: preempts=4 reneges=0 speculations=0
+   
+   round 224 seed 3, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                              0      66667      gpu  /1         gpu             40.81        47.01    -6.20
+                                              1      100000     local/0         local          259.41       258.72    +0.69
+                                              2      50000      gpu  /1         gpu             29.96        29.95    +0.00
+                                              3      200000     local/0         local          538.21       537.48    +0.73
+                                              4      33333      gpu  /1         gpu             29.99        33.68    -3.70
+                                              5      40000      gpu  /1         gpu             37.58        29.98    +7.61
+                                              mean |delta| 3.16 s by shard, max |delta| 6.20 s with both sides' finishes sorted (order-free); sim: preempts=4 reneges=0 speculations=0
+
+== Result: all live runs completed (agreement is per round above; a disagreement is a finding, not a failure)
+
+== restoring the cluster: FAKE_TIME_SCALE=10 POLICY=always_gpu WORKER_MEM_BYTES=25769803776
+   restored; log: test-logs/phase3/step7-validation-h.log
