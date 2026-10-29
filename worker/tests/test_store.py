@@ -90,3 +90,19 @@ def test_heartbeat_upsert(db, dsn):
     r = db.execute("SELECT mem_bytes FROM workers WHERE worker_id = 'gpu-a'").fetchone()
     assert r and r[0] == 16 << 30
     print("two heartbeats, one row, capacity updated")
+
+
+def test_claim_carries_the_rounds_dataset_and_shard_count(db, dsn):
+    """Phase 4 decision 15: the claim tells the worker which data the build
+    reads; a modeled round says None."""
+    r_fake = new_round(db)
+    r_real = new_round(db, n_shards=6, dataset="sift-128")
+    new_build(db, r_fake, 1, priority=1)
+    new_build(db, r_real, 3, priority=5)
+    s = Store(dsn)
+    c = s.claim("w", 1 << 30, LEASE)
+    print(f"claim #1 -> {c}")
+    assert c and c.round_id == r_real and c.dataset == "sift-128" and c.n_shards == 6 and c.build_id == f"3:{r_real}"
+    c = s.claim("w", 1 << 30, LEASE)
+    print(f"claim #2 -> {c}")
+    assert c and c.round_id == r_fake and c.dataset is None and c.n_shards == 100

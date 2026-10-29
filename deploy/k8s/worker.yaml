@@ -26,6 +26,12 @@ data:
   SHUTDOWN_FINISH_BUDGET_SECONDS: "5"
   HEALTH_ADDR: ":8081"
   LOG_FORMAT: json
+  # Phase 4 (decision 18): hnswlib runs the builder CLI against the object
+  # store for rounds that carry a dataset; fake sleeps for the modeled time.
+  # Switching needs a restart (the value is read at start).
+  BUILDER: fake
+  BUILD_THREADS: "8"
+  RECALL_MIN: "0.9"
 ---
 # Headless Service over the workers: nothing calls them (they pull), it exists
 # so the ServiceMonitor can find their probe/metrics port (Phase 2 step 5).
@@ -87,6 +93,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: worker
+            - secretRef:
+                name: objectstore     # S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET (Phase 4)
           env:
             - name: DATABASE_URL
               valueFrom:

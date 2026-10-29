@@ -18,7 +18,8 @@ def main() -> None:
         print(f"bad config: {e}", file=sys.stderr)
         sys.exit(2)
     setup(cfg.log_format)
-    b = builders.by_name(cfg.builder, cfg.model, cfg.fake_time_scale, cfg.fake_fail_build_ids)
+    b = builders.by_name(cfg.builder, cfg.model, cfg.fake_time_scale, cfg.fake_fail_build_ids,
+                         cmd=cfg.builder_cmd, threads=cfg.build_threads)
     w = Worker(cfg, b)
     w.install_signal_handlers()
     w.run()

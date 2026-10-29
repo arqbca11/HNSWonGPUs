@@ -11,7 +11,15 @@
     RENEW_INTERVAL_SECONDS    default 10
     HEARTBEAT_INTERVAL_SECONDS default 5
     POLL_INTERVAL_SECONDS     how long to wait when the queue is empty; default 0.5
-    BUILDER                   fake (default)
+    BUILDER                   fake (default) or hnswlib (Phase 4: the builder CLI as a child
+                              process, decision 18; the round must carry a dataset)
+    BUILDER_CMD               the command that runs the builder CLI; default "<this python> -m
+                              kgpu_builder" (the builder package is a dependency of the worker)
+    BUILD_THREADS             threads the builder may use; default 8 (the roadmap's worker vs a
+                              shard's 2)
+    RECALL_MIN                passed through to the builder's gate; default 0.9
+    S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET
+                              passed through to the builder (the object store)
     FAKE_TIME_SCALE           divide fake build times by this; default 1
     SHUTDOWN_FINISH_BUDGET_SECONDS  on SIGTERM, finish the build if its remaining
                               (scaled) time is under this, else release it; default 5
@@ -29,8 +37,9 @@ claim a build it cannot handle.
 from __future__ import annotations
 
 import os
+import sys
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .costmodel import Model
 
@@ -56,6 +65,8 @@ class Config:
     health_addr: str
     log_format: str
     model: Model
+    builder_cmd: list[str] = field(default_factory=lambda: [sys.executable, "-m", "kgpu_builder"])
+    build_threads: int = 8
 
     def validate(self) -> None:
         """Raise ConfigError with one clear line on the first bad value."""
@@ -110,6 +121,8 @@ class Config:
             heartbeat_interval_s=f("HEARTBEAT_INTERVAL_SECONDS", 5),
             poll_interval_s=f("POLL_INTERVAL_SECONDS", 0.5),
             builder=env.get("BUILDER") or "fake",
+            builder_cmd=(__import__("shlex").split(env["BUILDER_CMD"]) if env.get("BUILDER_CMD") else [sys.executable, "-m", "kgpu_builder"]),
+            build_threads=int(f("BUILD_THREADS", 8)),
             fake_time_scale=f("FAKE_TIME_SCALE", 1.0),
             shutdown_finish_budget_s=f("SHUTDOWN_FINISH_BUDGET_SECONDS", 5),
             fake_fail_build_ids=frozenset(x.strip() for x in (env.get("FAKE_FAIL_BUILD_IDS") or "").split(",") if x.strip()),

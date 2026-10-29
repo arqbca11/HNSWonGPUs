@@ -50,9 +50,9 @@ def db(dsn: str):
     conn.close()
 
 
-def new_round(conn: psycopg.Connection, n_shards: int = 100) -> int:
+def new_round(conn: psycopg.Connection, n_shards: int = 100, dataset: str | None = None) -> int:
     row = conn.execute(
-        "INSERT INTO rounds (scenario, seed, n_shards) VALUES ('pytest', 1, %s) RETURNING round_id", (n_shards,)
+        "INSERT INTO rounds (scenario, seed, n_shards, dataset) VALUES ('pytest', 1, %s, %s) RETURNING round_id", (n_shards, dataset)
     ).fetchone()
     assert row
     return row[0]

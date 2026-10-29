@@ -6,7 +6,11 @@ requires-python = ">=3.12"
 dependencies = [
     "prometheus-client>=0.26.0",
     "psycopg[binary]>=3.2,<4",
+    "kgpu-builder",
 ]
+
+[tool.uv.sources]
+kgpu-builder = { path = "../builder", editable = true }
 
 [dependency-groups]
 dev = [

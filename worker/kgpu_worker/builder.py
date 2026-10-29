@@ -24,6 +24,12 @@ class Job:
     n_vectors: int
     dim: int
     mem_bytes: int
+    dataset: str | None = None  # Phase 4 decision 15: the vectors are splits/<dataset>/<n_shards>/vectors/shard_<shard>.npy
+    n_shards: int = 0
+
+    @property
+    def shard_id(self) -> int:
+        return int(self.build_id.split(":")[0])
 
 
 @dataclass(frozen=True)
@@ -92,7 +98,98 @@ class FakeBuilder:
         )
 
 
-def by_name(name: str, model: Model, time_scale: float, fail_build_ids: frozenset[str] = frozenset()) -> Builder:
+class GateRefused(Exception):
+    """The builder's recall gate refused the index (exit 3): the build is
+    marked failed with this reason, like any other build failure."""
+
+
+class HnswlibBuilder:
+    """Runs `python -m kgpu_builder build ...` as a child process (Phase 4
+    decisions 3, 17, 18): the same program the Go shard runs for a local
+    build. stderr progress lines feed `progress`; `cancel` kills the child
+    (the lease is gone, so nothing it could still write may be completed);
+    exit 3 becomes GateRefused with the gate's reason; exit 0's manifest on
+    stdout becomes the Artifact. The object store's address and keys reach
+    the child through the environment (S3_*), as does RECALL_MIN."""
+
+    name = "hnswlib"
+
+    def __init__(self, model: Model, cmd: list[str], threads: int = 8, env: dict[str, str] | None = None) -> None:
+        self.model = model
+        self.cmd = cmd
+        self.threads = threads
+        self.env = env
+
+    def estimate_s(self, job: Job) -> float:
+        # the cost model's estimate until Phase 4's calibration replaces its constants
+        return self.model.gpu_total_s(job.n_vectors, job.dim)
+
+    def build(self, job: Job, progress: Callable[[float], None], cancel: threading.Event) -> Artifact:
+        if not job.dataset:
+            raise RuntimeError(f"{job.build_id}: a modeled round (no dataset) cannot be built by hnswlib; run BUILDER=fake")
+        import json
+        import os
+        import subprocess
+        argv = self.cmd + ["build", "--build-id", job.build_id, "--attempt", str(job.attempt), "--dataset", job.dataset,
+                           "--n-shards", str(job.n_shards), "--shard", str(job.shard_id), "--threads", str(self.threads)]
+        start = time.monotonic()
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                env={**os.environ, **(self.env or {})}, start_new_session=True)
+        out_lines: list[str] = []
+
+        def pump_stdout() -> None:
+            assert proc.stdout
+            for line in proc.stdout:
+                out_lines.append(line)
+
+        def pump_stderr() -> None:
+            # progress lines as they come; a blocked readline must never delay
+            # the cancel check below, so this runs in its own thread
+            assert proc.stderr
+            for line in proc.stderr:
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if "progress" in msg:
+                    progress(float(msg["progress"]))
+
+        pumps = [threading.Thread(target=pump_stdout, daemon=True), threading.Thread(target=pump_stderr, daemon=True)]
+        for t in pumps:
+            t.start()
+        while proc.poll() is None:
+            if cancel.is_set():
+                try:
+                    os.killpg(proc.pid, 9)   # the whole process group, like the shard's preempt
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+                raise Cancelled(f"build {job.build_id} attempt {job.attempt} cancelled: child killed")
+            time.sleep(0.05)
+        rc = proc.returncode
+        for t in pumps:
+            t.join(timeout=5)
+        out = "".join(out_lines).strip()
+        if rc == 3:
+            try:
+                reason = json.loads(out).get("reason", out)
+            except ValueError:
+                reason = out
+            raise GateRefused(reason)
+        if rc != 0:
+            raise RuntimeError(f"builder exited {rc}: {out[:300]}")
+        m = json.loads(out)
+        progress(1.0)
+        return Artifact(build_id=job.build_id, attempt=job.attempt, kind=self.name,
+                        index_bytes=int(m["index_bytes"]), elapsed_s=time.monotonic() - start)
+
+
+def by_name(name: str, model: Model, time_scale: float, fail_build_ids: frozenset[str] = frozenset(),
+            cmd: list[str] | None = None, threads: int = 8) -> Builder:
     if name in ("", "fake"):
         return FakeBuilder(model, time_scale=time_scale, fail_build_ids=fail_build_ids)
+    if name == "hnswlib":
+        import shlex
+        import sys
+        return HnswlibBuilder(model, cmd or [sys.executable, "-m", "kgpu_builder"], threads=threads)
     raise ValueError(f"unknown builder {name!r}")

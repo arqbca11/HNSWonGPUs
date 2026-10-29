@@ -83,7 +83,8 @@ services:
 
   worker:
     build:
-      context: ../worker
+      context: ..              # the worker depends on builder/ by path (Phase 4)
+      dockerfile: worker/Dockerfile
     deploy:
       replicas: 2
     environment:
@@ -99,10 +100,21 @@ services:
       FAKE_TIME_SCALE: ${FAKE_TIME_SCALE:-1}
       SHUTDOWN_FINISH_BUDGET_SECONDS: ${SHUTDOWN_FINISH_BUDGET_SECONDS:-5}
       LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Phase 4: BUILDER=hnswlib runs the builder CLI against the object store
+      # (decision 18); fake keeps the modeled sleep.
+      BUILDER: ${BUILDER:-fake}
+      BUILD_THREADS: ${BUILD_THREADS:-8}
+      RECALL_MIN: ${RECALL_MIN:-0.9}
+      S3_ENDPOINT: http://objectstore:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-kgpu}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-kgpu-secret}
+      S3_BUCKET: ${S3_BUCKET:-kgpu}
     init: true
     depends_on:
       scheduler:
         condition: service_healthy   # the scheduler applies the schema; workers need it to exist
+      objectstore:
+        condition: service_healthy
     # docker stop sends SIGTERM and waits this long before SIGKILL; the worker
     # finishes or releases its build in that window (design decision 37).
     stop_grace_period: 15s

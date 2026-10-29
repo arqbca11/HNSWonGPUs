@@ -134,7 +134,7 @@ class Worker:
 
     def _work(self, c: Claimed) -> None:
         job = Job(build_id=c.build_id, round_id=c.round_id, attempt=c.attempt,
-                  n_vectors=c.n_vectors, dim=c.dim, mem_bytes=c.mem_bytes)
+                  n_vectors=c.n_vectors, dim=c.dim, mem_bytes=c.mem_bytes, dataset=c.dataset, n_shards=c.n_shards)
         now = time.monotonic()
         cur = Current(job=job, cancel=threading.Event(), lost=threading.Event(), started=now, lease_ok_at=now)
         with self._lock:

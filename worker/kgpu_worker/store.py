@@ -25,6 +25,8 @@ class Claimed:
     n_vectors: int
     dim: int
     mem_bytes: int
+    dataset: str | None = None  # the round's data (Phase 4 decision 15); None = a modeled round
+    n_shards: int = 0
 
 
 def is_connection_error(e: BaseException) -> bool:
@@ -127,9 +129,11 @@ class Store:
                 (worker_id, lease_s, mem_cap),
             )
             row = cur.fetchone()
-        if row is None:
-            return None
-        return Claimed(*row)
+            if row is None:
+                return None
+            cur.execute("SELECT dataset, n_shards FROM rounds WHERE round_id = %s", (row[1],))
+            ds, n_shards = cur.fetchone()
+        return Claimed(*row, dataset=ds, n_shards=n_shards)
 
     def renew(self, build_id: str, attempt: int, lease_s: float) -> bool:
         """Extend the lease. False means the lease is lost: stop working."""
