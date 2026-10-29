@@ -2,13 +2,13 @@
 
 ## Status and scope
 
-**Planned.** Add a real GPU build implementation, run it for a few hours on a small cloud GPU node pool, and rerun the comparison with a measured GPU cost model.
+**Planned.** Add a real GPU build implementation to the cloud topology Phase 4 leaves behind (a managed cluster with CPU workers, MinIO and the scheduler, plus the shard VM outside it — Phase 4 decisions 7 and 8), run it for a few hours on a GPU node pool added to that cluster, and rerun the comparison with a measured GPU cost model. Scheduler, Postgres, the shard VM and the shard simulator do not change; the worker gets a second builder image behind the same `build(job)` interface.
 
 **Done when** the policy comparison includes real GPU numbers and a spot preemption has been observed and recovered from.
 
 ## System diagram
 
-The same manifests as Phase 2, applied to a managed cluster with a GPU node pool that autoscales from zero. The worker image changes; nothing else does.
+The same manifests as Phase 2, already applied to the managed cluster in Phase 4's closing step; this phase adds the GPU node pool, autoscaling from zero. The worker image changes; nothing else does.
 
 ```mermaid
 flowchart TB
@@ -23,7 +23,7 @@ flowchart TB
             W["worker (cuVS image) ×(cards in use)<br/>requests nvidia.com/gpu: 1"]
         end
     end
-    SH["shards: the database fleet,<br/>outside the cluster (Phase 2 decision 26)"] -- HTTP --> SD
+    SH["shards: the database fleet on a CPU VM<br/>in the same region, outside the cluster<br/>(Phase 2 decision 26, Phase 4 decision 8)"] -- HTTP --> SD
     AS["cluster autoscaler"] -- "pending worker pod → add node<br/>idle node → remove" --> gpu
     SP["spot reclaim"] -. "node disappears mid-build" .-> gpu
 ```

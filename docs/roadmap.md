@@ -322,20 +322,26 @@ A workload is a seeded combination of four knobs: size distribution, query strea
 
 ## Phase 4: Real CPU builds with hnswlib
 
-Replace the sleeps with real hnswlib builds on real vectors, and replace the cost model's constants with measurements. **Done when** the fitted model's error distribution is known and the Phase 3 comparison has been rerun on real builds.
+Replace the sleeps with real hnswlib builds on real vectors, and replace the cost model's constants with measurements. **Done when** the fitted model's error distribution is known, measured on the hardware that stays (the cloud topology below), and the Phase 3 comparison has been rerun on real builds.
+
+### Where things run: develop on the laptop, measure in the cloud
+
+Phase 4 has two kinds of work and they belong in different places. The *software* — the builder CLI, the artifact store, the recall gate, the fitting code, the comparison rerun — is hardware-independent and is developed and tested on the laptop with kind, which stays the everyday environment. The *measurements* are not: on one laptop the shards' CPUs and the workers' CPUs are the same cores (a local build and a worker build contend in a way no fleet would), the "transfer" between two processes is a memory copy, and fifty real builds cannot run at once. Constants calibrated there would be thrown away in Phase 5. So Phase 4 closes by standing up **Phase 5's topology without GPUs** — a CPU virtual machine for the shards, outside the cluster as Phase 2 decided (decision 26), plus a small managed cluster with CPU-only workers, MinIO and the scheduler — and calibrating there. Phase 5 then adds the GPU node pool to the same topology. The "where things run" decision is made once, the cloud setup and its cost controls are rehearsed before any GPU is rented, and the CPU-side constants are measured once on the hardware that stays.
+
+**The shard host, decided here rather than in Phase 5.** Three options were weighed: (1) *a CPU virtual machine in the same cloud region, outside the cluster* — real cores separate from the workers', a real cloud network to the object store and the GPU pool, the Phase 2 shape kept; (2) *a CPU node pool inside the cluster* — simpler networking, but it reverses decision 26 and lets Kubernetes restart what is meant to be the database fleet; (3) *the laptop* — the transfer term then measures a home internet connection. Option 1 is the plan; option 3 is allowed only for a functional check that a path works end to end, never for a number in the ledger.
 
 ### Keeping the tradeoff real without a GPU
 
-Workers are still CPU-only here, so give them more cores than a shard gets (e.g. 8 threads against a shard's 2). The shape of the tradeoff stays intact: remote builds are faster, but they wait in a queue and pay transfer costs.
+Workers are still CPU-only here, so give them more cores than a shard gets (e.g. 8 threads against a shard's 2). The shape of the tradeoff stays intact: remote builds are faster, but they wait in a queue and pay transfer costs. On the laptop this is a fiction (same cores); on the cloud topology the shard VM and the worker nodes are different machines and it is real.
 
-### Data
+### Data (laptop)
 
 - [ ] Use an ann-benchmarks dataset. SIFT-128 (1M vectors) or GloVe-100 fits on a laptop. Add a high-dimension subset (768 or 1536) of a few hundred thousand vectors so the dimension term is measured, not assumed.
 - [ ] Split it across 50 shards with Zipf-distributed sizes, capped so the total fits in memory
 - [ ] Store each shard's vectors in MinIO as `.npy` files
 - [ ] Compute exact ground truth per shard once with brute force, for the recall gate
 
-### Builder
+### Builder (laptop)
 
 - [ ] Package the builder as a CLI, so the Python worker and the Go shard (via exec) run the same code
 - [ ] Build: download vectors, `init_index(M=16, ef_construction=200)`, `add_items` with a set thread count, save the index
@@ -343,13 +349,22 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 - [ ] Publish order: upload the index, then write the manifest (build ID, attempt, checksum, parameters, recall), then mark the job complete under the fencing guard
 - [ ] Recall gate: run held-out queries and compare recall@10 with ground truth. Below the threshold, mark the build failed with a reason.
 - [ ] Keep queries simulated, but as a CPU-burning loop instead of a sleep, so they compete with local builds for real
+- [ ] A real preempt: the shard runs the builder as a child process and kills it; the build joins the GPU queue; the worker pulls the vectors from MinIO, builds, publishes; the shard learns of the completion in the reply to its next report, downloads the index and runs the recall gate
 
-### Calibration
+### Calibration method (laptop, a rehearsal)
 
-- [ ] Measure build time over a grid of sizes (10k to 500k vectors) and thread counts, separately for worker and shard CPU limits
-- [ ] Fit a × n × log n per configuration and check the residuals rather than assuming the curve
-- [ ] Measure MinIO throughput inside the cluster for the transfer term
-- [ ] Record the estimate error distribution and feed it back into the simulator's σ, so the Phase 3 sweeps use a realistic value
+- [ ] The fitting code: measure build time over a grid of sizes (10k to 500k vectors) and thread counts, fit a × n × log n per configuration, and check the residuals rather than assuming the curve
+- [ ] Record the estimate error distribution and feed it back into the simulator's σ
+- [ ] Run it once on the laptop to prove the method end to end; these numbers do not enter `docs/speedup.md`
+
+### The cloud topology without GPUs (closing step)
+
+- [ ] A billing alert before creating anything; everything torn down after each session
+- [ ] A managed cluster (e.g. GKE) with a CPU-only node pool: scheduler, Postgres, MinIO and CPU workers from the kind manifests
+- [ ] A CPU virtual machine in the same region for the shards, reaching the scheduler and MinIO over the cloud network, the way the laptop reaches kind today
+- [ ] The calibration repeated there, separately for the shard VM's cores and the worker nodes' cores; MinIO throughput measured from the shard VM and from a worker, which is the transfer term
+- [ ] The estimate error distribution from this run becomes the simulator's σ, and the Phase 3 comparison is rerun on real builds (sweeps in the simulator, a few rounds validated live, as step 7 did)
+- [ ] The manifests, the VM recipe and the teardown script are committed, so Phase 5 starts from them
 
 ### Optional
 
@@ -357,7 +372,7 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 ## Phase 5: GPUs and cuVS
 
-Add a real GPU build path, run it on a small cloud GPU node pool for a few hours, and rerun the comparison with a measured GPU cost model. **Done when** the policy comparison includes real GPU numbers and a spot preemption has been observed and recovered from.
+Add a real GPU build path to the Phase 4 cloud topology, run it on a small GPU node pool for a few hours, and rerun the comparison with a measured GPU cost model. **Done when** the policy comparison includes real GPU numbers and a spot preemption has been observed and recovered from. Scheduler, Postgres, the shard VM and the shard simulator do not change; the worker gets a second builder image behind the same `build(job)` interface.
 
 ### GPU builder
 
@@ -365,11 +380,11 @@ Add a real GPU build path, run it on a small cloud GPU node pool for a few hours
 - [ ] Build path: build a CAGRA graph with cuVS, convert it to HNSW, save. Check the cuVS docs for the current API, and confirm the saved file loads in the query path (hnswlib) before trusting the pipeline.
 - [ ] Alternative path if the direct API causes trouble: Faiss with its cuVS-backed CAGRA index, which is what OpenSearch's GPU workers use
 - [ ] Measure on the GPU: build time across the size grid, conversion time, and peak GPU memory
-- [ ] Add a memory constraint to placement: a build whose peak memory exceeds a worker's GPU can't be placed there
+- [ ] Add a memory constraint to placement: a build whose peak memory exceeds a worker's GPU can't be placed there. The modeled capacity is 24 GiB today (Phase 3 decision 26, an L4/A10G class card); the published CAGRA residency rule is ~1.8× the float32 vectors, but build-time peak is several times higher — measure peak, and decide whether the filter models peak or residency.
 
-### Cluster
+### Cluster: the GPU node pool added to Phase 4's topology
 
-- [ ] A managed cluster (e.g. GKE) with a GPU node pool on spot, autoscaling from zero. Both one-card and two-card machines of the same card type (e.g. L4), for the workers-per-node measurement below
+- [ ] A GPU node pool on spot, autoscaling from zero, in the Phase 4 cluster. Both one-card and two-card machines of the same card type (e.g. L4), for the workers-per-node measurement below
 - [ ] Drivers and device plugin per the provider's docs; outside a managed provider, the NVIDIA GPU Operator
 - [ ] Workers request `nvidia.com/gpu: 1`, with the same taint and `nodeSelector` rehearsed in Phase 2; the only change from the kind manifests is the resource name (`kgpu.io/gpu-card` → `nvidia.com/gpu`)
 - [ ] NVIDIA's DCGM exporter for GPU utilization and memory, on the same Grafana dashboard
@@ -384,8 +399,7 @@ Add a real GPU build path, run it on a small cloud GPU node pool for a few hours
 
 ### Cost control
 
-- [ ] Set a billing alert before creating anything
-- [ ] Tear the cluster down after each session; kind remains the everyday environment
+- [ ] The Phase 4 billing alert and teardown script carry over; the GPU pool is scaled to zero between sessions; kind remains the everyday environment
 
 ## Phase 6 (optional): Kubernetes-native dispatch
 
