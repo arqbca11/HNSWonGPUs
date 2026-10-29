@@ -18,11 +18,17 @@
 package sim
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
@@ -33,6 +39,15 @@ type Config struct {
 	TimeScale    float64       // divide every modeled duration by this (1 = real time)
 	PollInterval time.Duration // how often the shard reports and syncs with the scheduler
 	Slice        time.Duration // granularity at which a local build checks for cancellation
+	// Phase 4 (decisions 15, 19, 20): with a Dataset the local build is the
+	// builder CLI run as a child process (BuilderCmd, Threads) instead of a
+	// sleep, and queries burn the CPU for their modeled duration instead of
+	// sleeping (BurnQueries).
+	Dataset     string
+	NShards     int // the round's shard count: the split the builder reads
+	BuilderCmd  []string
+	Threads     int
+	BurnQueries bool
 }
 
 func (c Config) scale(d time.Duration) time.Duration {
@@ -282,10 +297,17 @@ func (s *Shard) runQuery(ctx context.Context, item *queued) {
 	item.started = &start
 	s.dirty = append(s.dirty, item)
 	s.mu.Unlock()
-	select {
-	case <-time.After(time.Until(end)):
-	case <-ctx.Done():
-		return
+	if s.cfg.BurnQueries {
+		burn(ctx, end)
+		if ctx.Err() != nil {
+			return
+		}
+	} else {
+		select {
+		case <-time.After(time.Until(end)):
+		case <-ctx.Done():
+			return
+		}
 	}
 	s.mu.Lock()
 	item.finished = &end
@@ -298,6 +320,10 @@ func (s *Shard) runQuery(ctx context.Context, item *queued) {
 }
 
 func (s *Shard) runLocalBuild(ctx context.Context, dur time.Duration) {
+	if s.cfg.Dataset != "" {
+		s.runRealBuild(ctx)
+		return
+	}
 	started := time.Now()
 	for {
 		elapsed := time.Since(started)
@@ -504,4 +530,174 @@ func (s *Shard) fail(err error) {
 		s.event("ERROR: %v", err)
 		s.log.Error("shard failed", "err", err)
 	}
+}
+
+// runRealBuild is the Phase 4 local build (decision 19): the builder CLI as
+// a child process in its own process group, so a preempt (or a won
+// speculative copy) kills it and its work is really lost. stderr progress
+// lines become build_progress in the reports; exit 0 is done, exit 3 (the
+// recall gate) is failed with the gate's reason, anything else is failed
+// with the output. The child inherits the environment (S3_*, RECALL_MIN).
+func (s *Shard) runRealBuild(ctx context.Context) {
+	started := time.Now()
+	argv := append(append([]string{}, s.cfg.BuilderCmd...), "build",
+		"--build-id", s.b.id, "--attempt", "0", "--dataset", s.cfg.Dataset,
+		"--n-shards", strconv.Itoa(s.cfg.NShards), "--shard", strconv.Itoa(int(s.w.ShardID)),
+		"--threads", strconv.Itoa(max(s.cfg.Threads, 1)))
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	stderr, err := cmd.StderrPipe()
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
+		s.localFailed(ctx, started, fmt.Sprintf("could not start the builder %q: %v", argv[0], err))
+		return
+	}
+	s.log.Info("local build started as a child process", "pid", cmd.Process.Pid, "threads", s.cfg.Threads, "dataset", s.cfg.Dataset)
+	// progress lines, until the child closes stderr
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			var msg struct {
+				Progress *float64 `json:"progress"`
+				Phase    string   `json:"phase"`
+			}
+			if json.Unmarshal(sc.Bytes(), &msg) != nil {
+				continue
+			}
+			s.mu.Lock()
+			if msg.Progress != nil {
+				s.b.progress = float32(*msg.Progress)
+			}
+			s.mu.Unlock()
+		}
+	}()
+	waited := make(chan error, 1)
+	go func() { waited <- cmd.Wait() }()
+	slice := s.cfg.Slice
+	if slice <= 0 {
+		slice = 100 * time.Millisecond
+	}
+	var waitErr error
+loop:
+	for {
+		select {
+		case waitErr = <-waited:
+			break loop
+		case <-ctx.Done():
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			<-waited
+			return
+		case <-time.After(slice):
+			s.mu.Lock()
+			cancel, why, progress := s.b.cancel, s.b.cancelWhy, s.b.progress
+			s.mu.Unlock()
+			if cancel {
+				if why == "" {
+					why = "preempted to the gpu queue"
+				}
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) // the whole process group: the real preempt
+				<-waited
+				s.mu.Lock()
+				s.b.localBusy = false
+				s.b.progress = 0
+				localBuildsAborted.Inc()
+				s.event("local build aborted at %.0f%% after %s: %s (child process killed)", 100*progress, time.Since(started).Round(time.Millisecond), why)
+				s.mu.Unlock()
+				s.log.Warn("local build aborted", "why", why, "progress", progress)
+				return
+			}
+		}
+	}
+	<-progressDone
+	out := strings.TrimSpace(stdout.String())
+	if waitErr == nil {
+		s.mu.Lock()
+		s.b.progress = 1
+		s.event("local build done after %s: %s", time.Since(started).Round(time.Millisecond), summarizeManifest(out))
+		s.mu.Unlock()
+		accepted, err := s.api.LocalDone(ctx, s.b.id)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.b.localBusy = false
+		if err != nil {
+			s.err = fmt.Errorf("local done: %w", err)
+			return
+		}
+		if !accepted {
+			s.event("local build finished but the scheduler had moved on; the result is discarded")
+		}
+		return
+	}
+	reason := "builder exited: " + waitErr.Error()
+	if ee, ok := waitErr.(*exec.ExitError); ok && ee.ExitCode() == 3 {
+		var f struct {
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal([]byte(out), &f) == nil && f.Reason != "" {
+			reason = "GateRefused: " + f.Reason
+		} else {
+			reason = "GateRefused: " + out
+		}
+	} else if out != "" {
+		reason += ": " + out
+	}
+	s.localFailed(ctx, started, reason)
+}
+
+func (s *Shard) localFailed(ctx context.Context, started time.Time, reason string) {
+	if len(reason) > 500 {
+		reason = reason[:500]
+	}
+	s.mu.Lock()
+	s.event("local build FAILED after %s: %s", time.Since(started).Round(time.Millisecond), reason)
+	s.mu.Unlock()
+	s.log.Error("local build failed", "reason", reason)
+	accepted, err := s.api.LocalFail(ctx, s.b.id, reason)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.b.localBusy = false
+	s.b.progress = 0
+	if err != nil {
+		s.err = fmt.Errorf("local fail: %w", err)
+		return
+	}
+	if !accepted {
+		s.event("the scheduler had moved the build on; the failure is moot")
+	}
+}
+
+// summarizeManifest pulls the numbers worth a timeline line out of the
+// builder's manifest.
+func summarizeManifest(out string) string {
+	var m struct {
+		Recall     float64 `json:"recall"`
+		IndexBytes int64   `json:"index_bytes"`
+		BuildS     float64 `json:"build_s"`
+		GateS      float64 `json:"gate_s"`
+	}
+	if json.Unmarshal([]byte(out), &m) != nil {
+		return "(unreadable manifest)"
+	}
+	return fmt.Sprintf("recall@10 %.3f, index %.1f MB, build %.1fs, gate %.1fs", m.Recall, float64(m.IndexBytes)/1e6, m.BuildS, m.GateS)
+}
+
+// burn spins until `end`, the Phase 4 query (decision 20): the modeled
+// duration spent on the CPU for real, so queries and a local build compete.
+func burn(ctx context.Context, end time.Time) {
+	x := 0.0
+	for time.Now().Before(end) {
+		for i := 0; i < 2000; i++ {
+			x += float64(i) * 1e-9
+		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
+	_ = x
 }

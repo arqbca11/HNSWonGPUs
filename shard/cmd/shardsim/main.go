@@ -4,6 +4,13 @@
 //
 //	SCHEDULER_URL     default http://127.0.0.1:8080
 //	SCENARIO          preset name; default skewed (see experiments/workload)
+//	DATASET           Phase 4: a real-data round (sift-128, gist-960-300k): the sizes come from
+//	                  the committed split at N_SHARDS (6 or 50), the round carries the dataset,
+//	                  local builds run the builder CLI as a child process, queries burn the CPU,
+//	                  and TIME_SCALE must be 1 (decisions 15, 16, 19, 20); default empty
+//	BUILDER_CMD       the builder CLI (decision 19); default "uv run --project builder python -m kgpu_builder"
+//	                  (run from the repo root); the child inherits S3_* and RECALL_MIN
+//	SHARD_THREADS     threads a shard's local build may use; default 2 (the roadmap's shard vs a worker's 8)
 //	N_SHARDS          default 6
 //	SEED              default 1; each further round uses SEED+1, SEED+2, ...
 //	ROUNDS            default 1; 0 = run rounds forever
@@ -28,6 +35,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,8 +53,12 @@ func main() {
 	rounds := envInt(log, "ROUNDS", 1)
 	gap := envDuration(log, "ROUND_GAP", 2*time.Second)
 	timeScale := envFloat(log, "TIME_SCALE", 1)
+	dataset := env("DATASET", "")
+	builderCmd := strings.Fields(env("BUILDER_CMD", "uv run --project builder python -m kgpu_builder"))
 	cfg := sim.RoundConfig{
-		Shard:        sim.Config{TimeScale: timeScale, PollInterval: envDuration(log, "POLL_INTERVAL", 500*time.Millisecond), Slice: 100 * time.Millisecond},
+		Dataset: dataset,
+		Shard: sim.Config{TimeScale: timeScale, PollInterval: envDuration(log, "POLL_INTERVAL", 500*time.Millisecond), Slice: 100 * time.Millisecond,
+			Dataset: dataset, NShards: nShards, BuilderCmd: builderCmd, Threads: envInt(log, "SHARD_THREADS", 2), BurnQueries: dataset != ""},
 		MinWorkers:   envInt(log, "MIN_WORKERS", 1),
 		WaitWorkers:  2 * time.Minute,
 		RoundTimeout: envDuration(log, "ROUND_TIMEOUT", 30*time.Minute),
@@ -58,6 +70,7 @@ func main() {
 		msg string
 	}{
 		{nShards > 0, "N_SHARDS must be positive"},
+		{dataset == "" || timeScale == 1, "TIME_SCALE must be 1 with a DATASET: a real build cannot be sped up (decision 20)"},
 		{rounds >= 0, "ROUNDS must be non-negative (0 = forever)"},
 		{gap >= 0, "ROUND_GAP must be non-negative"},
 		{cfg.Shard.PollInterval > 0, "POLL_INTERVAL must be positive"},
@@ -71,6 +84,9 @@ func main() {
 	}
 
 	sc, err := workload.PresetWithShards(scenario, nShards)
+	if err == nil && dataset != "" {
+		err = workload.ApplySplit(&sc, dataset)
+	}
 	if err != nil {
 		log.Error("bad scenario", "err", err, "known", workload.PresetNames())
 		os.Exit(2)

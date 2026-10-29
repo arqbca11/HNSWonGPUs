@@ -17,7 +17,7 @@ type RoundConfig struct {
 	// round (fake builds, sleeps); otherwise the builds read
 	// splits/<Dataset>/<n_shards>/ from the object store and the sizes come
 	// from the committed split (decision 16).
-	Dataset string
+	Dataset      string
 	Shard        Config
 	MinWorkers   int           // wait until this many workers are live before starting (0 = don't wait)
 	WaitWorkers  time.Duration // how long to wait for MinWorkers
