@@ -25,6 +25,22 @@ from botocore.exceptions import ClientError
 from .config import Config
 
 
+class NotFound(KeyError):
+    """The object does not exist. Raised by every getter and by size(), so
+    callers never catch botocore types (cross-check G6)."""
+
+
+def _is_not_found(e: ClientError) -> bool:
+    return e.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound")
+
+
+def _dir(prefix: str) -> str:
+    """A prefix names a directory: "splits/sift-128/5" must not also match
+    "splits/sift-128/50" (cross-check G7), so a non-empty prefix without a
+    trailing slash gets one. "" means the whole bucket."""
+    return prefix if prefix == "" or prefix.endswith("/") else prefix + "/"
+
+
 class Store:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -50,7 +66,12 @@ class Store:
         self.s3.put_object(Bucket=self.bucket, Key=name, Body=data, ContentType=content_type)
 
     def get_bytes(self, name: str) -> bytes:
-        return self.s3.get_object(Bucket=self.bucket, Key=name)["Body"].read()
+        try:
+            return self.s3.get_object(Bucket=self.bucket, Key=name)["Body"].read()
+        except ClientError as e:
+            if _is_not_found(e):
+                raise NotFound(name) from None
+            raise
 
     def exists(self, name: str) -> bool:
         try:
@@ -62,7 +83,12 @@ class Store:
             raise
 
     def size(self, name: str) -> int:
-        return int(self.s3.head_object(Bucket=self.bucket, Key=name)["ContentLength"])
+        try:
+            return int(self.s3.head_object(Bucket=self.bucket, Key=name)["ContentLength"])
+        except ClientError as e:
+            if _is_not_found(e):
+                raise NotFound(name) from None
+            raise
 
     def put_json(self, name: str, obj: Any) -> None:
         self.put_bytes(name, json.dumps(obj, indent=2).encode(), "application/json")
@@ -71,6 +97,7 @@ class Store:
         return json.loads(self.get_bytes(name))
 
     def put_npy(self, name: str, a: np.ndarray) -> int:
+        """Stores the array in .npy form; returns the object's size in bytes."""
         buf = io.BytesIO()
         np.save(buf, a, allow_pickle=False)
         b = buf.getvalue()
@@ -81,8 +108,10 @@ class Store:
         return np.load(io.BytesIO(self.get_bytes(name)), allow_pickle=False)
 
     def list(self, prefix: str) -> list[str]:
+        """Every key under the directory `prefix` ("" = the whole bucket)."""
         out: list[str] = []
         token = None
+        prefix = _dir(prefix)
         while True:
             kw = {"Bucket": self.bucket, "Prefix": prefix}
             if token:
@@ -93,7 +122,12 @@ class Store:
                 return out
             token = r.get("NextContinuationToken")
 
+    def delete(self, name: str) -> None:
+        """Deletes one object by its exact key (no error if it is absent)."""
+        self.s3.delete_object(Bucket=self.bucket, Key=name)
+
     def delete_prefix(self, prefix: str) -> int:
+        """Deletes every key under the directory `prefix`; returns how many."""
         keys = self.list(prefix)
         for i in range(0, len(keys), 1000):
             self.s3.delete_objects(Bucket=self.bucket, Delete={"Objects": [{"Key": k} for k in keys[i:i + 1000]]})

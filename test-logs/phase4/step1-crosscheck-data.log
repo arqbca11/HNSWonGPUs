@@ -1,0 +1,411 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.15, pytest-8.4.2, pluggy-1.7.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder
+configfile: pyproject.toml
+collecting ... collected 75 items
+
+tests/test_xcheck_cli.py::test_xcheck_cli_unknown_dataset_is_a_clear_error did: split glove-100 6 (not in the catalogue)
+  expected: non-zero exit naming the known datasets (help: 'Datasets: sift-128, gist-960-300k')
+  seen: rc=1
+      unknown dataset 'glove-100'; known: sift-128, gist-960-300k
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_download_refuses_an_oversized_file did: download sift-128 with a 525128289-byte file in place (catalogue: 525128288)
+  expected: non-zero exit, file not accepted
+  seen: rc=1
+      /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_cli_download_refus0/ann-benchmarks/sift-128-euclidean.hdf5 is 525128289 bytes, larger than the catalogue's 525128288: delete it and retry
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_download_accepts_a_complete_file_without_network did: download sift-128 with a file of exactly the catalogue's size and the network blocked
+  expected: rc 0, no fetch (size verified)
+  seen: rc=0
+      sift-128: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_cli_download_accep0/ann-benchmarks/sift-128-euclidean.hdf5 already complete (525128288 bytes)
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_download_with_a_truncated_file_tries_to_resume did: download sift-128 with a 1000-byte file in place, network blocked by a dead proxy
+  expected: non-zero exit (resume fails), short file not declared complete
+  seen: rc=1, file now 1000 bytes
+      sift-128: resuming at 1000 bytes
+      download: <urlopen error [Errno 61] Connection refused>
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file did: split sift-128 6 --zipf 2 --seed 7 on a synthetic 1000x128 file
+  rc=0
+      sift-128: 1000 vectors x 128 across 6 shards, zipf s=2.0, rank permutation seed 7
+        shard  0: rank  6,       18 vectors,     0.0 MB -> vectors/shard_0.npy
+        shard  1: rank  3,       75 vectors,     0.0 MB -> vectors/shard_1.npy
+        shard  2: rank  1,      671 vectors,     0.3 MB -> vectors/shard_2.npy
+        shard  3: rank  5,       26 vectors,     0.0 MB -> vectors/shard_3.npy
+        shard  4: rank  2,      168 vectors,     0.1 MB -> vectors/shard_4.npy
+        shard  5: rank  4,       42 vectors,     0.0 MB -> vectors/shard_5.npy
+      split written in 0.0 s: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_cli_split_and_grou0/splits/sift-128/6; 20 queries
+  manifest: n_vectors=1000 zipf_exponent=2.0 perm_seed=7 sizes by shard=[18, 75, 671, 26, 168, 42] ranks=[6, 3, 1, 5, 2, 4]
+  vectors are the contiguous train slices, sha256 match, queries.npy = the HDF5 test array
+did: groundtruth sift-128 6 --k 15
+  rc=0
+  each ground_truth/shard_k.npy is int32 [20, 15], local indices, the exact top-15 by float64 distance (ties by distance)
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_split_manifest_covers_ground_truth did: split + groundtruth; objects under the split: 12; sha256 entries in manifest.json: 12
+  objects with no sha256 anywhere in the manifest: []
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_split_is_deterministic did: split sift-128 6 twice; manifests identical (incl. sha256): True
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_groundtruth_before_split_fails did: groundtruth with no split on disk
+  expected: non-zero exit
+  seen: rc=1
+      groundtruth: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_cli_groundtruth_be0/splits/sift-128/6/manifest.json not found — run the earlier steps first (download, split, groundtruth)
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_gist_train_limit_with_a_small_file did: split gist-960-300k 6 on a 500-row file (train_limit 300,000)
+  seen: rc=1, manifest n_vectors=None
+      /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_cli_gist_train_lim0/ann-benchmarks/gist-960-euclidean.hdf5: 500 train rows, fewer than the 300000 the catalogue takes for gist-960-300k
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_all_cannot_run_on_a_custom_file did: all sift-128 6 on the synthetic 1000-row file, network blocked
+  seen: rc=1
+      == download
+      sift-128: resuming at 524288 bytes
+      all: <urlopen error [Errno 61] Connection refused>
+PASSED
+tests/test_xcheck_cli.py::test_xcheck_cli_upload_verify_and_tamper did: upload sift-128 6 to a fresh bucket xcheck-cli-217c762e
+  rc=0
+        put splits/sift-128/6/ground_truth/shard_4.npy (0.0 MB)
+        put splits/sift-128/6/vectors/shard_5.npy (0.1 MB)
+        put splits/sift-128/6/ground_truth/shard_5.npy (0.0 MB)
+      uploaded 0.6 MB in 0.1 s (7 MB/s) to http://127.0.0.1:29100/xcheck-cli-217c762e/splits/sift-128/6
+  bucket holds 15 objects: ['datasets/sift-128/manifest.json', 'datasets/sift-128/queries.npy', 'splits/sift-128/6/ground_truth/shard_0.npy', 'splits/sift-128/6/ground_truth/shard_1.npy', 'splits/sift-128/6/ground_truth/shard_2.npy', 'splits/sift-128/6/ground_truth/shard_3.npy', 'splits/sift-128/6/ground_truth/shard_4.npy', 'splits/sift-128/6/ground_truth/shard_5.npy', 'splits/sift-128/6/manifest.json', 'splits/sift-128/6/vectors/shard_0.npy', 'splits/sift-128/6/vectors/shard_1.npy', 'splits/sift-128/6/vectors/shard_2.npy', 'splits/sift-128/6/vectors/shard_3.npy', 'splits/sift-128/6/vectors/shard_4.npy', 'splits/sift-128/6/vectors/shard_5.npy']
+  every object equals its local file byte for byte (decision 9 layout)
+did: verify on the intact upload: rc=0 (expected 0)
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 6 vector objects, 6 ground-truth objects (top-100) and the queries all present with their recorded sha256
+did: flipped the last byte of splits/sift-128/6/vectors/shard_2.npy (size unchanged) and ran verify
+  expected: non-zero exit
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 1 problem(s)
+did: flipped the last byte of splits/sift-128/6/ground_truth/shard_1.npy and ran verify
+  expected: non-zero exit (help: 'every object present with the manifest's size/sha256')
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128/queries.npy: 0.0 MB sha256 ok
+      verify: 1 problem(s)
+did: deleted datasets/sift-128/queries.npy and ran verify
+  expected: non-zero exit
+  seen: rc=1
+        splits/sift-128/6/vectors/shard_5.npy:     0.1 MB sha256 ok
+        datasets/sift-128: MISSING ('datasets/sift-128/queries.npy')
+      verify: 1 problem(s)
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_against_direct_float64_reference did: exact_topk 40 queries over 2500 random vectors (dim 24), k=20, chunk=7
+  expected: indices of a float64 argsort of |x - q|; seen: identical for all 40 rows (max dist err 0.00e+00)
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_is_exact_with_a_large_common_offset did: 25 queries over 3000 vectors at offset 1000 (dim 128), k=10
+  expected: the float64 reference order in every row
+  seen: 0 of 25 rows differ; recall@10 of the stored truth against the exact truth = 1.000
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_sift_like_integer_vectors_with_ties did: 30 integer queries over 4000 integer vectors in {0..3}^6, k=50
+  e.g. query 0: 134 vectors at or within the 50th distance -> ties at the boundary
+  expected: a valid top-50 nearest first (tie order unspecified); seen: valid
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_duplicate_vectors_and_the_query_itself did: query = shard vector 3, which is duplicated at 17 and 150
+  expected first three = {3, 17, 150} (distance 0); seen [150, 17, 3, 181, 95]
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_k_larger_than_shard_and_single_vector_shard did: k=100 over a 7-vector shard -> shape (3, 7); expected (3, 7), each row a permutation of 0..6 nearest first
+did: k=100 over a 1-vector shard -> [[0], [0], [0]]; expected [[0],[0],[0]]
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_far_queries_still_get_k_answers did: two queries far outside the data (1e4 and -3e3 per coordinate), k=30
+  seen shape (2, 30); checking against float64 reference
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_chunk_sizes_do_not_change_the_answer did: exact_topk with chunk 1, 2, 52, 53, 54, 4096 over 53 queries; all identical: True
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_topk_float64_and_float16_inputs did: float64 vectors and queries, k=10; expected the float64 argsort; seen identical
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_by_hand recall@2: expected 0.25 seen 0.25; recall@4: expected 0.5 seen 0.5
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_duplicates_in_found_count_once found [0,0,0] vs truth [0,1,2] at k=3: the docstring's ∩ is a set -> expected 1/3, seen 0.3333333333333333
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_k_beyond_stored_width recall_at(k=200, truth width 100) raised ValueError: k=200 exceeds the stored width (found 250, truth 100)
+PASSED
+tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_found_narrower_than_k recall_at(found width 4, k=10) raised ValueError: k=10 exceeds the stored width (found 4, truth 10)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-6] sift-128/6: n_vectors=1000000 s=1.0 seed=1
+  sizes by rank (seen)     [408164, 204082, 136055, 102040, 81632, 68027]...[81632, 68027]
+  hand Zipf, top-remainder [408164, 204082, 136055, 102040, 81632, 68027]...[81632, 68027]
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-50] sift-128/50: n_vectors=1000000 s=1.0 seed=1
+  sizes by rank (seen)     [222262, 111131, 74088, 55566, 44453, 37044]...[4535, 4445]
+  hand Zipf, top-remainder [222262, 111131, 74088, 55566, 44453, 37044]...[4535, 4445]
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-6] gist-960-300k/6: n_vectors=300000 s=1.0 seed=1
+  sizes by rank (seen)     [122449, 61225, 40817, 30612, 24489, 20408]...[24489, 20408]
+  hand Zipf, top-remainder [122449, 61225, 40817, 30612, 24489, 20408]...[24489, 20408]
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-50] gist-960-300k/50: n_vectors=300000 s=1.0 seed=1
+  sizes by rank (seen)     [66679, 33340, 22227, 16670, 13336, 11114]...[1360, 1333]
+  hand Zipf, top-remainder [66679, 33340, 22227, 16670, 13336, 11114]...[1360, 1333]
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-6] sift-128/6: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-50] sift-128/50: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-6] gist-960-300k/6: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-50] gist-960-300k/50: every shard file is float32 [size, dim] per the manifest; first, middle and last rows equal the HDF5 train rows at offset (contiguous slices of the source)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-6] sift-128/6 vectors/shard_4.npy: manifest 5ffd872a0a3e7399…  on disk 5ffd872a0a3e7399…
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-50] sift-128/50 vectors/shard_7.npy: manifest 49a25ce8ac700de0…  on disk 49a25ce8ac700de0…
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-6] gist-960-300k/6 vectors/shard_4.npy: manifest d7cb8b37819c0adf…  on disk d7cb8b37819c0adf…
+gist-960-300k/6 vectors/shard_1.npy: manifest 2e2eb54c70983607…  on disk 2e2eb54c70983607…
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-50] gist-960-300k/50 vectors/shard_7.npy: manifest a7368b31a6d4d5d2…  on disk a7368b31a6d4d5d2…
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[sift-128] sift-128: queries.npy (10000, 128) float32; HDF5 test (10000, 128); dataset manifest n_queries=10000 n_train_used=1000000
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[gist-960-300k] gist-960-300k: queries.npy (1000, 960) float32; HDF5 test (1000, 960); dataset manifest n_queries=1000 n_train_used=300000
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-6] sift-128/6: every ground_truth/shard_k.npy is int32 [10000, 100] with values in [0, shard size)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-50] sift-128/50: every ground_truth/shard_k.npy is int32 [10000, 100] with values in [0, shard size)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-6] gist-960-300k/6: every ground_truth/shard_k.npy is int32 [1000, 100] with values in [0, shard size)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-50] gist-960-300k/50: every ground_truth/shard_k.npy is int32 [1000, 100] with values in [0, shard size)
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-smallest-40] sift-128/6 smallest shard 4 (68027 vectors): 40 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-largest-3] sift-128/6 largest shard 1 (408164 vectors): 3 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-50-smallest-200] sift-128/50 smallest shard 7 (4445 vectors): 200 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-6-largest-5] gist-960-300k/6 largest shard 1 (122449 vectors): 5 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-50-smallest-300] gist-960-300k/50 smallest shard 7 (1333 vectors): 300 queries recomputed in float64 (squared distances)
+  rows whose top-100 distance profile differs from the exact one: 0  e.g. (query, position, stored, exact) []
+  rows whose top-10 SET is wrong (what the recall gate reads): 0; rows whose top-100 set is wrong: 0
+  worst relative distance error at a position: 0.00e+00
+PASSED
+tests/test_xcheck_realdata.py::test_xcheck_cluster_bucket_mirrors_local_splits_read_only did: listed the cluster bucket kgpu at http://127.0.0.1:39001: 232 objects; local objects 232
+  local objects missing remotely: [] (0)
+  remote objects with no local file: [] (0)
+  objects whose remote size differs from the local file: [] (0)
+  the four split manifests are identical remotely
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_1m_over_6_by_hand did: zipf_sizes(1_000_000, 6, 1.0)
+  expected (hand, remainder to top ranks): [408164, 204082, 136055, 102040, 81632, 68027]
+  seen: [408164, 204082, 136055, 102040, 81632, 68027]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_design_doc_example_sizes_match_the_rule design doc says: [408164, 204082, 136055, 102040, 81632, 68027] (sum 1000000)
+  code produces:   [408164, 204082, 136055, 102040, 81632, 68027] (sum 1000000)
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000000-50-1.0] did: zipf_sizes(1000000, 50, 1.0)
+  N/H(n,s) = 222261.472; expected top 222262, seen top 222262
+  expected [222262, 111131, 74088, 55566, 44453, 37044, 31752, 27783]...
+  seen     [222262, 111131, 74088, 55566, 44453, 37044, 31752, 27783]...
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-6-1.0] did: zipf_sizes(300000, 6, 1.0)
+  N/H(n,s) = 122448.980; expected top 122449, seen top 122449
+  expected [122449, 61225, 40817, 30612, 24489, 20408]
+  seen     [122449, 61225, 40817, 30612, 24489, 20408]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-50-1.0] did: zipf_sizes(300000, 50, 1.0)
+  N/H(n,s) = 66678.442; expected top 66679, seen top 66679
+  expected [66679, 33340, 22227, 16670, 13336, 11114, 9526, 8335]...
+  seen     [66679, 33340, 22227, 16670, 13336, 11114, 9526, 8335]...
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000-3-2.0] did: zipf_sizes(1000, 3, 2.0)
+  N/H(n,s) = 734.694; expected top 735, seen top 735
+  expected [735, 184, 81]
+  seen     [735, 184, 81]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[999999-7-2.0] did: zipf_sizes(999999, 7, 2.0)
+  N/H(n,s) = 661463.785; expected top 661464, seen top 661464
+  expected [661464, 165366, 73496, 41342, 26459, 18373, 13499]
+  seen     [661464, 165366, 73496, 41342, 26459, 18373, 13499]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000003-6-1.0] did: zipf_sizes(1000003, 6, 1.0)
+  N/H(n,s) = 408164.490; expected top 408165, seen top 408165
+  expected [408165, 204083, 136055, 102041, 81632, 68027]
+  seen     [408165, 204083, 136055, 102041, 81632, 68027]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[10007-5-0.0] did: zipf_sizes(10007, 5, 0.0)
+  N/H(n,s) = 2001.400; expected top 2002, seen top 2002
+  expected [2002, 2002, 2001, 2001, 2001]
+  seen     [2002, 2002, 2001, 2001, 2001]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-0.5] did: zipf_sizes(123457, 9, 0.5)
+  N/H(n,s) = 26240.814; expected top 26241, seen top 26241
+  expected [26241, 18556, 15151, 13121, 11735, 10712, 9918, 9277]...
+  seen     [26241, 18556, 15151, 13121, 11735, 10712, 9918, 9277]...
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-1.5] did: zipf_sizes(123457, 9, 1.5)
+  N/H(n,s) = 62869.144; expected top 62870, seen top 62870
+  expected [62870, 22228, 12100, 7859, 5623, 4277, 3394, 2778]...
+  seen     [62870, 22228, 12100, 7859, 5623, 4277, 3394, 2778]...
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_edge_cases zipf_sizes(12345, 1, 1.0): expected [12345] seen [12345]
+zipf_sizes(12345, 1, 0.0): expected [12345] seen [12345]
+zipf_sizes(10, 3, 0.0): expected [4, 3, 3] seen [4, 3, 3]
+zipf_sizes(11, 3, 0.0): expected [4, 4, 3] seen [4, 4, 3]
+zipf_sizes(6, 6, 1.0): expected [1, 1, 1, 1, 1, 1] seen [1, 1, 1, 1, 1, 1]
+zipf_sizes(50, 50, 2.0): expected [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] seen [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_small_total_never_empties_a_shard zipf_sizes(20, 6, 2.0) -> [13, 3, 1, 1, 1, 1]  (pure floor rule: [14, 4, 2, 0, 0, 0])
+zipf_sizes(60, 50, 1.0) -> [9, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  (pure floor rule: [14, 7, 5, 4, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+zipf_sizes(100, 50, 2.0) -> [49, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]  (pure floor rule: [62, 16, 7, 4, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+zipf_sizes(7, 4, 1.5) -> [4, 1, 1, 1]  (pure floor rule: [5, 2, 0, 0])
+PASSED
+tests/test_xcheck_split.py::test_xcheck_zipf_fewer_vectors_than_shards zipf_sizes(3, 6, 1.0) raised ValueError: cannot split 3 vectors across 6 shards
+PASSED
+tests/test_xcheck_split.py::test_xcheck_plan_ranks_offsets_and_recorded_fields did: plan(sift-128, N=1000000, n=6, s=1, seed=1)
+  shard 0: rank 5 offset 0 size 81632
+  shard 1: rank 1 offset 81632 size 408164
+  shard 2: rank 3 offset 489796 size 136055
+  shard 3: rank 2 offset 625851 size 204082
+  shard 4: rank 6 offset 829933 size 68027
+  shard 5: rank 4 offset 897960 size 102040
+  expected (from the committed split): shard 1 holds rank 1 (408,164)
+PASSED
+tests/test_xcheck_split.py::test_xcheck_plan_seed_only_permutes did: plan 50-way with seeds 1..10; distinct rank assignments: 10 of 10; sorted sizes identical for all
+PASSED
+tests/test_xcheck_split.py::test_xcheck_plan_zipf_exponent_two_and_zero plan(1000 over 3, s=0.0): sizes [334, 333, 333], exponent recorded 0.0
+plan(1000 over 3, s=2.0): sizes [735, 184, 81], exponent recorded 2.0
+PASSED
+tests/test_xcheck_split.py::test_xcheck_write_split_bytes_sha_and_manifest did: write_split of 997x16 float32 into 5 shards under /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-13/test_xcheck_write_split_bytes_0
+  files written: ['manifest.json', 'vectors/shard_0.npy', 'vectors/shard_1.npy', 'vectors/shard_2.npy', 'vectors/shard_3.npy', 'vectors/shard_4.npy']
+  manifest sha256 keys: ['vectors/shard_0.npy', 'vectors/shard_1.npy', 'vectors/shard_2.npy', 'vectors/shard_3.npy', 'vectors/shard_4.npy']; each matches the bytes on disk
+  manifest.json round-trips: True
+PASSED
+tests/test_xcheck_split.py::test_xcheck_write_split_from_h5py_dataset did: the same split from a numpy array and from an h5py dataset
+  sha256 equal: True
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_large_object_round_trip (fresh bucket xcheck-0e030dd40f on http://127.0.0.1:29100)
+did: put 48 MiB + 123 bytes of random data; size() says 50331771; got back 50331771 bytes; equal: True
+did: put_npy of a 100,000 x 128 float32 array -> returned 51200128; size() 51200128; get_npy equal: True, dtype float32
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_listing_and_deleting_beyond_1000_keys (fresh bucket xcheck-e8e0850fde on http://127.0.0.1:29100)
+did: put 2345 small objects under many/
+  list('many/') returned 2345 keys (expected 2345, sorted set equal: True)
+did: delete_prefix('many/') -> returned 2345; keys left 0 (expected 2345 and 0)
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_overwrite_replaces (fresh bucket xcheck-4334d856db on http://127.0.0.1:29100)
+did: put o/x twice; get -> b'second'; size 6; list ['o/x']
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_missing_key (fresh bucket xcheck-f9654ab958 on http://127.0.0.1:29100)
+did: exists('nope/x') -> False (expected False)
+  get_bytes('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  get_json('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  get_npy('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+  size('nope/x') raised kgpu_builder.store.NotFound: 'nope/x'
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_delete_prefix_empty_on_empty_bucket (fresh bucket xcheck-393a6648a9 on http://127.0.0.1:29100)
+did: delete_prefix('') on an empty bucket -> 0 (expected 0, no error); list('') -> []
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_prefix_is_a_string_prefix (fresh bucket xcheck-33ab33511c on http://127.0.0.1:29100)
+did: keys p/5/a, p/50/a, p/5x
+  list('p/5') -> ['p/5/a']
+  delete_prefix('p/5') -> 1; left ['p/50/a', 'p/5x']
+  (string-prefix semantics: callers must pass a trailing '/')
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_artifact_keys_with_a_colon (fresh bucket xcheck-954f955d08 on http://127.0.0.1:29100)
+did: put artifacts/3:17/1/index.bin and artifacts/3:17/2/manifest.json; list -> ['artifacts/3:17/1/index.bin', 'artifacts/3:17/2/manifest.json']; get -> b'index', {'build_id': '3:17', 'attempt': 2}
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_npy_dtypes_and_shapes (fresh bucket xcheck-7ea47cbcb3 on http://127.0.0.1:29100)
+  i32: put shape (3, 4) int32 -> got (3, 4) int32, equal True
+  f32: put shape (0, 128) float32 -> got (0, 128) float32, equal True
+  f64: put shape () float64 -> got () float64, equal True
+  u8: put shape (256,) uint8 -> got (256,) uint8, equal True
+  fortran: put shape (2, 3) float32 -> got (2, 3) float32, equal True
+PASSED
+tests/test_xcheck_store.py::test_xcheck_store_wrong_credentials_fail (fresh bucket xcheck-93ff92f9b2 on http://127.0.0.1:29100)
+did: put with wrong keys -> ClientError: An error occurred (InvalidAccessKeyId) when calling the PutObject operation: The Access Key Id you p
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_unknown_dataset_is_a_clear_error
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_refuses_an_oversized_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_accepts_a_complete_file_without_network
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_download_with_a_truncated_file_tries_to_resume
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_manifest_covers_ground_truth
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_split_is_deterministic
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_groundtruth_before_split_fails
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_gist_train_limit_with_a_small_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_all_cannot_run_on_a_custom_file
+PASSED tests/test_xcheck_cli.py::test_xcheck_cli_upload_verify_and_tamper
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_against_direct_float64_reference
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_is_exact_with_a_large_common_offset
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_sift_like_integer_vectors_with_ties
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_duplicate_vectors_and_the_query_itself
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_k_larger_than_shard_and_single_vector_shard
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_far_queries_still_get_k_answers
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_chunk_sizes_do_not_change_the_answer
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_topk_float64_and_float16_inputs
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_by_hand
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_duplicates_in_found_count_once
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_k_beyond_stored_width
+PASSED tests/test_xcheck_groundtruth.py::test_xcheck_recall_at_found_narrower_than_k
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[sift-128]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest[gist-960-300k]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[sift-128-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-6]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes[gist-960-300k-50]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-smallest-40]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-6-largest-3]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[sift-128-50-smallest-200]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-6-largest-5]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact[gist-960-300k-50-smallest-300]
+PASSED tests/test_xcheck_realdata.py::test_xcheck_cluster_bucket_mirrors_local_splits_read_only
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_1m_over_6_by_hand
+PASSED tests/test_xcheck_split.py::test_xcheck_design_doc_example_sizes_match_the_rule
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000000-50-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-6-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[300000-50-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000-3-2.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[999999-7-2.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[1000003-6-1.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[10007-5-0.0]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-0.5]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule[123457-9-1.5]
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_edge_cases
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_small_total_never_empties_a_shard
+PASSED tests/test_xcheck_split.py::test_xcheck_zipf_fewer_vectors_than_shards
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_ranks_offsets_and_recorded_fields
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_seed_only_permutes
+PASSED tests/test_xcheck_split.py::test_xcheck_plan_zipf_exponent_two_and_zero
+PASSED tests/test_xcheck_split.py::test_xcheck_write_split_bytes_sha_and_manifest
+PASSED tests/test_xcheck_split.py::test_xcheck_write_split_from_h5py_dataset
+PASSED tests/test_xcheck_store.py::test_xcheck_store_large_object_round_trip
+PASSED tests/test_xcheck_store.py::test_xcheck_store_listing_and_deleting_beyond_1000_keys
+PASSED tests/test_xcheck_store.py::test_xcheck_store_overwrite_replaces
+PASSED tests/test_xcheck_store.py::test_xcheck_store_missing_key
+PASSED tests/test_xcheck_store.py::test_xcheck_store_delete_prefix_empty_on_empty_bucket
+PASSED tests/test_xcheck_store.py::test_xcheck_store_prefix_is_a_string_prefix
+PASSED tests/test_xcheck_store.py::test_xcheck_store_artifact_keys_with_a_colon
+PASSED tests/test_xcheck_store.py::test_xcheck_store_npy_dtypes_and_shapes
+PASSED tests/test_xcheck_store.py::test_xcheck_store_wrong_credentials_fail
+============================= 75 passed in 23.87s ==============================

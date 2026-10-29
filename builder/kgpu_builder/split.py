@@ -43,7 +43,8 @@ class SplitManifest:
     zipf_exponent: float
     perm_seed: int
     shards: list[ShardSpec]
-    sha256: dict[str, str]  # object name -> sha256 of the .npy bytes, filled by write_split
+    sha256: dict[str, str]  # object name -> sha256 of the .npy bytes: vectors/ by write_split, ground_truth/ by the groundtruth command
+    ground_truth_k: int = 0  # the top-k the ground truth holds (0 until the groundtruth command ran)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
@@ -59,6 +60,11 @@ def zipf_sizes(n_vectors: int, n_shards: int, exponent: float) -> list[int]:
     """Sizes by rank (index 0 = rank 1), summing to n_vectors exactly."""
     if n_shards < 1 or n_vectors < n_shards:
         raise ValueError(f"cannot split {n_vectors} vectors across {n_shards} shards")
+    # Every shard holds at least one vector: a share that floors to 0 is
+    # bumped to 1 and the deficit taken back from the top ranks (cross-check
+    # G1). Only totals within a small multiple of n are affected — 60 across
+    # 50 gives [9, 3, 1, 1, ...] against shares of [13.3, 6.7, 4.4, ...] —
+    # never the real datasets.
     w = np.array([1.0 / (r ** exponent) for r in range(1, n_shards + 1)])
     raw = w / w.sum() * n_vectors
     sizes = np.floor(raw).astype(np.int64)

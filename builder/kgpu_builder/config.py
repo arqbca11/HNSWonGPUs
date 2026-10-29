@@ -2,8 +2,8 @@
 
     KGPU_DATA_DIR    local directory for downloaded datasets and split
                      outputs; default ./data (gitignored)
-    S3_ENDPOINT      object store URL; default http://127.0.0.1:9000 (MinIO on
-                     Compose or a port-forward to the cluster)
+    S3_ENDPOINT      object store URL; default http://127.0.0.1:9000 (RustFS on
+                     Compose, or a port-forward / NodePort 30900 to the cluster)
     S3_ACCESS_KEY    default kgpu
     S3_SECRET_KEY    default kgpu-secret
     S3_BUCKET        default kgpu

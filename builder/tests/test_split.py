@@ -11,7 +11,7 @@ def test_zipf_sizes_sum_and_shape():
     print(f"1M across 6 shards, s=1: {sizes}")
     assert sum(sizes) == 1_000_000
     assert sizes == sorted(sizes, reverse=True)
-    assert abs(sizes[0] - 408_163) <= 6  # the remainder lands on the top ranks
+    assert sizes[0] == 408_164  # floor(1M/(1*49/20)) = 408,163 plus one of the 3 left over (ranks 1-3)
     assert abs(sizes[1] - sizes[0] / 2) <= 6 and abs(sizes[2] - sizes[0] / 3) <= 6
     s50 = sp.zipf_sizes(1_000_000, 50, 1.0)
     print(f"1M across 50 shards: largest {s50[0]}, smallest {s50[-1]}, sum {sum(s50)}")

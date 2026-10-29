@@ -1,4 +1,4 @@
-== Phase 4 step 1: datasets into the cluster's object store, 2026-10-29T05:43:54Z, commit 8285345+local changes
+== Phase 4 step 1: datasets into the cluster's object store, 2026-10-29T05:57:47Z, commit caec2c8+local changes
    NodePort 30900 not mapped on this cluster; port-forwarding svc/objectstore to http://127.0.0.1:39000
 
 #### sift-128: download
@@ -8,21 +8,77 @@ sift-128: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/ann-benchmarks/sift-
    (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/sift-128/6)
    shard 0: rank 5, 81632 vectors, shard 1: rank 1, 408164 vectors, shard 2: rank 3, 136055 vectors, shard 3: rank 2, 204082 vectors, shard 4: rank 6, 68027 vectors, shard 5: rank 4, 102040 vectors
 #### sift-128, 6 shards: ground truth
-   (local ground truth exists: 6 shards)
+  shard  0:    81632 vectors, 10000 queries, top-100 exact in   6.8 s
+  shard  1:   408164 vectors, 10000 queries, top-100 exact in  78.8 s
+  shard  2:   136055 vectors, 10000 queries, top-100 exact in  11.1 s
+  shard  3:   204082 vectors, 10000 queries, top-100 exact in  17.2 s
+  shard  4:    68027 vectors, 10000 queries, top-100 exact in   5.7 s
+  shard  5:   102040 vectors, 10000 queries, top-100 exact in   8.3 s
+ground truth for 6 shards in 128.1 s; manifest updated with their sha256 and k=100
 #### sift-128, 6 shards: upload
-uploaded 541.1 MB in 3.6 s (151 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/6
+uploaded 541.1 MB in 3.9 s (137 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/6
 #### sift-128, 6 shards: verify
-verify: 6 vector objects, 6 ground-truth objects and the queries all present and intact
+verify: 6 vector objects, 6 ground-truth objects (top-100) and the queries all present with their recorded sha256
 
 #### sift-128, 50 shards: split
    (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/sift-128/50)
    shard 0: rank 16, 13892 vectors, shard 1: rank 26, 8549 vectors, shard 2: rank 38, 5848 vectors, shard 3: rank 24, 9261 vectors, shard 4: rank 31, 7169 vectors, shard 5: rank 7, 31752 vectors, shard 6: rank 28, 7937 vectors, shard 7: rank 50, 4445 vectors ...
 #### sift-128, 50 shards: ground truth
-   (local ground truth exists: 50 shards)
+  shard  0:    13892 vectors, 10000 queries, top-100 exact in   1.0 s
+  shard  1:     8549 vectors, 10000 queries, top-100 exact in   0.6 s
+  shard  2:     5848 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard  3:     9261 vectors, 10000 queries, top-100 exact in   0.7 s
+  shard  4:     7169 vectors, 10000 queries, top-100 exact in   0.5 s
+  shard  5:    31752 vectors, 10000 queries, top-100 exact in   2.3 s
+  shard  6:     7937 vectors, 10000 queries, top-100 exact in   0.6 s
+  shard  7:     4445 vectors, 10000 queries, top-100 exact in   0.3 s
+  shard  8:    55566 vectors, 10000 queries, top-100 exact in   4.1 s
+  shard  9:     7664 vectors, 10000 queries, top-100 exact in   0.6 s
+  shard 10:    22227 vectors, 10000 queries, top-100 exact in   1.5 s
+  shard 11:     6537 vectors, 10000 queries, top-100 exact in   0.5 s
+  shard 12:    13075 vectors, 10000 queries, top-100 exact in   0.9 s
+  shard 13:     8891 vectors, 10000 queries, top-100 exact in   0.6 s
+  shard 14:   222262 vectors, 10000 queries, top-100 exact in  26.9 s
+  shard 15:    10584 vectors, 10000 queries, top-100 exact in   0.8 s
+  shard 16:     9664 vectors, 10000 queries, top-100 exact in   0.8 s
+  shard 17:    27783 vectors, 10000 queries, top-100 exact in   2.1 s
+  shard 18:     4535 vectors, 10000 queries, top-100 exact in   0.5 s
+  shard 19:     6173 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 20:    12348 vectors, 10000 queries, top-100 exact in   1.2 s
+  shard 21:    11114 vectors, 10000 queries, top-100 exact in   0.8 s
+  shard 22:     4630 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 23:     7408 vectors, 10000 queries, top-100 exact in   0.5 s
+  shard 24:     6945 vectors, 10000 queries, top-100 exact in   0.5 s
+  shard 25:    10103 vectors, 10000 queries, top-100 exact in   0.7 s
+  shard 26:     4939 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 27:   111131 vectors, 10000 queries, top-100 exact in  10.0 s
+  shard 28:    18522 vectors, 10000 queries, top-100 exact in   1.5 s
+  shard 29:     5556 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 30:    14818 vectors, 10000 queries, top-100 exact in   1.2 s
+  shard 31:    44453 vectors, 10000 queries, top-100 exact in   3.6 s
+  shard 32:     5168 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 33:     5421 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 34:     5051 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 35:     8232 vectors, 10000 queries, top-100 exact in   0.7 s
+  shard 36:     4831 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 37:     6350 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 38:    74088 vectors, 10000 queries, top-100 exact in   4.8 s
+  shard 39:    17098 vectors, 10000 queries, top-100 exact in   1.3 s
+  shard 40:    20206 vectors, 10000 queries, top-100 exact in   1.6 s
+  shard 41:     6007 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 42:    37044 vectors, 10000 queries, top-100 exact in   2.7 s
+  shard 43:    24696 vectors, 10000 queries, top-100 exact in   1.8 s
+  shard 44:     6735 vectors, 10000 queries, top-100 exact in   0.6 s
+  shard 45:     5291 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 46:     4728 vectors, 10000 queries, top-100 exact in   0.4 s
+  shard 47:    11698 vectors, 10000 queries, top-100 exact in   0.9 s
+  shard 48:    15876 vectors, 10000 queries, top-100 exact in   1.0 s
+  shard 49:     5699 vectors, 10000 queries, top-100 exact in   0.4 s
+ground truth for 50 shards in 86.4 s; manifest updated with their sha256 and k=100
 #### sift-128, 50 shards: upload
-uploaded 717.1 MB in 6.0 s (120 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/50
+uploaded 717.1 MB in 5.8 s (125 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/50
 #### sift-128, 50 shards: verify
-verify: 50 vector objects, 50 ground-truth objects and the queries all present and intact
+verify: 50 vector objects, 50 ground-truth objects (top-100) and the queries all present with their recorded sha256
 
 #### gist-960-300k: download
 gist-960-300k: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/ann-benchmarks/gist-960-euclidean.hdf5 already complete (3844648288 bytes)
@@ -31,21 +87,77 @@ gist-960-300k: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/ann-benchmarks/
    (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/gist-960-300k/6)
    shard 0: rank 5, 24489 vectors, shard 1: rank 1, 122449 vectors, shard 2: rank 3, 40817 vectors, shard 3: rank 2, 61225 vectors, shard 4: rank 6, 20408 vectors, shard 5: rank 4, 30612 vectors
 #### gist-960-300k, 6 shards: ground truth
-   (local ground truth exists: 6 shards)
+  shard  0:    24489 vectors, 1000 queries, top-100 exact in   0.3 s
+  shard  1:   122449 vectors, 1000 queries, top-100 exact in   3.1 s
+  shard  2:    40817 vectors, 1000 queries, top-100 exact in   1.0 s
+  shard  3:    61225 vectors, 1000 queries, top-100 exact in   1.6 s
+  shard  4:    20408 vectors, 1000 queries, top-100 exact in   0.4 s
+  shard  5:    30612 vectors, 1000 queries, top-100 exact in   0.5 s
+ground truth for 6 shards in 7.5 s; manifest updated with their sha256 and k=100
 #### gist-960-300k, 6 shards: upload
-uploaded 1158.2 MB in 7.0 s (165 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/6
+uploaded 1158.2 MB in 6.7 s (173 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/6
 #### gist-960-300k, 6 shards: verify
-verify: 6 vector objects, 6 ground-truth objects and the queries all present and intact
+verify: 6 vector objects, 6 ground-truth objects (top-100) and the queries all present with their recorded sha256
 
 #### gist-960-300k, 50 shards: split
    (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/gist-960-300k/50)
    shard 0: rank 16, 4168 vectors, shard 1: rank 26, 2564 vectors, shard 2: rank 38, 1754 vectors, shard 3: rank 24, 2779 vectors, shard 4: rank 31, 2150 vectors, shard 5: rank 7, 9526 vectors, shard 6: rank 28, 2381 vectors, shard 7: rank 50, 1333 vectors ...
 #### gist-960-300k, 50 shards: ground truth
-   (local ground truth exists: 50 shards)
+  shard  0:     4168 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard  1:     2564 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  2:     1754 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  3:     2779 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  4:     2150 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  5:     9526 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard  6:     2381 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  7:     1333 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard  8:    16670 vectors, 1000 queries, top-100 exact in   0.3 s
+  shard  9:     2299 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 10:     6668 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 11:     1961 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 12:     3923 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 13:     2667 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 14:    66679 vectors, 1000 queries, top-100 exact in   1.6 s
+  shard 15:     3176 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 16:     2900 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 17:     8335 vectors, 1000 queries, top-100 exact in   0.2 s
+  shard 18:     1360 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 19:     1852 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 20:     3705 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 21:     3334 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 22:     1389 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 23:     2222 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 24:     2083 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 25:     3031 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 26:     1481 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 27:    33340 vectors, 1000 queries, top-100 exact in   0.3 s
+  shard 28:     5557 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 29:     1666 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 30:     4446 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 31:    13336 vectors, 1000 queries, top-100 exact in   0.2 s
+  shard 32:     1550 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 33:     1626 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 34:     1515 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 35:     2469 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 36:     1449 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 37:     1905 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 38:    22227 vectors, 1000 queries, top-100 exact in   0.5 s
+  shard 39:     5130 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 40:     6062 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 41:     1802 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 42:    11114 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 43:     7409 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 44:     2020 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 45:     1587 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 46:     1418 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 47:     3510 vectors, 1000 queries, top-100 exact in   0.0 s
+  shard 48:     4763 vectors, 1000 queries, top-100 exact in   0.1 s
+  shard 49:     1709 vectors, 1000 queries, top-100 exact in   0.0 s
+ground truth for 50 shards in 5.2 s; manifest updated with their sha256 and k=100
 #### gist-960-300k, 50 shards: upload
-uploaded 1175.9 MB in 8.2 s (143 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/50
+uploaded 1175.9 MB in 8.5 s (138 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/50
 #### gist-960-300k, 50 shards: verify
-verify: 50 vector objects, 50 ground-truth objects and the queries all present and intact
+verify: 50 vector objects, 50 ground-truth objects (top-100) and the queries all present with their recorded sha256
 
 == objects in the store
    datasets/gist-960-300k/manifest.json           0.0 MB

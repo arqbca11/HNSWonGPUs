@@ -12,15 +12,15 @@ The software — builder CLI, artifact store, recall gate, fitting code, the com
 
 ## System diagram
 
-MinIO joins as the second stateful service. Vectors flow out to workers; index files and manifests flow back. The scheduler and Postgres are unchanged; only the build implementation and the shard's local build change.
+The object store — RustFS, decision 13; MinIO when this was drawn — joins as the second stateful service. Vectors flow out to workers; index files and manifests flow back. The scheduler and Postgres are unchanged; only the build implementation and the shard's local build change.
 
 ```mermaid
 flowchart LR
     DS["ann-benchmarks dataset<br/>(SIFT-128 or GloVe-100)"] -- "split once, Zipf sizes" --> MINIO
 
-    subgraph MINIO["MinIO (S3 API)"]
-        V["vectors/shard_k.npy"]
-        GT["ground_truth/shard_k.npy"]
+    subgraph MINIO["object store (S3 API; RustFS)"]
+        V["splits/ds/n/vectors/shard_k.npy"]
+        GT["splits/ds/n/ground_truth/shard_k.npy"]
         ART["artifacts/build_id/attempt/<br/>index.bin, manifest.json"]
     end
 
@@ -47,10 +47,10 @@ Workers get more threads than a shard, so the tradeoff keeps its shape without a
 ```mermaid
 sequenceDiagram
     participant W as worker (attempt a)
-    participant M as MinIO
+    participant M as object store
     participant P as Postgres
 
-    W->>M: GET vectors/shard_k.npy
+    W->>M: GET splits/ds/n/vectors/shard_k.npy
     W->>W: init_index(M=16, ef_construction=200), add_items, save
     W->>W: recall@10 against ground truth
     alt recall below threshold
@@ -73,7 +73,7 @@ flowchart LR
     F --> C["constants into config"]
     M --> E["estimate error distribution"]
     E --> S["simulator σ for Phase 3 sweeps"]
-    T["measure MinIO throughput<br/>inside the cluster"] --> C
+    T["measure the object store's throughput<br/>from the shard VM and a worker"] --> C
 ```
 
 ## Design decisions
@@ -88,7 +88,7 @@ flowchart LR
 | 6 | Fit the cost model from measurements and keep the residuals | Assume n log n | The estimate error distribution is an input to Phase 3's σ sweep; assuming the curve would hide the project's main uncertainty. |
 | 7 | Develop on the laptop, measure in the cloud: the calibration that enters `docs/speedup.md` is made on Phase 5's topology without GPUs, stood up as Phase 4's closing step | Calibrate on the laptop (the roadmap's original plan); do all of Phase 4 in the cloud | Laptop numbers would be replaced in Phase 5 (shared cores, no network, no concurrency); all-cloud slows every iteration of hardware-independent software. The split makes the "where things run" decision once and rehearses the cloud setup and its cost controls before a GPU is rented. |
 | 8 | The shards run on a CPU virtual machine in the same cloud region, outside the cluster | A CPU node pool inside the cluster (reverses Phase 2 decision 26; Kubernetes would restart the "database fleet"); the laptop (the transfer term then measures a home internet connection) | Real cores separate from the workers', a real cloud network to MinIO and the GPU pool, and the Phase 2 shape kept. The laptop is allowed only for a functional end-to-end check, never for a ledger number. |
-| 9 | **Two splits side by side, 6 and 50 shards, with the size distribution fixed by the split** (`builder/kgpu_builder/split.py`): the shard of rank r gets a share proportional to 1/r^s of the whole dataset (largest = N/H(n, s), sizes summing to N exactly), ranks assigned to shard ids by a seeded permutation as the Go generator does, each shard a contiguous slice of the train set; a manifest per split records offset, size, rank and the sha256 of every object. Object layout: `datasets/<ds>/queries.npy` and `manifest.json`; `splits/<ds>/<n>/manifest.json`, `vectors/shard_k.npy`, `ground_truth/shard_k.npy`; later `artifacts/<build_id>/<attempt>/`. | One split, with 50-shard rounds subsampling; sizes still drawn per round from a distribution (the data would have to be re-cut every round) | 6 is the everyday scale and 50 the target; the exponent is a property of how the data was cut, chosen once; the seed keeps governing the query streams and the DDL timing. |
+| 9 | **Two splits side by side, 6 and 50 shards, with the size distribution fixed by the split** (`builder/kgpu_builder/split.py`): the shard of rank r gets a share proportional to 1/r^s of the whole dataset (largest = N/H(n, s), sizes summing to N exactly), ranks assigned to shard ids by a seeded permutation — the same method as the Go generator, not the same permutation (seed 1 lands rank 1 on shard 1 here and on shard 0 there; when the generator gains its sizes-from-the-split mode, the split's assignment wins, cross-check G9) — each shard a contiguous slice of the train set; every shard holds at least one vector (a share that floors to 0 is bumped and the deficit taken from the top ranks — only totals within a few multiples of n are affected, G1); a manifest per split records offset, size, rank and the sha256 of every object. Object layout: `datasets/<ds>/queries.npy` and `manifest.json`; `splits/<ds>/<n>/manifest.json`, `vectors/shard_k.npy`, `ground_truth/shard_k.npy`; later `artifacts/<build_id>/<attempt>/`. | One split, with 50-shard rounds subsampling; sizes still drawn per round from a distribution (the data would have to be re-cut every round) | 6 is the everyday scale and 50 the target; the exponent is a property of how the data was cut, chosen once; the seed keeps governing the query streams and the DDL timing. |
 | 10 | **The high-dimension set is a 300k subset of GIST-960** (the first 300k train rows; all 1,000 held-out queries) | The OpenAI 1536-d sets (`dbpedia-openai-*`) — no longer served by ann-benchmarks.com (404 on 2026-10-28); a Hugging Face parquet set (a second data source and a pyarrow dependency); SIFT only | Same source, same HDF5 layout, available now; 960 lies between the 768 and 1536 the roadmap names; the subset keeps the worst case (every shard building at once) near 1.9 GB. |
 | 11 | **boto3 is the S3 client** | minio-py (lighter, MinIO's own); a hand-rolled signed-request client | Phase 5 changes an endpoint and keys and nothing else (decision 1); boto3 is the client every S3-compatible store, Google Cloud Storage's interoperability API included, is tested against. |
 | 12 | **The Python for Phase 4 lives in one shared package, `builder/` (`kgpu_builder`, its own uv project)**: the data tools now, the hnswlib builder CLI from step 2; the worker takes it as a path dependency then | Inside the worker's project (shard-side tooling in a package named "worker"); a third project per concern | Decision 3 wants one implementation run by the worker and, via exec, the shard; one package is that implementation. |
@@ -117,9 +117,30 @@ The measurements this phase makes have published reference points (Phase 1 doc, 
 | `scripts/test-db.sh` | Starts a throwaway RustFS beside the throwaway Postgres, exports `TEST_S3_*`, runs the builder's tests after the worker's. |
 | `scripts/phase4-data.sh` | The pipeline against the cluster's store for both datasets at 6 and 50 shards (NodePort or a port-forward), ending with the bucket's contents by prefix; saves `test-logs/phase4/step1-data.log`. |
 
-**What the data looks like** (`data/`, gitignored, 2.4 GB of splits plus the two HDF5 files): SIFT-128's 1M vectors split 6 ways give 408,163 / 204,082 / 136,054 / 102,041 / 81,633 / 68,027 vectors (ranks permuted across shard ids by seed 1); 50 ways, 222,… down to 4,4…; the GIST subset's 300k give 122,449 at the top of the 6-way split. Exact top-100 ground truth for 10,000 SIFT queries took 91 s for the 6-way split and 71 s for the 50-way on the laptop; GIST's 1,000 queries took 3 s.
+**What the data looks like** (`data/`, gitignored, 2.4 GB of splits plus the two HDF5 files): SIFT-128's 1M vectors split 6 ways give 408,164 / 204,082 / 136,055 / 102,040 / 81,632 / 68,027 vectors — the floors of N/(r·H(6,1)) with the 3 left over on ranks 1–3, as the rule says (the cross-check's F1 caught a first draft that had rounded by hand to the largest fractional parts); ranks are permuted across shard ids by seed 1, rank 1 landing on shard 1. 50 ways the top is 222,… and the bottom 4,4…; the GIST subset's 300k give 122,449 at the top of the 6-way split. Exact top-100 ground truth for 10,000 SIFT queries takes 128 s for the 6-way split and 86 s for the 50-way on the laptop in float64 (91 s and 71 s in the float32 first version, bug 16); GIST's 1,000 queries take 5–8 s.
 
-**On the cluster** (`test-logs/phase4/step1-data.log`): both datasets at both splits uploaded through a port-forward and verified object by object against the manifests' sha256 — 541 MB, 717 MB, 1,158 MB and 1,176 MB in 3.6, 6.0, 7.0 and 8.2 s, i.e. 120–165 MB/s laptop-to-pod through kind's Docker network. The bucket holds 3.6 GB: the four splits' vectors and ground truth plus the two query sets. That throughput is the first measured number for the cost model's transfer term (assumed 200 MB/s); the calibration proper waits for the cloud topology (decision 7), where the shard VM's path to the store is a real network.
+**On the cluster** (`test-logs/phase4/step1-data.log`): both datasets at both splits uploaded through a port-forward and verified object by object against the manifests' sha256 — 541 MB, 717 MB, 1,158 MB and 1,176 MB at 120–175 MB/s laptop-to-pod through kind's Docker network (two runs: 3.6–8.5 s each). The bucket holds 3.6 GB: the four splits' vectors and ground truth plus the two query sets. That throughput is the first measured number for the cost model's transfer term (assumed 200 MB/s); the calibration proper waits for the cloud topology (decision 7), where the shard VM's path to the store is a real network.
+
+### Cross-check of step 1, the data
+
+A fresh agent wrote 75 black-box checks in five files (`builder/tests/test_xcheck_*.py`; saved as `test-logs/phase4/step1-crosscheck-data.log`) from the docs, `--help` and the docstrings alone: the Zipf rule against an independent fraction-exact computation at nine (N, n, s) cases and the edge cases, the seeded permutation, the manifest's bytes and hashes, the ground truth against a float64 difference-and-norm reference (ties, duplicates, far queries, chunk sizes), the CLI on a synthetic HDF5 (errors, determinism, a tampered bucket), the store against a throwaway RustFS (48 MiB objects, 2,345 keys across S3's 1000-key pages, overwrite, wrong keys), the four real splits on disk against the source HDF5, and a read-only comparison of the cluster's bucket with the laptop (232 objects, identical). 69 passed; the six failures were two implementation problems, one doc error and the same precision limit seen twice. Triage:
+
+| Finding | Kind | Resolution |
+| --- | --- | --- |
+| **F1: the design doc's example sizes were rounded by hand** (408,163 / 136,054 / 102,041 / 81,633 — the largest-fractional-part rounding), not the rule's floors-plus-remainder (408,164 / 136,055 / 102,040 / 81,632). | Doc error | Doc and the implementer's test corrected to what was built. |
+| **F2 / F2b: ground truth was not exact** — float32 cancellation in |q|²+|x|²−2q·x: 4 % correct top-10 at an offset of 1000; 45/1000 GIST rows misordered inside the top-100, one wrong set; SIFT exact (integer distances). | **Bug 16** | float64 throughout; all four splits' ground truth regenerated and re-uploaded; the agent's offset and real-data exactness tests pin it. |
+| **F3 / F4: the manifest held no sha256 for the ground-truth objects, so `verify` reported them "intact" with nothing to check** — a flipped byte in a ground-truth object passed. | Implementation bug (the false-success shape of bug 15) | The `groundtruth` command writes each object's sha256 and the k into the manifest; `verify` checks every object the manifest names, flags any shard object without a hash, and reports a missing object as a problem instead of a traceback. |
+| G1: the at-least-one-vector rule when N is close to n distorts shares (60 across 50 gives [9, 3, 1, …]) and was documented only in tests.md. | Spec gap | Pinned in `zipf_sizes` and decision 9; irrelevant at real sizes. |
+| G2: `recall_at` with k beyond the stored width divided by k (a perfect answer at k = 200 scored 0.5). | Spec gap leaning bug | It raises `ValueError` when k exceeds either width. |
+| G3: a file placed under `KGPU_DATA_DIR/ann-benchmarks/` by hand drives the pipeline, undocumented; `all` cannot run on it (download's size check first). | Spec gap | Documented in `--help`. |
+| G4: no check that the HDF5 holds the catalogue's train limit or dim (a 500-row "gist" split silently). | Spec gap leaning bug | `split` refuses a file with fewer rows than the limit or a different dim. |
+| G5: `groundtruth` before `split`, a network failure, and a missing object in `verify` surfaced as tracebacks. | Spec gap | One-line errors for all three; exit code 1 unchanged. |
+| G6: the store leaked botocore exception types to callers. | Spec gap leaning bug | `store.NotFound` from every getter and `size()`. |
+| G7: `list`/`delete_prefix` matched plain string prefixes (`splits/sift-128/5` would also take `…/50`; `artifacts/3:1` would take `artifacts/3:17`). | Spec gap leaning bug | Prefixes are directories: a non-empty prefix without a trailing slash gets one. |
+| G8: the ground truth's k was not recorded. | Spec gap | `ground_truth_k` in the split manifest. |
+| G9: "ranks by a seeded permutation as the Go generator does" is the same method, not the same permutation (seed 1 puts rank 1 on shard 1 in the split, shard 0 in the generator). | Spec gap | Decision 9 says the split's assignment wins when the generator gains its sizes-from-the-split mode. |
+| G10: the implementation notes carried a placeholder; the diagram, flows and config docstring still said MinIO and lacked the `<n>/` level. | Doc error | Fixed. |
+| G11: `put_npy`'s return value was undocumented. | Spec gap | Documented: the object's size in bytes. |
 
 ## Open questions
 

@@ -738,7 +738,7 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 
 | Test | Scenario, in plain words | What must hold |
 | --- | --- | --- |
-| builder/test_split.py::test_zipf_sizes_sum_and_shape | 1M vectors across 6 and across 50 shards at s = 1. | Sizes sum exactly; descending; the top is N/H(n,1) (408,163 at 6; 222k at 50) with the remainder on the top ranks; the smallest 50-way shard is at least 4,400. |
+| builder/test_split.py::test_zipf_sizes_sum_and_shape | 1M vectors across 6 and across 50 shards at s = 1. | Sizes sum exactly; descending; the top is N/H(n,1) (408,164 at 6; 222k at 50) with the remainder on the top ranks; the smallest 50-way shard is at least 4,400. |
 | builder/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid | s = 0; 7 vectors across 4 shards; 50 across 50 at s = 1.5. | Equal sizes at s = 0; every shard at least 1 vector; sums exact. |
 | builder/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded | Plan a 6-way split with seeds 1 and 2. | Ranks 1..6 each used once; offsets contiguous and ending at N; the same seed replans identically, a different seed permutes differently (decision 9). |
 | builder/test_split.py::test_write_split_round_trips_with_sha256 | 1000 toy vectors written as 4 shards. | Every shard file equals its contiguous slice; the manifest carries one sha256 per object and round-trips through JSON. |
@@ -748,4 +748,59 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | builder/test_store.py::test_bytes_json_npy_round_trip_and_listing | Put bytes, JSON and an array; list, size, exists, delete a prefix. | Everything round-trips through the object store; listing and deletion are exact (decisions 11, 13). |
 | builder/test_store.py::test_ensure_bucket_is_idempotent | Create the bucket three times. | No error. |
 | scripts/phase4-data.sh | Both datasets at 6 and 50 shards into the cluster's RustFS, then verified. | Every object present with the manifest's sha256; the bucket holds the four splits, the queries and the ground truth. |
+
+## Phase 4, step 1, cross-check of the data tools (Python, `builder/tests/test_xcheck_*.py`; the store tests need `TEST_S3_ENDPOINT`, the real-data tests `data/splits/`, the cluster test `XCHECK_CLUSTER_S3`). Log: `phase4/step1-crosscheck-data.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_xcheck_split.py::test_xcheck_zipf_1m_over_6_by_hand | 1M vectors across 6 shards at s = 1, worked out by hand with H(6,1) = 49/20. | Sizes 408,164 / 204,082 / 136,055 / 102,040 / 81,632 / 68,027: rounded down, with the 3 left over going to the top three ranks. |
+| builder/test_xcheck_split.py::test_xcheck_design_doc_example_sizes_match_the_rule | The design doc's quoted 6-way SIFT sizes against the code. | The doc's numbers are the sizes the rule produces (F1 corrected the doc). |
+| builder/test_xcheck_split.py::test_xcheck_zipf_matches_hand_rule | Nine (N, n, s) cases: s = 0, 0.5, 1, 1.5, 2; N not divisible by n; 6 and 50 shards. | Sizes sum to N, run largest to smallest, the largest is N/H(n,s) to within 1, and they equal an independent fraction-exact computation. |
+| builder/test_xcheck_split.py::test_xcheck_zipf_edge_cases | One shard; s = 0 with a remainder; as many vectors as shards. | One shard takes everything; uniform split with the remainder at the top; one vector each. |
+| builder/test_xcheck_split.py::test_xcheck_zipf_small_total_never_empties_a_shard | Totals so small that rounding down would leave shards empty. | Every shard holds at least one vector; sums stay exact (G1). |
+| builder/test_xcheck_split.py::test_xcheck_zipf_fewer_vectors_than_shards | 3 vectors across 6 shards. | Raises an error rather than producing a bad split. |
+| builder/test_xcheck_split.py::test_xcheck_plan_ranks_offsets_and_recorded_fields | Plan the 1M 6-way split with seed 1. | Ranks are a permutation; each size is its rank's size; offsets are contiguous; fields recorded; rank 1 lands on shard 1 as in the split on disk. |
+| builder/test_xcheck_split.py::test_xcheck_plan_seed_only_permutes | 50-way plans with seeds 1 to 10. | The same seed replans identically; ten different rank assignments; identical sorted sizes. |
+| builder/test_xcheck_split.py::test_xcheck_plan_zipf_exponent_two_and_zero | 1000 vectors across 3 at s = 0 and s = 2. | Sizes [334,333,333] and [735,184,81]; the exponent is recorded. |
+| builder/test_xcheck_split.py::test_xcheck_write_split_bytes_sha_and_manifest | Write 997 toy vectors as 5 shards. | Files are contiguous float32 slices; sha256 matches the bytes; every documented manifest field is present; JSON round-trips. |
+| builder/test_xcheck_split.py::test_xcheck_write_split_from_h5py_dataset | The same split from a numpy array and from an h5py dataset. | Byte-identical output. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_against_direct_float64_reference | 40 random queries over 2,500 vectors, checked against a float64 difference-norm reference. | Exactly the same indices, nearest first, int32. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_is_exact_with_a_large_common_offset | Vectors and queries all near 1000 in every coordinate. | Still the exact top-k; cancellation must not reorder neighbours (decision 14; bug 16). |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_sift_like_integer_vectors_with_ties | Integer vectors with many tied distances. | A true top-50 by distance, nearest first; any order among exact ties is accepted. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_duplicate_vectors_and_the_query_itself | The query is a shard vector that appears three times. | Those three come first. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_k_larger_than_shard_and_single_vector_shard | k = 100 over 7 vectors and over 1 vector. | k is clamped to the shard; a one-vector shard answers 0. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_far_queries_still_get_k_answers | Queries far outside the data. | k valid answers, nearest first. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_chunk_sizes_do_not_change_the_answer | Chunk sizes 1 to 4096 over 53 queries. | Identical results. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_topk_float64_and_float16_inputs | float64 vectors and queries. | The exact float64 order. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_recall_at_by_hand | Two queries with known overlaps. | recall@2 = 0.25, recall@4 = 0.5. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_recall_at_duplicates_in_found_count_once | The found list repeats one true neighbour. | It counts once (1/3). |
+| builder/test_xcheck_groundtruth.py::test_xcheck_recall_at_k_beyond_stored_width | Recall@200 against a 100-wide truth. | Records the behaviour; after G2 it is a ValueError. |
+| builder/test_xcheck_groundtruth.py::test_xcheck_recall_at_found_narrower_than_k | 4 answers when 10 were asked for. | Records the behaviour; after G2 it is a ValueError. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_unknown_dataset_is_a_clear_error | `split glove-100 6`. | Non-zero exit naming the known datasets, no traceback. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_download_refuses_an_oversized_file | A SIFT file one byte too large is already in place. | download refuses it. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_download_accepts_a_complete_file_without_network | An exact-size SIFT file is in place and the network is blocked. | Accepted as complete, no fetch. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_download_with_a_truncated_file_tries_to_resume | A 1000-byte SIFT file is in place and the network is blocked. | Non-zero exit; the short file is never accepted. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_split_and_groundtruth_on_a_synthetic_file | split `--zipf 2 --seed 7` and groundtruth `--k 15` on a synthetic 1000×128 file. | Exponent and seed recorded; sizes match the hand Zipf; shards are slices with matching sha256; queries equal the HDF5 test array; ground truth is exact. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_split_manifest_covers_ground_truth | split, then groundtruth. | Every object under the split, ground truth included, has a sha256 in the manifest (decision 9; F3). |
+| builder/test_xcheck_cli.py::test_xcheck_cli_split_is_deterministic | split twice. | Identical manifests. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_groundtruth_before_split_fails | groundtruth with no split on disk. | Non-zero exit (a one-line error after G5). |
+| builder/test_xcheck_cli.py::test_xcheck_cli_gist_train_limit_with_a_small_file | A 500-row file named for gist-960-300k. | Records the behaviour; after G4 it is refused. |
+| builder/test_xcheck_cli.py::test_xcheck_cli_all_cannot_run_on_a_custom_file | `all` on a synthetic file. | Records that download's size check stops it (G3). |
+| builder/test_xcheck_cli.py::test_xcheck_cli_upload_verify_and_tamper | Upload a synthetic split, verify it, then corrupt a vectors object, corrupt a ground-truth object, and delete the queries. | Layout and bytes as decision 9 says; verify passes when intact and fails on each kind of tampering (F4). |
+| builder/test_xcheck_store.py::test_xcheck_store_large_object_round_trip | 48 MiB of bytes and a 51 MB array through RustFS. | Byte-exact round trip; `put_npy`'s return value is the object's size. |
+| builder/test_xcheck_store.py::test_xcheck_store_listing_and_deleting_beyond_1000_keys | 2,345 objects under one prefix. | All are listed and all are deleted, across S3's 1000-key pages. |
+| builder/test_xcheck_store.py::test_xcheck_store_overwrite_replaces | Write the same key twice. | The last write wins; one key; size updated. |
+| builder/test_xcheck_store.py::test_xcheck_store_missing_key | Read a key that does not exist. | `exists` is False; each getter and `size` raises (`store.NotFound` after G6). |
+| builder/test_xcheck_store.py::test_xcheck_store_delete_prefix_empty_on_empty_bucket | `delete_prefix("")` on an empty bucket. | Returns 0, no error. |
+| builder/test_xcheck_store.py::test_xcheck_store_prefix_is_a_string_prefix | Keys p/5/a, p/50/a and p/5x. | Records the prefix semantics; after G7 a prefix is a directory and `p/5` takes only `p/5/a`. |
+| builder/test_xcheck_store.py::test_xcheck_store_artifact_keys_with_a_colon | `artifacts/3:17/<attempt>/` keys. | Round-trip and list exactly. |
+| builder/test_xcheck_store.py::test_xcheck_store_npy_dtypes_and_shapes | int32, empty, 0-d, uint8 and Fortran-order arrays. | dtype, shape and values preserved. |
+| builder/test_xcheck_store.py::test_xcheck_store_wrong_credentials_fail | A put with wrong keys. | Raises. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_manifest_sizes_ranks_offsets | The four real split manifests. | Sizes by rank equal the hand Zipf; offsets contiguous; fields correct. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_vectors_shape_dtype_and_source_rows | Every real shard file against the source HDF5. | float32 [size, dim]; first, middle and last rows are the source rows at the offset; GIST is the first 300k rows. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_sha256_of_some_objects | Hash some real shard files. | They match the manifest. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_queries_match_hdf5_and_dataset_manifest | Both datasets' queries.npy. | Equal to the HDF5 test array; counts and sha256 match the dataset manifest. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_ground_truth_shapes | Every real ground-truth file. | int32 [n_queries, 100] with values within the shard. |
+| builder/test_xcheck_realdata.py::test_xcheck_real_ground_truth_rows_are_exact | Recompute rows of SIFT and GIST ground truth in float64. | The stored top-100 is the exact top-100 by distance, and the recall gate's top-10 set is exact (bug 16). |
+| builder/test_xcheck_realdata.py::test_xcheck_cluster_bucket_mirrors_local_splits_read_only | Read-only listing of the kind cluster's `kgpu` bucket through a port-forward. | Every local object is present with the same size; the manifests are identical. |
 

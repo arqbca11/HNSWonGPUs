@@ -9,7 +9,11 @@
     verify    <dataset> <n_shards>           every object present with the manifest's size/sha256
     all       <dataset> <n_shards>           the four above in order
 
-Datasets: sift-128, gist-960-300k. Local outputs under KGPU_DATA_DIR/splits/
+Datasets: sift-128, gist-960-300k. The HDF5 files live under
+KGPU_DATA_DIR/ann-benchmarks/<file from the catalogue>; a file placed there
+by hand (a different dataset under a catalogue name, for a test) drives
+split, groundtruth, upload and verify, but `download` and `all` check its
+size against the catalogue first. Local outputs under KGPU_DATA_DIR/splits/
 <dataset>/<n_shards>/; the object store gets the same layout under splits/.
 """
 
@@ -20,6 +24,7 @@ import hashlib
 import json
 import sys
 import time
+import urllib.error
 from pathlib import Path
 
 import h5py
@@ -27,7 +32,7 @@ import numpy as np
 
 from . import datasets, download as dl, groundtruth, split as sp
 from .config import Config
-from .store import Store
+from .store import NotFound, Store
 
 
 def _log(msg: str, **_):
@@ -40,7 +45,11 @@ def _open_train(ds: datasets.Dataset, cfg: Config):
         raise SystemExit(f"{path} missing: run `download {ds.name}` first")
     f = h5py.File(path, "r")
     train = f["train"]
-    n = train.shape[0] if ds.train_limit is None else min(ds.train_limit, train.shape[0])
+    if train.ndim != 2 or train.shape[1] != ds.dim:
+        raise SystemExit(f"{path}: train is {train.shape}, the catalogue says dim {ds.dim}")
+    if ds.train_limit is not None and train.shape[0] < ds.train_limit:
+        raise SystemExit(f"{path}: {train.shape[0]} train rows, fewer than the {ds.train_limit} the catalogue takes for {ds.name}")
+    n = train.shape[0] if ds.train_limit is None else ds.train_limit
     return f, train, n
 
 
@@ -78,13 +87,21 @@ def cmd_groundtruth(ds, cfg, args):
     q = np.load(cfg.data_dir / "datasets" / ds.name / "queries.npy", allow_pickle=False)
     (d / "ground_truth").mkdir(exist_ok=True)
     t0 = time.time()
+    sha = dict(m.sha256)
     for s in m.shards:
         x = np.load(d / f"vectors/shard_{s.shard_id}.npy", allow_pickle=False)
         ts = time.time()
         gt = groundtruth.exact_topk(q, x, k=args.k)
-        np.save(d / f"ground_truth/shard_{s.shard_id}.npy", gt, allow_pickle=False)
+        b = sp.npy_bytes(gt)
+        name = f"ground_truth/shard_{s.shard_id}.npy"
+        (d / name).write_bytes(b)
+        sha[name] = hashlib.sha256(b).hexdigest()
         _log(f"  shard {s.shard_id:2d}: {x.shape[0]:8d} vectors, {q.shape[0]} queries, top-{gt.shape[1]} exact in {time.time() - ts:5.1f} s")
-    _log(f"ground truth for {len(m.shards)} shards in {time.time() - t0:.1f} s")
+    # the manifest now covers the ground truth too (cross-check F3/F4: verify
+    # used to report it intact without a hash to check) and records k (G8)
+    m = sp.SplitManifest(**{**sp.asdict(m), "shards": m.shards, "sha256": sha, "ground_truth_k": args.k})
+    (d / "manifest.json").write_text(m.to_json())
+    _log(f"ground truth for {len(m.shards)} shards in {time.time() - t0:.1f} s; manifest updated with their sha256 and k={args.k}")
 
 
 def cmd_upload(ds, cfg, args):
@@ -115,29 +132,44 @@ def cmd_upload(ds, cfg, args):
 
 
 def cmd_verify(ds, cfg, args):
+    """Every object the manifests name must be present with the recorded
+    sha256 — vectors, ground truth and the queries alike. A missing object
+    is a reported problem, not a traceback (cross-check F4, G5)."""
     st = Store(cfg)
     prefix = f"splits/{ds.name}/{args.n_shards}"
     m = sp.SplitManifest.from_json(st.get_bytes(f"{prefix}/manifest.json").decode())
     bad = 0
-    for name, want in m.sha256.items():
-        b = st.get_bytes(f"{prefix}/{name}")
-        got = hashlib.sha256(b).hexdigest()
-        ok = got == want
+    expected = set(m.sha256)
+    for s in m.shards:
+        for sub_ in ("vectors", "ground_truth"):
+            name = f"{sub_}/shard_{s.shard_id}.npy"
+            if name not in expected:
+                _log(f"  {prefix}/{name}: NO HASH IN THE MANIFEST (run groundtruth again)")
+                bad += 1
+    for name, want in sorted(m.sha256.items()):
+        try:
+            b = st.get_bytes(f"{prefix}/{name}")
+        except NotFound:
+            _log(f"  {prefix}/{name}: MISSING")
+            bad += 1
+            continue
+        ok = hashlib.sha256(b).hexdigest() == want
         bad += not ok
         _log(f"  {prefix}/{name}: {len(b) / 1e6:7.1f} MB sha256 {'ok' if ok else 'MISMATCH'}")
-    for s in m.shards:
-        name = f"{prefix}/ground_truth/shard_{s.shard_id}.npy"
-        if not st.exists(name):
-            _log(f"  {name}: MISSING")
-            bad += 1
-    dm = st.get_json(f"datasets/{ds.name}/manifest.json")
-    qb = st.get_bytes(f"datasets/{ds.name}/queries.npy")
+    try:
+        dm = st.get_json(f"datasets/{ds.name}/manifest.json")
+        qb = st.get_bytes(f"datasets/{ds.name}/queries.npy")
+    except NotFound as e:
+        _log(f"  datasets/{ds.name}: MISSING ({e})")
+        raise SystemExit(f"verify: {bad + 1} problem(s)")
     qok = hashlib.sha256(qb).hexdigest() == dm["sha256"]["queries.npy"]
     bad += not qok
     _log(f"  datasets/{ds.name}/queries.npy: {len(qb) / 1e6:.1f} MB sha256 {'ok' if qok else 'MISMATCH'}")
     if bad:
         raise SystemExit(f"verify: {bad} problem(s)")
-    _log(f"verify: {len(m.sha256)} vector objects, {len(m.shards)} ground-truth objects and the queries all present and intact")
+    nv = sum(1 for n in m.sha256 if n.startswith("vectors/"))
+    ng = sum(1 for n in m.sha256 if n.startswith("ground_truth/"))
+    _log(f"verify: {nv} vector objects, {ng} ground-truth objects (top-{m.ground_truth_k}) and the queries all present with their recorded sha256")
 
 
 def main(argv=None) -> int:
@@ -157,12 +189,19 @@ def main(argv=None) -> int:
     cfg = Config.from_env()
     ds = datasets.get(args.dataset)
     steps = {"download": cmd_download, "split": cmd_split, "groundtruth": cmd_groundtruth, "upload": cmd_upload, "verify": cmd_verify}
-    if args.cmd == "all":
-        for name in ("download", "split", "groundtruth", "upload", "verify"):
-            _log(f"== {name}")
-            steps[name](ds, cfg, args)
-    else:
-        steps[args.cmd](ds, cfg, args)
+    try:
+        if args.cmd == "all":
+            for name in ("download", "split", "groundtruth", "upload", "verify"):
+                _log(f"== {name}")
+                steps[name](ds, cfg, args)
+        else:
+            steps[args.cmd](ds, cfg, args)
+    except FileNotFoundError as e:
+        raise SystemExit(f"{args.cmd}: {e.filename or e} not found — run the earlier steps first (download, split, groundtruth)") from None
+    except NotFound as e:
+        raise SystemExit(f"{args.cmd}: object not in the store: {e}") from None
+    except (urllib.error.URLError, OSError) as e:
+        raise SystemExit(f"{args.cmd}: {e}") from None
     return 0
 
 
