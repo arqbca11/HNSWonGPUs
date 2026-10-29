@@ -33,3 +33,6 @@ experiments/results/step7-timelines/
 /validate
 /sweep
 /scheduler-bin
+
+# Phase 4 datasets and splits (hundreds of MB to GB; reproduced by `python -m kgpu_builder`)
+data/

@@ -103,6 +103,14 @@ One entry per action the system takes, pointing at the code that decides it, the
 - Seeded workloads: `experiments/workload/` (scenario presets; `PRINT_WORKLOAD=1` to inspect).
 - The HTTP client both the simulator and tests use: `shard/client/client.go`.
 
+## The data and the real builds (Phase 4)
+
+### Step 1: datasets, splits, ground truth, the object store
+- The Python package: `builder/kgpu_builder/` (its own uv project, decision 12 of the Phase 4 doc). The catalogue is `datasets.py`; the Zipf split and its manifest `split.py` (`zipf_sizes`, `plan`, `write_split`; decision 9); exact per-shard top-k `groundtruth.py` (`exact_topk`, `recall_at`; decision 14); the S3 client `store.py` (`Store`: bytes/JSON/npy, list, exists, delete_prefix; decision 11); the command line `cli.py` (`python -m kgpu_builder download|split|groundtruth|upload|verify|all`).
+- Where the data lives: locally under `KGPU_DATA_DIR` (default `data/`, gitignored); in the store under `datasets/<ds>/` and `splits/<ds>/<n>/{manifest.json,vectors/,ground_truth/}`.
+- The object store itself: RustFS (decision 13) — `deploy/compose.yaml` service `objectstore`; `deploy/k8s/objectstore.yaml` (Secret `objectstore` with the endpoint, keys and bucket; NodePort 30900; a StatefulSet); the kind port mapping in `deploy/kind/cluster.yaml`; a throwaway one in `scripts/test-db.sh`.
+- Putting the data on the cluster: `scripts/phase4-data.sh`.
+
 ## Observability and configuration
 
 ### Metrics

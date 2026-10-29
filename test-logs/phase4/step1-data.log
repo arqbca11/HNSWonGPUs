@@ -1,0 +1,61 @@
+== Phase 4 step 1: datasets into the cluster's object store, 2026-10-29T05:43:54Z, commit 8285345+local changes
+   NodePort 30900 not mapped on this cluster; port-forwarding svc/objectstore to http://127.0.0.1:39000
+
+#### sift-128: download
+sift-128: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/ann-benchmarks/sift-128-euclidean.hdf5 already complete (525128288 bytes)
+
+#### sift-128, 6 shards: split
+   (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/sift-128/6)
+   shard 0: rank 5, 81632 vectors, shard 1: rank 1, 408164 vectors, shard 2: rank 3, 136055 vectors, shard 3: rank 2, 204082 vectors, shard 4: rank 6, 68027 vectors, shard 5: rank 4, 102040 vectors
+#### sift-128, 6 shards: ground truth
+   (local ground truth exists: 6 shards)
+#### sift-128, 6 shards: upload
+uploaded 541.1 MB in 3.6 s (151 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/6
+#### sift-128, 6 shards: verify
+verify: 6 vector objects, 6 ground-truth objects and the queries all present and intact
+
+#### sift-128, 50 shards: split
+   (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/sift-128/50)
+   shard 0: rank 16, 13892 vectors, shard 1: rank 26, 8549 vectors, shard 2: rank 38, 5848 vectors, shard 3: rank 24, 9261 vectors, shard 4: rank 31, 7169 vectors, shard 5: rank 7, 31752 vectors, shard 6: rank 28, 7937 vectors, shard 7: rank 50, 4445 vectors ...
+#### sift-128, 50 shards: ground truth
+   (local ground truth exists: 50 shards)
+#### sift-128, 50 shards: upload
+uploaded 717.1 MB in 6.0 s (120 MB/s) to http://127.0.0.1:39000/kgpu/splits/sift-128/50
+#### sift-128, 50 shards: verify
+verify: 50 vector objects, 50 ground-truth objects and the queries all present and intact
+
+#### gist-960-300k: download
+gist-960-300k: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/ann-benchmarks/gist-960-euclidean.hdf5 already complete (3844648288 bytes)
+
+#### gist-960-300k, 6 shards: split
+   (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/gist-960-300k/6)
+   shard 0: rank 5, 24489 vectors, shard 1: rank 1, 122449 vectors, shard 2: rank 3, 40817 vectors, shard 3: rank 2, 61225 vectors, shard 4: rank 6, 20408 vectors, shard 5: rank 4, 30612 vectors
+#### gist-960-300k, 6 shards: ground truth
+   (local ground truth exists: 6 shards)
+#### gist-960-300k, 6 shards: upload
+uploaded 1158.2 MB in 7.0 s (165 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/6
+#### gist-960-300k, 6 shards: verify
+verify: 6 vector objects, 6 ground-truth objects and the queries all present and intact
+
+#### gist-960-300k, 50 shards: split
+   (local split exists: /Users/ruoqibai/Desktop/Career/KubernetesGPU/data/splits/gist-960-300k/50)
+   shard 0: rank 16, 4168 vectors, shard 1: rank 26, 2564 vectors, shard 2: rank 38, 1754 vectors, shard 3: rank 24, 2779 vectors, shard 4: rank 31, 2150 vectors, shard 5: rank 7, 9526 vectors, shard 6: rank 28, 2381 vectors, shard 7: rank 50, 1333 vectors ...
+#### gist-960-300k, 50 shards: ground truth
+   (local ground truth exists: 50 shards)
+#### gist-960-300k, 50 shards: upload
+uploaded 1175.9 MB in 8.2 s (143 MB/s) to http://127.0.0.1:39000/kgpu/splits/gist-960-300k/50
+#### gist-960-300k, 50 shards: verify
+verify: 50 vector objects, 50 ground-truth objects and the queries all present and intact
+
+== objects in the store
+   datasets/gist-960-300k/manifest.json           0.0 MB
+   datasets/gist-960-300k/queries.npy             3.8 MB
+   datasets/sift-128/manifest.json                0.0 MB
+   datasets/sift-128/queries.npy                  5.1 MB
+   splits/gist-960-300k/50                     1172.0 MB
+   splits/gist-960-300k/6                      1154.4 MB
+   splits/sift-128/50                           712.0 MB
+   splits/sift-128/6                            536.0 MB
+   232 objects, 3.58 GB in bucket kgpu
+
+== Result: PASS (log: test-logs/phase4/step1-data.log)

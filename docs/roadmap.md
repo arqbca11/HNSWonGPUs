@@ -336,11 +336,11 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 ### Data (laptop)
 
-- [ ] Use an ann-benchmarks dataset: SIFT-128 (1M vectors, 512 MB as float32, ~640 MB as an M=16 index) — its 128 dimensions are the presets' `Dim`. Add a high-dimension subset (768 or 1536) of a few hundred thousand vectors so the dimension term is measured, not assumed; at 300k × 1536 the raw vectors are 1.84 GB and the whole index ~1.9 GB, which is why the subset stays well under a million.
-- [ ] **Two splits, stored side by side: 6 shards and 50 shards**, the project's everyday scale and its target scale, each with Zipf-distributed sizes (rank r gets largest/r). At 6 the largest shard holds ~40 % of the data (SIFT: ~410k vectors, ~260 MB to build — minutes on two threads, long enough for a preemption to lose something real); at 50 ~22 % (~220k, ~140 MB — fifty small builds competing for three workers). A round picks the split by its shard count. The worst case, every shard building at once on one laptop, is the whole index either way.
+- [x] Use an ann-benchmarks dataset: SIFT-128 (1M vectors, 512 MB as float32, ~640 MB as an M=16 index) — its 128 dimensions are the presets' `Dim`. Add a high-dimension subset (768 or 1536) of a few hundred thousand vectors so the dimension term is measured, not assumed; at 300k × 1536 the raw vectors are 1.84 GB and the whole index ~1.9 GB, which is why the subset stays well under a million.
+- [x] **Two splits, stored side by side: 6 shards and 50 shards**, the project's everyday scale and its target scale, each with Zipf-distributed sizes (rank r gets largest/r). At 6 the largest shard holds ~40 % of the data (SIFT: ~410k vectors, ~260 MB to build — minutes on two threads, long enough for a preemption to lose something real); at 50 ~22 % (~220k, ~140 MB — fifty small builds competing for three workers). A round picks the split by its shard count. The worst case, every shard building at once on one laptop, is the whole index either way.
 - [ ] **With real data the size distribution is fixed by the split, not drawn per round.** The Zipf exponent becomes a property of how the dataset was cut, chosen once per split; the seed still governs the query streams and the DDL timing. The workload generator gets a "sizes from the split" mode beside its seeded distributions.
-- [ ] Store each shard's vectors in MinIO as `.npy` files, under the split (`vectors/6/shard_k.npy`, `vectors/50/shard_k.npy`)
-- [ ] Compute exact ground truth per shard and split once with brute force, for the recall gate
+- [x] Store each shard's vectors in the object store (RustFS; MinIO's images were withdrawn, Phase 4 decision 13) as `.npy` files, under the split (`vectors/6/shard_k.npy`, `vectors/50/shard_k.npy`)
+- [x] Compute exact ground truth per shard and split once with brute force, for the recall gate
 
 ### Builder (laptop)
 

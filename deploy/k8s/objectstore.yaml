@@ -1,0 +1,94 @@
+# The object store (Phase 4): vectors in, index files and manifests out. One
+# pod with a persistent disk, the same shape as Postgres (a StatefulSet with
+# a PersistentVolumeClaim, so the objects outlive the pod). RustFS speaks the
+# S3 API on 9000 and serves a console on 9001; Phase 5 points S3_ENDPOINT at
+# the cloud store instead and nothing else changes (Phase 4 decisions 1, 13).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: objectstore
+  namespace: kgpu
+type: Opaque
+stringData:
+  S3_ACCESS_KEY: kgpu
+  S3_SECRET_KEY: kgpu-secret
+  S3_ENDPOINT: http://objectstore:9000
+  S3_BUCKET: kgpu
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: objectstore
+  namespace: kgpu
+  labels: {app: objectstore}
+spec:
+  # NodePort: in-cluster at objectstore:9000; every node also listens on 30900
+  # for the data tools and the shards on the laptop. kind maps it to the laptop
+  # (deploy/kind/cluster.yaml); a mapping added after the cluster was created
+  # takes effect at the next `scripts/kind-down.sh && scripts/kind-up.sh`, and
+  # `kubectl -n kgpu port-forward svc/objectstore 9000:9000` works meanwhile.
+  type: NodePort
+  selector:
+    app: objectstore
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+      nodePort: 30900
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: objectstore
+  namespace: kgpu
+spec:
+  serviceName: objectstore
+  replicas: 1
+  selector:
+    matchLabels:
+      app: objectstore
+  template:
+    metadata:
+      labels:
+        app: objectstore
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: rustfs
+          image: rustfs/rustfs:1.0.4
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: S3_ACCESS_KEY}}
+            - name: RUSTFS_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: objectstore, key: S3_SECRET_KEY}}
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet: {path: /health/live, port: 9000}
+            periodSeconds: 2
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: {path: /health/live, port: 9000}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: "250m", memory: "256Mi"}
+            limits: {memory: "2Gi"}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

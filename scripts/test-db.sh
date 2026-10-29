@@ -33,10 +33,13 @@ log="test-logs/history/${stamp}.log"
 name="kgpu-test-pg-$$"
 port=$(( 20000 + RANDOM % 20000 ))
 image="postgres:17"
+s3name="kgpu-test-s3-$$"
+s3port=$(( 20000 + RANDOM % 20000 ))
+s3image="rustfs/rustfs:1.0.4"   # Phase 4: the object store the builder's tests need
 started=$(date +%s)
 
 cleanup() {
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -f "$name" "$s3name" >/dev/null 2>&1 || true
   sleep 1  # let the daemon flush the die/destroy events before we read them
   {
     echo
@@ -62,6 +65,8 @@ trap cleanup EXIT
 
 docker run -d --rm --name "$name" -p "127.0.0.1:${port}:5432" \
   -e POSTGRES_PASSWORD=test -e POSTGRES_DB=kgpu "$image" >/dev/null
+docker run -d --rm --name "$s3name" -p "127.0.0.1:${s3port}:9000" \
+  -e RUSTFS_ACCESS_KEY=test -e RUSTFS_SECRET_KEY=test-secret "$s3image" >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec "$name" pg_isready -U postgres -q 2>/dev/null; then break; fi
@@ -76,7 +81,8 @@ pgver=$(docker exec "$name" postgres --version)
   echo "go:        $(go version | cut -d' ' -f3)"
   echo "postgres:  $pgver (image $image, container $name, port $port)"
   echo "go:        $([ "$run_go" = 1 ] && echo "go test -p 1 $*" || echo skipped)"
-  echo "python:    $([ "$run_py" = 1 ] && echo "uv run pytest -v -rA (worker/)" || echo skipped)"
+  echo "objects:   $s3image (container $s3name, port $s3port)"
+  echo "python:    $([ "$run_py" = 1 ] && echo "uv run pytest -v -rA (worker/, builder/)" || echo skipped)"
   echo
   echo "Lines starting with 'store_test.go:N:' are the test narrating what it did."
   echo "Lines tagged [db] are the build row as Postgres had it at that moment."
@@ -84,6 +90,8 @@ pgver=$(docker exec "$name" postgres --version)
 } > "$log"
 
 export TEST_DATABASE_URL="postgres://postgres:test@127.0.0.1:${port}/kgpu?sslmode=disable"
+export TEST_S3_ENDPOINT="http://127.0.0.1:${s3port}" TEST_S3_ACCESS_KEY=test TEST_S3_SECRET_KEY=test-secret
+for _ in $(seq 1 60); do curl -sf "$TEST_S3_ENDPOINT/health/live" >/dev/null 2>&1 && break; sleep 0.5; done
 rc=0
 if [ "$run_go" = 1 ]; then
   echo "== go test" | tee -a "$log"
@@ -99,6 +107,12 @@ if [ "$run_py" = 1 ]; then
   set +e
   # -rA prints each test's captured output (the narration) even on PASS.
   (cd worker && uv run --quiet pytest -v -rA 2>&1) | tee -a "$log"
+  prc=${PIPESTATUS[0]}
+  set -e
+  if [ "$prc" -ne 0 ]; then rc=$prc; fi
+  echo "== pytest (builder/)" | tee -a "$log"
+  set +e
+  (cd builder && uv run --quiet pytest -v -rA 2>&1) | tee -a "$log"
   prc=${PIPESTATUS[0]}
   set -e
   if [ "$prc" -ne 0 ]; then rc=$prc; fi

@@ -1,557 +1,411 @@
 == Go tests against a throwaway Postgres
-date:      2026-10-28 19:46:14 PDT
-commit:    d8d3e1a (uncommitted changes)
+date:      2026-10-28 22:42:09 PDT
+commit:    8285345 (uncommitted changes)
 go:        go1.27.1
-postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-32039, port 31885)
-go:        go test -p 1 -count=1 -v -run TestStep7 ./scheduler/crosscheck/
-python:    skipped
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-56911, port 21124)
+go:        skipped
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-56911, port 31356)
+python:    uv run pytest -v -rA (worker/, builder/)
 
 Lines starting with 'store_test.go:N:' are the test narrating what it did.
 Lines tagged [db] are the build row as Postgres had it at that moment.
 
-== go test
-=== RUN   TestStep7KindPolicySwitch
-    kindvalidate_test.go:155: cluster before: scheduler POLICY=always_gpu FAKE_TIME_SCALE=10; worker FAKE_TIME_SCALE=10 WORKER_MEM_BYTES=25769803776 replicas=2
-    kindvalidate_test.go:173: [switch to reactive] before: [scheduler-6656f5fb6d-6npwg(ready=true terminating=false policy="always_gpu")]
-    kindvalidate_test.go:173: [switch to reactive] `rollout status` returned after 0.96 s: "Waiting for deployment \"scheduler\" rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"scheduler\" rollout to finish: 1 old replicas are pending termination...\ndeployment \"scheduler\" successfully rolled out"
-    kindvalidate_test.go:173: [switch to reactive] pods at that instant: [scheduler-6599b99fcf-hkbvz(ready=true terminating=false policy="reactive") scheduler-6656f5fb6d-6npwg(ready=true terminating=true policy="always_gpu")]
-    kindvalidate_test.go:173: [switch to reactive] at status-return 1 pre-restart pod(s) were still alive, terminating (draining, decision 40) and logged the PREVIOUS policy: a client holding a connection to it (keep-alive through the NodePort) could still be answered under the old policy; `rollout status` does not wait for them
-    kindvalidate_test.go:173: [switch to reactive] at status-return no pre-restart pod was Ready-and-not-terminating (the race did not show this time; decision 30's check is still the only proof)
-    kindvalidate_test.go:173: [switch to reactive] decision-30 proof after 5.06 s: [scheduler-6599b99fcf-hkbvz(ready=true terminating=false policy="reactive")]
-    kindvalidate_test.go:174: [switch to always_gpu] before: [scheduler-6599b99fcf-hkbvz(ready=true terminating=false policy="reactive")]
-    kindvalidate_test.go:174: [switch to always_gpu] `rollout status` returned after 0.67 s: "Waiting for deployment \"scheduler\" rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"scheduler\" rollout to finish: 1 old replicas are pending termination...\ndeployment \"scheduler\" successfully rolled out"
-    kindvalidate_test.go:174: [switch to always_gpu] pods at that instant: [scheduler-6599b99fcf-hkbvz(ready=true terminating=true policy="reactive") scheduler-67f47d87d7-rlx6c(ready=true terminating=false policy="always_gpu")]
-    kindvalidate_test.go:174: [switch to always_gpu] at status-return 1 pre-restart pod(s) were still alive, terminating (draining, decision 40) and logged the PREVIOUS policy: a client holding a connection to it (keep-alive through the NodePort) could still be answered under the old policy; `rollout status` does not wait for them
-    kindvalidate_test.go:174: [switch to always_gpu] at status-return no pre-restart pod was Ready-and-not-terminating (the race did not show this time; decision 30's check is still the only proof)
-    kindvalidate_test.go:174: [switch to always_gpu] decision-30 proof after 4.71 s: [scheduler-67f47d87d7-rlx6c(ready=true terminating=false policy="always_gpu")]
-    kindvalidate_test.go:175: summary: always_gpu->reactive: rollout status 0.96 s, proven 5.06 s; reactive->always_gpu: status 0.67 s, proven 4.71 s
-    kindvalidate_test.go:176: reading: the gap between the two numbers is how long a runner trusting `rollout status` could have started a round before (or while) the intended policy was the one serving (bug 15)
-    kindvalidate_test.go:167: cluster after: POLICY=always_gpu FAKE_TIME_SCALE=10 worker FAKE_TIME_SCALE=10 WORKER_MEM_BYTES=25769803776 replicas=2
---- PASS: TestStep7KindPolicySwitch (10.42s)
-=== RUN   TestStep7Straggler
-=== RUN   TestStep7Straggler/PresetNamesEndWithHourBuild
-    validate_test.go:49: PresetNames() = [uniform skewed bimodal downstream_heavy staggered shrinking_pool high_dim production hour_build]
-=== RUN   TestStep7Straggler/HourBuildIsSkewedWithRank1Grown
-    validate_test.go:95: n=2 seed=1: skewed's largest is shard 0 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 2 query streams)
-    validate_test.go:95: n=6 seed=1: skewed's largest is shard 0 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=6 seed=2: skewed's largest is shard 0 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=6 seed=3: skewed's largest is shard 3 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=6 seed=7: skewed's largest is shard 2 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=6 seed=42: skewed's largest is shard 1 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=6 seed=1000003: skewed's largest is shard 1 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 6 query streams)
-    validate_test.go:95: n=13 seed=1: skewed's largest is shard 4 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 13 query streams)
-    validate_test.go:95: n=50 seed=1: skewed's largest is shard 10 (200000 vectors); hour_build has 12300000 there and is identical elsewhere (sizes, DDL offsets, 50 query streams)
-=== RUN   TestStep7Straggler/HourBuildScenarioIsSkewedPlusStraggler
-    validate_test.go:109: n=6 hour_build scenario: dim=128 sizes={Kind:zipf Min:10000 Max:200000 ZipfExponent:1 BimodalHeavyFraction:0 Straggler:12300000} pool={Workers:2 WorkerMemBytes:25769803776}
-    validate_test.go:109: n=50 hour_build scenario: dim=128 sizes={Kind:zipf Min:10000 Max:200000 ZipfExponent:1 BimodalHeavyFraction:0 Straggler:12300000} pool={Workers:3 WorkerMemBytes:25769803776}
-=== RUN   TestStep7Straggler/StragglerOnUniformTiesGoToLowestID
-    validate_test.go:139: uniform [100000,100000] with Straggler=777777, seed 5: sizes [777777 100000 100000 100000 100000 100000]
-=== RUN   TestStep7Straggler/StragglerOnRandomUniformAndBimodal
-    validate_test.go:176: uniform[10k,200k] seed 1: largest draw is shard 7 (161883 vectors, lowest id among ties); expect it alone replaced by 5M
-    validate_test.go:176: uniform[10k,12k] (ties likely) seed 1: largest draw is shard 0 (10003 vectors, lowest id among ties); expect it alone replaced by 5M
-    validate_test.go:176: bimodal@6 seed 1: largest draw is shard 5 (397250 vectors, lowest id among ties); expect it alone replaced by 5M
-    validate_test.go:176: bimodal@50 seed 1: largest draw is shard 16 (396790 vectors, lowest id among ties); expect it alone replaced by 5M
-    validate_test.go:176: staggered (DDL offsets drawn after sizes) seed 1: largest draw is shard 0 (200000 vectors, lowest id among ties); expect it alone replaced by 5M
-    validate_test.go:176: high_dim seed 1: largest draw is shard 0 (200000 vectors, lowest id among ties); expect it alone replaced by 5M
-=== RUN   TestStep7Straggler/StragglerZeroOrNegativeIsOff
-    validate_test.go:192: Straggler=-5: workload identical to Straggler=0 (go doc: 'if > 0')
-=== RUN   TestStep7Straggler/StragglerCostModelNumbers
-    validate_test.go:203: costmodel.Default() on 12.3M x 128: CPU 3598.3 s, GPU build 361.8 s, transfer 70.85 s, GPU total 432.7 s, memory 12595200000 B = 11.73 GiB
-    validate_test.go:205: hand (costmodel doc formulas): CPU 3598.3 s, GPU build 361.8 s, transfer 70.85 s, total 432.7 s, memory 12595200000 B
---- PASS: TestStep7Straggler (0.05s)
-    --- PASS: TestStep7Straggler/PresetNamesEndWithHourBuild (0.00s)
-    --- PASS: TestStep7Straggler/HourBuildIsSkewedWithRank1Grown (0.03s)
-    --- PASS: TestStep7Straggler/HourBuildScenarioIsSkewedPlusStraggler (0.00s)
-    --- PASS: TestStep7Straggler/StragglerOnUniformTiesGoToLowestID (0.00s)
-    --- PASS: TestStep7Straggler/StragglerOnRandomUniformAndBimodal (0.02s)
-    --- PASS: TestStep7Straggler/StragglerZeroOrNegativeIsOff (0.00s)
-    --- PASS: TestStep7Straggler/StragglerCostModelNumbers (0.00s)
-=== RUN   TestStep7TickPhase
-    validate_test.go:311: hand: GPU total 100k = 4.6391 s, 50k = 3.2575 s
-=== RUN   TestStep7TickPhase/FirstTickAtPhaseShiftsPreemptionByHand
-    validate_test.go:324: phase 0.000: policy=xcheck_script completed=true round=6.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000] shardFinish=[6.6391] events=15
-    validate_test.go:324: phase 0.000: wastedCPU=2.5000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 0.000: round = 6.639116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 0.000: shift vs default = 0.000000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 0.000: wasted CPU = 2.500000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 2.000: policy=xcheck_script completed=true round=6.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000] shardFinish=[6.6391] events=15
-    validate_test.go:324: phase 2.000: wastedCPU=2.5000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 2.000: round = 6.639116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 2.000: shift vs default = 0.000000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 2.000: wasted CPU = 2.500000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 1.000: policy=xcheck_script completed=true round=5.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[1.0000] shardFinish=[5.6391] events=13
-    validate_test.go:324: phase 1.000: wastedCPU=1.5000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 1.000: round = 5.639116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 1.000: shift vs default = 1.000000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 1.000: wasted CPU = 1.500000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 0.500: policy=xcheck_script completed=true round=5.1391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.5000] shardFinish=[5.1391] events=12
-    validate_test.go:324: phase 0.500: wastedCPU=1.0000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 0.500: round = 5.139116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 0.500: shift vs default = 1.500000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 0.500: wasted CPU = 1.000000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 0.700: policy=xcheck_script completed=true round=5.3391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.7000] shardFinish=[5.3391] events=15
-    validate_test.go:324: phase 0.700: wastedCPU=1.0000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 0.700: round = 5.339116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 0.700: shift vs default = 1.300000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 0.700: wasted CPU = 1.000000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 1.300: policy=xcheck_script completed=true round=5.9391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[1.3000] shardFinish=[5.9391] events=16
-    validate_test.go:324: phase 1.300: wastedCPU=1.5000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 1.300: round = 5.939116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 1.300: shift vs default = 0.700000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 1.300: wasted CPU = 1.500000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 1.999: policy=xcheck_script completed=true round=6.6381s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[1.9990] shardFinish=[6.6381] events=18
-    validate_test.go:324: phase 1.999: wastedCPU=2.0000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 1.999: round = 6.638116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 1.999: shift vs default = 0.001000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 1.999: wasted CPU = 2.000000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-    validate_test.go:324: phase 0.001: policy=xcheck_script completed=true round=4.6401s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0010] shardFinish=[4.6401] events=14
-    validate_test.go:324: phase 0.001: wastedCPU=0.5000 placement=[gpu] (reconsider called 3 times)
-    validate_test.go:329: ok: phase 0.001: round = 4.640116 as computed by hand (decision 29: preempt at the first tick p, claimed at once; round = p + GPU total)
-    validate_test.go:330: ok: phase 0.001: shift vs default = 1.999000 as computed by hand (decision 29: shift = ReconsiderS - p)
-    validate_test.go:331: ok: phase 0.001: wasted CPU = 0.500000 as computed by hand (shard aborts at its next report after the tick (decision 21))
-=== RUN   TestStep7TickPhase/EverythingDownstreamShiftsOnTheReportGrid
-    validate_test.go:343: phase 2 (default): policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:343: phase 2 (default): wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:345: phase 1.0: policy=xcheck_script completed=true round=6.1500s lag=1.4463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[1.0000 0.0000] shardFinish=[6.1500 3.2575] events=23
-    validate_test.go:345: phase 1.0: wastedCPU=1.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:349: ok: p=1.0: shard 0 finish shift = 1.000000 as computed by hand (decision 29: everything downstream shifts by ReconsiderS - p)
-    validate_test.go:350: ok: p=1.0: round shift = 1.000000 as computed by hand (decision 29)
-    validate_test.go:351: ok: p=1.0: shard 1 finish (unrelated, GPU from submit) = 3.257452 as computed by hand (not downstream of the tick)
-    validate_test.go:352: ok: p=1.0: wasted CPU shift = 1.000000 as computed by hand (abort at next report, on-grid phase)
-    validate_test.go:345: phase 1.5: policy=xcheck_script completed=true round=6.6500s lag=1.6963s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[1.5000 0.0000] shardFinish=[6.6500 3.2575] events=24
-    validate_test.go:345: phase 1.5: wastedCPU=2.0000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:349: ok: p=1.5: shard 0 finish shift = 0.500000 as computed by hand (decision 29: everything downstream shifts by ReconsiderS - p)
-    validate_test.go:350: ok: p=1.5: round shift = 0.500000 as computed by hand (decision 29)
-    validate_test.go:351: ok: p=1.5: shard 1 finish (unrelated, GPU from submit) = 3.257452 as computed by hand (not downstream of the tick)
-    validate_test.go:352: ok: p=1.5: wasted CPU shift = 0.500000 as computed by hand (abort at next report, on-grid phase)
-    validate_test.go:345: phase 0.5: policy=xcheck_script completed=true round=5.6500s lag=1.1963s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.5000 0.0000] shardFinish=[5.6500 3.2575] events=22
-    validate_test.go:345: phase 0.5: wastedCPU=1.0000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:349: ok: p=0.5: shard 0 finish shift = 1.500000 as computed by hand (decision 29: everything downstream shifts by ReconsiderS - p)
-    validate_test.go:350: ok: p=0.5: round shift = 1.500000 as computed by hand (decision 29)
-    validate_test.go:351: ok: p=0.5: shard 1 finish (unrelated, GPU from submit) = 3.257452 as computed by hand (not downstream of the tick)
-    validate_test.go:352: ok: p=0.5: wasted CPU shift = 1.500000 as computed by hand (abort at next report, on-grid phase)
-=== RUN   TestStep7TickPhase/OffGridPhaseShiftIsQuantizedByReports
-    validate_test.go:364: default: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:364: default: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:365: phase 0.7: policy=xcheck_script completed=true round=5.6500s lag=1.1963s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.7000 0.0000] shardFinish=[5.6500 3.2575] events=25
-    validate_test.go:365: phase 0.7: wastedCPU=1.0000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:367: ok: phase 0.7: shard 0 finish = 5.650000 as computed by hand (report-quantized: index seen at next report after p+T, then 0.10 + 0.05 of index queries)
-    validate_test.go:368: shift of shard 0's finish = 1.5000 s, while ReconsiderS - p = 1.3 s: 'exactly the phase' holds for the build's own finish and for on-grid phases; off-grid, everything a shard learns through a report moves on the 0.5 s grid (G-item)
-=== RUN   TestStep7TickPhase/OutOfRangePhaseBehavesAsDefault
-    validate_test.go:375: default: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:375: default: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:377: phase -1: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase -1: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=-1 behaves exactly as the default (round 7.1500)
-    validate_test.go:377: phase -0.5: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase -0.5: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=-0.5 behaves exactly as the default (round 7.1500)
-    validate_test.go:377: phase 2.0000001: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase 2.0000001: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=2.0000001 behaves exactly as the default (round 7.1500)
-    validate_test.go:377: phase 2.5: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase 2.5: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=2.5 behaves exactly as the default (round 7.1500)
-    validate_test.go:377: phase 3: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase 3: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=3 behaves exactly as the default (round 7.1500)
-    validate_test.go:377: phase 100: policy=xcheck_script completed=true round=7.1500s lag=1.9463s gpu=2 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 0.0000] shardFinish=[7.1500 3.2575] events=25
-    validate_test.go:377: phase 100: wastedCPU=2.5000 placement=[gpu gpu] (reconsider called 3 times)
-    validate_test.go:382: ok: TickPhaseS=100 behaves exactly as the default (round 7.1500)
-=== RUN   TestStep7TickPhase/PhaseIsRelativeToConfiguredInterval
-    validate_test.go:391: R=4 phase 0.0: policy=xcheck_script completed=true round=8.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[4.0000] shardFinish=[8.6391] events=19
-    validate_test.go:391: R=4 phase 0.0: wastedCPU=4.5000 placement=[gpu] (reconsider called 2 times)
-    validate_test.go:392: ok: R=4 phase 0.0: round = 8.639116 as computed by hand (go doc TickPhaseS: first tick at p <= ReconsiderS; zero means ReconsiderS)
-    validate_test.go:391: R=4 phase 4.0: policy=xcheck_script completed=true round=8.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[4.0000] shardFinish=[8.6391] events=19
-    validate_test.go:391: R=4 phase 4.0: wastedCPU=4.5000 placement=[gpu] (reconsider called 2 times)
-    validate_test.go:392: ok: R=4 phase 4.0: round = 8.639116 as computed by hand (go doc TickPhaseS: first tick at p <= ReconsiderS; zero means ReconsiderS)
-    validate_test.go:391: R=4 phase 3.0: policy=xcheck_script completed=true round=7.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[3.0000] shardFinish=[7.6391] events=17
-    validate_test.go:391: R=4 phase 3.0: wastedCPU=3.5000 placement=[gpu] (reconsider called 2 times)
-    validate_test.go:392: ok: R=4 phase 3.0: round = 7.639116 as computed by hand (go doc TickPhaseS: first tick at p <= ReconsiderS; zero means ReconsiderS)
-    validate_test.go:391: R=4 phase 0.5: policy=xcheck_script completed=true round=5.1391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.5000] shardFinish=[5.1391] events=12
-    validate_test.go:391: R=4 phase 0.5: wastedCPU=1.0000 placement=[gpu] (reconsider called 2 times)
-    validate_test.go:392: ok: R=4 phase 0.5: round = 5.139116 as computed by hand (go doc TickPhaseS: first tick at p <= ReconsiderS; zero means ReconsiderS)
-=== RUN   TestStep7TickPhase/LaterTicksFollowEveryInterval
-    validate_test.go:400: 2nd-tick preempt, phase 0.00: policy=xcheck_script completed=true round=8.6391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[4.0000] shardFinish=[8.6391] events=19
-    validate_test.go:400: 2nd-tick preempt, phase 0.00: wastedCPU=4.5000 placement=[gpu] (reconsider called 4 times)
-    validate_test.go:401: ok: phase 0.00: round = 8.639116 as computed by hand (second tick at p + ReconsiderS)
-    validate_test.go:400: 2nd-tick preempt, phase 0.50: policy=xcheck_script completed=true round=7.1391s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.5000] shardFinish=[7.1391] events=16
-    validate_test.go:400: 2nd-tick preempt, phase 0.50: wastedCPU=3.0000 placement=[gpu] (reconsider called 4 times)
-    validate_test.go:401: ok: phase 0.50: round = 7.139116 as computed by hand (second tick at p + ReconsiderS)
-    validate_test.go:400: 2nd-tick preempt, phase 1.25: policy=xcheck_script completed=true round=7.8891s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[3.2500] shardFinish=[7.8891] events=21
-    validate_test.go:400: 2nd-tick preempt, phase 1.25: wastedCPU=3.5000 placement=[gpu] (reconsider called 4 times)
-    validate_test.go:401: ok: phase 1.25: round = 7.889116 as computed by hand (second tick at p + ReconsiderS)
-=== RUN   TestStep7TickPhase/DeterministicUnderAnyPhase
-    validate_test.go:414: ok: high_dim seed 2 reactive at phase 0.25 twice: identical (round 105.6318, preempts 5)
-    validate_test.go:414: ok: high_dim seed 2 reactive at phase 0.75 twice: identical (round 104.1318, preempts 5)
-    validate_test.go:414: ok: high_dim seed 2 reactive at phase 1.90 twice: identical (round 91.6318, preempts 5)
-=== RUN   TestStep7TickPhase/AlwaysGPUIsPhaseInvariant
-    validate_test.go:440: ok: skewed/6 seed 1 always_gpu: identical Result (Events aside) at phases 0.1..2; round 29.9976
-    validate_test.go:440: ok: skewed/50 seed 2 always_gpu: identical Result (Events aside) at phases 0.1..2; round 49.8446
-    validate_test.go:440: ok: hour_build/6 seed 1 always_gpu: identical Result (Events aside) at phases 0.1..2; round 438.2041
-    validate_test.go:440: ok: high_dim/6 seed 3 always_gpu: identical Result (Events aside) at phases 0.1..2; round 537.4812
-    validate_test.go:440: ok: staggered/6 seed 1 always_gpu: identical Result (Events aside) at phases 0.1..2; round 40.1767
---- PASS: TestStep7TickPhase (0.75s)
-    --- PASS: TestStep7TickPhase/FirstTickAtPhaseShiftsPreemptionByHand (0.00s)
-    --- PASS: TestStep7TickPhase/EverythingDownstreamShiftsOnTheReportGrid (0.00s)
-    --- PASS: TestStep7TickPhase/OffGridPhaseShiftIsQuantizedByReports (0.00s)
-    --- PASS: TestStep7TickPhase/OutOfRangePhaseBehavesAsDefault (0.00s)
-    --- PASS: TestStep7TickPhase/PhaseIsRelativeToConfiguredInterval (0.00s)
-    --- PASS: TestStep7TickPhase/LaterTicksFollowEveryInterval (0.00s)
-    --- PASS: TestStep7TickPhase/DeterministicUnderAnyPhase (0.02s)
-    --- PASS: TestStep7TickPhase/AlwaysGPUIsPhaseInvariant (0.73s)
-=== RUN   TestStep7ShardPlacement
-=== RUN   TestStep7ShardPlacement/ConsistentWithBuildCountsAcrossPresetsAndPolicies
-    validate_test.go:488: uniform/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: uniform/6 static_threshold: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: uniform/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: uniform/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: skewed/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: skewed/6 static_threshold: completed=true gpu=1 local=5 placement=[local local local gpu local local]
-    validate_test.go:488: skewed/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: skewed/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: bimodal/6 always_gpu: completed=true gpu=4 local=2 placement=[gpu local gpu local gpu gpu]
-    validate_test.go:488: bimodal/6 static_threshold: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: bimodal/6 reactive: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: bimodal/6 reactive_spec: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: downstream_heavy/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: downstream_heavy/6 static_threshold: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: downstream_heavy/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: downstream_heavy/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: staggered/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: staggered/6 static_threshold: completed=true gpu=1 local=5 placement=[local local local gpu local local]
-    validate_test.go:488: staggered/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: staggered/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: shrinking_pool/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: shrinking_pool/6 static_threshold: completed=true gpu=1 local=5 placement=[local local local gpu local local]
-    validate_test.go:488: shrinking_pool/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: shrinking_pool/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: high_dim/6 always_gpu: completed=true gpu=4 local=2 placement=[gpu local gpu local gpu gpu]
-    validate_test.go:488: high_dim/6 static_threshold: completed=true gpu=0 local=6 placement=[local local local local local local]
-    validate_test.go:488: high_dim/6 reactive: completed=true gpu=4 local=2 placement=[gpu local gpu local gpu gpu]
-    validate_test.go:488: high_dim/6 reactive_spec: completed=true gpu=4 local=2 placement=[gpu local gpu local gpu gpu]
-    validate_test.go:488: hour_build/6 always_gpu: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: hour_build/6 static_threshold: completed=true gpu=1 local=5 placement=[local local local gpu local local]
-    validate_test.go:488: hour_build/6 reactive: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-    validate_test.go:488: hour_build/6 reactive_spec: completed=true gpu=6 local=0 placement=[gpu gpu gpu gpu gpu gpu]
-=== RUN   TestStep7ShardPlacement/ShardOrderMatchesSizes
-    validate_test.go:502: shard 0: 12300000 vectors -> "gpu"
-    validate_test.go:502: shard 1: 66667 vectors -> "local"
-    validate_test.go:502: shard 2: 40000 vectors -> "local"
-    validate_test.go:502: shard 3: 50000 vectors -> "local"
-    validate_test.go:502: shard 4: 33333 vectors -> "local"
-    validate_test.go:502: shard 5: 100000 vectors -> "local"
-=== RUN   TestStep7ShardPlacement/IncompleteRoundLeavesUnfinishedEmpty
-    validate_test.go:518: all-local, cap 100 s: completed=false gpu=0 local=5 placement=[ local local local local local]
-=== RUN   TestStep7ShardPlacement/KilledPoolLeavesQueuedEmpty
-    validate_test.go:540: 1 worker killed at 0.1 s: completed=false gpu=0 local=0 placement=[     ]
---- PASS: TestStep7ShardPlacement (1.52s)
-    --- PASS: TestStep7ShardPlacement/ConsistentWithBuildCountsAcrossPresetsAndPolicies (1.51s)
-    --- PASS: TestStep7ShardPlacement/ShardOrderMatchesSizes (0.00s)
-    --- PASS: TestStep7ShardPlacement/IncompleteRoundLeavesUnfinishedEmpty (0.00s)
-    --- PASS: TestStep7ShardPlacement/KilledPoolLeavesQueuedEmpty (0.00s)
-=== RUN   TestStep7Comparer
-    validate_test.go:587: simulator's own replay, skewed 6 seed 1 always_gpu: round 29.9976 lag 0.0072 placement [gpu gpu gpu gpu gpu gpu]
-=== RUN   TestStep7Comparer/AgreesWithTheSimulatorsOwnReplay
-    validate_test.go:591: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerAgreesWithTheSimulatorsOwnReplay1155107192/001 -policy always_gpu -strict
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        11     1     1         30.00     30.00    +0.00 |      0.01      0.01 | 6/0         6/0         | shard 5     -0.00 s         0.00 s    30.00..30.00   agree
-        summary: 1/1 rounds agree; live - sim: mean +0.00 s, max |delta| 0.00 s
-        
-        round 11 seed 1, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
-                                                   0      200000     gpu  /1         gpu             30.00        30.00    +0.00
-                                                   1      66667      gpu  /1         gpu             29.99        29.99    +0.00
-                                                   2      40000      gpu  /1         gpu             29.99        29.99    +0.00
-                                                   3      50000      gpu  /1         gpu             29.99        29.99    +0.00
-                                                   4      33333      gpu  /1         gpu             29.98        29.98    +0.00
-                                                   5      100000     gpu  /1         gpu             29.99        29.99    -0.00
-                                                   mean |delta| 0.00 s by shard, max |delta| 0.00 s with both sides' finishes sorted (order-free); sim: preempts=0 reneges=0 speculations=0
-    validate_test.go:602: ok: comparer sim_s 30.00 = sim.Run 29.9976; verdict "agree"
-=== RUN   TestStep7Comparer/ReplaysReactiveHighDimLikeSimRun
-    validate_test.go:616: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerReplaysReactiveHighDimLikeSimRun254078039/001 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        21     1     1         93.27     93.27    +0.00 |     18.84     18.84 | 6/0         6/0         | shard 1     -0.00 s         0.00 s    89.77..93.77   agree
-        summary: 1/1 rounds agree; live - sim: mean +0.00 s, max |delta| 0.00 s
-    validate_test.go:622: seed 1: sim.Run 93.2659 (preempts 5), comparer sim_s 93.27, doc row E 93.27, envelope 89.77..93.77
-    validate_test.go:616: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerReplaysReactiveHighDimLikeSimRun254078039/002 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        22     2     1        105.13    105.13    -0.00 |     41.08     41.08 | 6/0         6/0         | shard 5     -0.00 s         0.00 s    90.63..105.63  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:622: seed 2: sim.Run 105.1318 (preempts 5), comparer sim_s 105.13, doc row E 105.13, envelope 90.63..105.63
-    validate_test.go:616: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerReplaysReactiveHighDimLikeSimRun254078039/003 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        23     3     1         95.01     95.01    -0.00 |     22.41     22.41 | 6/0         6/0         | shard 2     -0.00 s         0.00 s    92.01..104.80  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:622: seed 3: sim.Run 95.0104 (preempts 5), comparer sim_s 95.01, doc row E 95.01, envelope 92.01..104.80
-=== RUN   TestStep7Comparer/WorkerMemFlagIsHonoured
-    validate_test.go:639: sim.Run high_dim seed 1 reactive: preset memory 1128960000 B -> 536.06 (g/l 4/2); 24 GiB -> 93.27 (g/l 6/0)
-    validate_test.go:642: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerWorkerMemFlagIsHonoured3951001631/001 -policy reactive -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        25     1     1         93.27    536.06  -442.79 |     18.84    495.85 | 6/0         4/2         | shard 0   -463.85 s       442.79 s   536.06..536.06  DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean -442.79 s, max |delta| 442.79 s
-    validate_test.go:647: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerWorkerMemFlagIsHonoured3951001631/001 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        25     1     1         93.27     93.27    +0.00 |     18.84     18.84 | 6/0         6/0         | shard 1     -0.00 s         0.00 s    89.77..93.77   agree
-        summary: 1/1 rounds agree; live - sim: mean +0.00 s, max |delta| 0.00 s
-    validate_test.go:652: ok: the flag selects the memory; default = preset's
-=== RUN   TestStep7Comparer/RowEAndHMemory
-    validate_test.go:678: seed 1: memory needs [200000:2.46GB 66667:0.82GB 40000:0.49GB 50000:0.61GB 33333:0.41GB 100000:1.23GB]; refused at 24 GiB (E): 0; refused at the preset's 1.129 GB (H): 2
-    validate_test.go:678: seed 2: memory needs [200000:2.46GB 50000:0.61GB 40000:0.49GB 33333:0.41GB 100000:1.23GB 66667:0.82GB]; refused at 24 GiB (E): 0; refused at the preset's 1.129 GB (H): 2
-    validate_test.go:678: seed 3: memory needs [66667:0.82GB 100000:1.23GB 50000:0.61GB 200000:2.46GB 33333:0.41GB 40000:0.49GB]; refused at 24 GiB (E): 0; refused at the preset's 1.129 GB (H): 2
-=== RUN   TestStep7Comparer/ResultsTableReproduces
-    validate_test.go:706: A skewed 6 always_gpu seed 1: sim 29.9976 (table 30.00) gpu/local 6/0 preempts 0 lag 0.01
-    validate_test.go:706: A skewed 6 always_gpu seed 2: sim 29.9924 (table 29.99) gpu/local 6/0 preempts 0 lag 0.07
-    validate_test.go:706: A skewed 6 always_gpu seed 3: sim 30.0823 (table 30.08) gpu/local 6/0 preempts 0 lag 0.12
-    validate_test.go:706: C skewed 50 always_gpu seed 1: sim 48.5588 (table 48.56) gpu/local 50/0 preempts 0 lag 17.79
-    validate_test.go:706: C skewed 50 always_gpu seed 2: sim 49.8446 (table 49.84) gpu/local 50/0 preempts 0 lag 18.64
-    validate_test.go:706: C skewed 50 always_gpu seed 3: sim 48.2190 (table 48.22) gpu/local 50/0 preempts 0 lag 17.58
-    validate_test.go:706: D skewed 50 reactive seed 1: sim 30.1703 (table 30.17) gpu/local 7/43 preempts 6 lag 0.16
-    validate_test.go:706: D skewed 50 reactive seed 2: sim 30.0872 (table 30.09) gpu/local 7/43 preempts 6 lag 0.11
-    validate_test.go:706: D skewed 50 reactive seed 3: sim 30.1289 (table 30.13) gpu/local 8/42 preempts 7 lag 0.12
-    validate_test.go:706: F hour_build 6 always_gpu seed 1: sim 438.2041 (table 438.20) gpu/local 6/0 preempts 0 lag 408.21
-    validate_test.go:706: G hour_build 6 reactive seed 1: sim 438.2041 (table 438.20) gpu/local 6/0 preempts 5 lag 408.21
-=== RUN   TestStep7Comparer/RefusesWorkloadMismatch
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/001 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/001/round-31.json: shard 3 has 50001 vectors live but 50000 regenerated — not the same workload (scenario "skewed" seed 1)
-    validate_test.go:738: ok: one shard's n_vectors + 1 -> refused, exit 1
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/002 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/002/round-31.json: shard 0 has 200000 vectors live but 50000 regenerated — not the same workload (scenario "skewed" seed 1)
-    validate_test.go:738: ok: a shard missing -> refused, exit 1
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/003 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/003/round-31.json: shard 1 has 66667 vectors live but 50000 regenerated — not the same workload (scenario "skewed" seed 2)
-    validate_test.go:738: ok: seed says 2, sizes are seed 1's -> refused, exit 1
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/004 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/004/round-31.json: shard 0 has 200000 vectors live but 12300000 regenerated — not the same workload (scenario "hour_build" seed 1)
-    validate_test.go:738: ok: scenario says hour_build -> refused, exit 1
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/005 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/005/round-31.json: shard 0 has 66667 vectors live but 200000 regenerated — not the same workload (scenario "skewed" seed 1)
-    validate_test.go:738: ok: two shards' sizes swapped -> refused, exit 1
-    validate_test.go:733: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerRefusesWorkloadMismatch2691844423/006 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:31 workload: unknown preset "no_such_preset" (known: [uniform skewed bimodal downstream_heavy staggered shrinking_pool high_dim production hour_build])
-    validate_test.go:738: ok: unknown scenario -> refused, exit 1
-=== RUN   TestStep7Comparer/ScalesCadencesByTimeScale
-    validate_test.go:753: sim.Run: default cadences 105.1318; cadences x10 (poll 5, reconsider 20, lease 100) 106.2536
-    validate_test.go:758: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerScalesCadencesByTimeScale176538248/001 -policy reactive -worker_mem_gb 24 -poll_s 0.05 -reconsider_s 0.2 -lease_s 1 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.05 reconsider=0.2 lease=1; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        41     2     10       105.13    105.13    -0.00 |     41.08     41.08 | 6/0         6/0         | shard 1     -0.00 s         0.00 s    90.63..105.63  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:766: ok: scale 10 with wall cadences 0.05/0.2/1 replays the default 105.13; live_s printed in modeled seconds
-    validate_test.go:768: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerScalesCadencesByTimeScale176538248/001 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        41     2     10       105.13    106.25    -1.12 |     41.08     22.88 | 6/0         6/0         | shard 2    -61.30 s        23.51 s    96.13..106.25  agree
-        summary: 1/1 rounds agree; live - sim: mean -1.12 s, max |delta| 1.12 s
-    validate_test.go:773: ok: scale 10 with wall 0.5/2/10 replays modeled 5/20/100: 106.25
-=== RUN   TestStep7Comparer/ToleranceIsMaxOf2sAnd5Percent
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/001 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        50     1     1         31.90     30.00    +1.90 |      0.01      0.01 | 6/0         6/0         | shard 0     +1.90 s         1.90 s    30.00..30.00   agree
-        summary: 1/1 rounds agree; live - sim: mean +1.90 s, max |delta| 1.90 s
-    validate_test.go:805: ok: skewed round 30.00+1.9 -> "agree" (30 s round: 5% = 1.5 < 2 s, so 2 s applies)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/002 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        51     1     1         28.10     30.00    -1.90 |      0.01      0.01 | 6/0         6/0         | shard 4     -1.90 s         1.90 s    30.00..30.00   agree
-        summary: 1/1 rounds agree; live - sim: mean -1.90 s, max |delta| 1.90 s
-    validate_test.go:805: ok: skewed round 30.00-1.9 -> "agree" (symmetric)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/003 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        52     1     1         32.20     30.00    +2.20 |      0.01      0.01 | 6/0         6/0         | shard 0     +2.20 s         2.20 s    30.00..30.00   DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean +2.20 s, max |delta| 2.20 s
-    validate_test.go:805: ok: skewed round 30.00+2.2 -> "DISAGREE" (beyond 2 s)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/004 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        53     1     1         27.80     30.00    -2.20 |      0.01      0.01 | 6/0         6/0         | shard 4     -2.20 s         2.20 s    30.00..30.00   DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean -2.20 s, max |delta| 2.20 s
-    validate_test.go:805: ok: skewed round 30.00-2.2 -> "DISAGREE" (beyond 2 s, live faster)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/005 -policy always_gpu -shards=false
-        (exit 0)
-        validate: hour_build policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        54     1     1        459.20    438.20   +21.00 |    408.21    408.21 | 6/0         6/0         | shard 1    +21.00 s        21.00 s   438.20..438.20  agree
-        summary: 1/1 rounds agree; live - sim: mean +21.00 s, max |delta| 21.00 s
-    validate_test.go:805: ok: hour_build round 438.20+21.0 -> "agree" (438 s round: 5% = 21.9 s > 2 s)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/006 -policy always_gpu -shards=false
-        (exit 0)
-        validate: hour_build policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        55     1     1        417.20    438.20   -21.00 |    408.21    408.21 | 6/0         6/0         | shard 2    -21.00 s        21.00 s   438.20..438.20  agree
-        summary: 1/1 rounds agree; live - sim: mean -21.00 s, max |delta| 21.00 s
-    validate_test.go:805: ok: hour_build round 438.20-21.0 -> "agree" (symmetric)
-    validate_test.go:799: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/007 -policy always_gpu -shards=false
-        (exit 0)
-        validate: hour_build policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        56     1     1        461.20    438.20   +23.00 |    408.21    408.21 | 6/0         6/0         | shard 1    +23.00 s        23.00 s   438.20..438.20  DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean +23.00 s, max |delta| 23.00 s
-    validate_test.go:805: ok: hour_build round 438.20+23.0 -> "DISAGREE" (beyond 5%)
-    validate_test.go:810: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/008 -policy always_gpu -tol_s 0.5 -tol_frac 0.01 -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(0.5 s, 1%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        60     1     1         31.00     30.00    +1.00 |      0.01      0.01 | 6/0         6/0         | shard 0     +1.00 s         1.00 s    30.00..30.00   DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean +1.00 s, max |delta| 1.00 s
-    validate_test.go:814: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerToleranceIsMaxOf2sAnd5Percent4082490990/008 -policy always_gpu -tol_s 0.5 -tol_frac 0.05 -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(0.5 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        60     1     1         31.00     30.00    +1.00 |      0.01      0.01 | 6/0         6/0         | shard 0     +1.00 s         1.00 s    30.00..30.00   agree
-        summary: 1/1 rounds agree; live - sim: mean +1.00 s, max |delta| 1.00 s
-=== RUN   TestStep7Comparer/ExitCodeIsZeroOnDisagreementUnlessStrict
-    validate_test.go:824: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerExitCodeIsZeroOnDisagreementUnlessStrict2586881474/001 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        70     1     1         30.00     30.00    +0.00 |      0.01      0.01 | 6/0         6/0         | shard 5     -0.00 s         0.00 s    30.00..30.00   agree
-        71     1     1         40.00     30.00   +10.00 |      0.01      0.01 | 6/0         6/0         | shard 1    +10.00 s        10.00 s    30.00..30.00   DISAGREE
-        summary: 1/2 rounds agree; live - sim: mean +5.00 s, max |delta| 10.00 s
-    validate_test.go:831: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerExitCodeIsZeroOnDisagreementUnlessStrict2586881474/001 -policy always_gpu -shards=false -strict
-        (exit 1)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        70     1     1         30.00     30.00    +0.00 |      0.01      0.01 | 6/0         6/0         | shard 5     -0.00 s         0.00 s    30.00..30.00   agree
-        71     1     1         40.00     30.00   +10.00 |      0.01      0.01 | 6/0         6/0         | shard 1    +10.00 s        10.00 s    30.00..30.00   DISAGREE
-        summary: 1/2 rounds agree; live - sim: mean +5.00 s, max |delta| 10.00 s
-    validate_test.go:835: ok: exit 0 without -strict, 1 with it
-=== RUN   TestStep7Comparer/PlacementDifferenceAloneDoesNotDisagree
-    validate_test.go:848: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerPlacementDifferenceAloneDoesNotDisagree725213063/001 -policy always_gpu -shards=false
-        (exit 0)
-        validate: skewed policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        80     1     1         30.00     30.00    +0.00 |      0.01      0.01 | 5/1         6/0         | shard 5     -0.00 s         0.00 s    30.00..30.00   agree
-        summary: 1/1 rounds agree; live - sim: mean +0.00 s, max |delta| 0.00 s
-=== RUN   TestStep7Comparer/EnvelopeContainsDefaultReplay
-    validate_test.go:875: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerEnvelopeContainsDefaultReplay4253491507/001 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        91     1     1         93.27     93.27    +0.00 |     18.84     18.84 | 6/0         6/0         | shard 1     -0.00 s         0.00 s    89.77..93.77   agree
-        summary: 1/1 rounds agree; live - sim: mean +0.00 s, max |delta| 0.00 s
-    validate_test.go:877: seed 1: default 93.27; our 8-phase grid [93.77 89.77 89.77 89.77 89.77 89.77 89.77 93.27] -> 89.77..93.77; comparer envelope 89.77..93.77; doc 89.8..93.8
-    validate_test.go:875: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerEnvelopeContainsDefaultReplay4253491507/002 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        92     2     1        105.13    105.13    -0.00 |     41.08     41.08 | 6/0         6/0         | shard 5     -0.00 s         0.00 s    90.63..105.63  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:877: seed 2: default 105.13; our 8-phase grid [105.63 103.63 104.13 90.63 91.13 91.13 91.63 105.13] -> 90.63..105.63; comparer envelope 90.63..105.63; doc 90.6..105.6
-    validate_test.go:875: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerEnvelopeContainsDefaultReplay4253491507/003 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        93     3     1         95.01     95.01    -0.00 |     22.41     22.41 | 6/0         6/0         | shard 2     -0.00 s         0.00 s    92.01..104.80  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:877: seed 3: default 95.01; our 8-phase grid [95.01 92.01 92.51 92.51 93.01 104.30 104.80 95.01] -> 92.01..104.80; comparer envelope 92.01..104.80; doc 92.0..104.8
-=== RUN   TestStep7Comparer/ProbesWhereTheSpecIsSilent
-    validate_test.go:895: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/001 -policy always_gpu -shards=false
-        (exit 1)
-        2026/10/28 19:46:32 /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/001/round-100.json: position 0 holds shard_id 5 — shards must be listed in id order
-    validate_test.go:897: probe 1, shards in reverse order (sizes keyed by shard_id correct): exit 1 verdict "" — the comparer matches by POSITION, and its message names the position as the shard ("shard 0 has 100000" is shard_id 5)
-    validate_test.go:899: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/002 -shards=false
-        (exit 2)
-        Usage of /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/xcheck-validate3812899087/validate:
-          -lease_s float
-            	worker LEASE_SECONDS, wall seconds (default 10)
-          -phases int
-            	replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase (default 8)
-          -policy string
-            	the policy the live scheduler ran (its POLICY setting)
-          -poll_s float
-            	shardsim POLL_INTERVAL, wall seconds (default 0.5)
-          -reconsider_s float
-            	scheduler RECONSIDER_INTERVAL, wall seconds (default 2)
-          -shards
-            	print the per-shard finish table (default true)
-          -strict
-            	exit 1 if any round disagrees
-          -timelines string
-            	directory of round-<id>.json files written by shardsim (TIMELINE_DIR)
-          -tol_frac float
-            	agreement tolerance as a fraction of the simulated round time (default 0.05)
-          -tol_s float
-            	agreement tolerance, modeled seconds (the larger of this and tol_frac applies) (default 2)
-          -trust_policy
-            	skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)
-          -worker_mem_gb float
-            	live WORKER_MEM_BYTES in GiB (0 = the preset's)
-          -workers int
-            	live worker count (0 = the preset's)
-    validate_test.go:900: probe 2, -policy omitted: exit 2, header "Usage of /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/xcheck-validate3812899087/validate:"
-    validate_test.go:902: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/003 -policy always_gpu
-        (exit 1)
-        2026/10/28 19:46:32 no round-*.json in /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/003
-    validate_test.go:903: probe 3, empty timeline directory: exit 1, output "2026/10/28 19:46:32 no round-*.json in /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/003"
-    validate_test.go:910: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerProbesWhereTheSpecIsSilent2799177224/004 -policy always_gpu -shards=false -strict
-        (exit 0)
-        validate: hour_build policy=always_gpu workers=0 worker_mem=0GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        102    1     1        438.20    438.20    -0.00 |    408.21    408.21 | 6/0         6/0         | shard 0     -0.00 s         0.00 s   438.20..438.20  agree
-        summary: 1/1 rounds agree; live - sim: mean -0.00 s, max |delta| 0.00 s
-    validate_test.go:912: probe 4, reactive round (preempts 5) compared as always_gpu: exit 0 verdict "agree" — the comparer cannot tell the policy that ran; only the runner's pod-log check (decision 30) can
-=== RUN   TestStep7Comparer/InsideEnvelopeOutsideToleranceVerdict
-    validate_test.go:922: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerInsideEnvelopeOutsideToleranceVerdict3527857759/001 -policy reactive -worker_mem_gb 24 -shards=false -strict
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        95     2     1         91.58    105.13   -13.55 |     41.08     41.08 | 6/0         6/0         | shard 0    -13.55 s        13.55 s    90.63..105.63  agree within tick-phase envelope
-        summary: 1/1 rounds agree; live - sim: mean -13.55 s, max |delta| 13.55 s
-    validate_test.go:927: verdict "agree within tick-phase envelope"; -strict exit 0 (whether an envelope-only agreement passes -strict is not stated: G-item)
-    validate_test.go:930: $ validate -timelines /var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/TestStep7ComparerInsideEnvelopeOutsideToleranceVerdict3527857759/002 -policy reactive -worker_mem_gb 24 -shards=false
-        (exit 0)
-        validate: high_dim policy=reactive workers=0 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=10; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
-        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
-        96     2     1         80.00    105.13   -25.13 |     41.08     41.08 | 6/0         6/0         | shard 0    -25.13 s        25.13 s    90.63..105.63  DISAGREE
-        summary: 0/1 rounds agree; live - sim: mean -25.13 s, max |delta| 25.13 s
---- PASS: TestStep7Comparer (2.96s)
-    --- PASS: TestStep7Comparer/AgreesWithTheSimulatorsOwnReplay (1.78s)
-    --- PASS: TestStep7Comparer/ReplaysReactiveHighDimLikeSimRun (0.13s)
-    --- PASS: TestStep7Comparer/WorkerMemFlagIsHonoured (0.07s)
-    --- PASS: TestStep7Comparer/RowEAndHMemory (0.00s)
-    --- PASS: TestStep7Comparer/ResultsTableReproduces (0.39s)
-    --- PASS: TestStep7Comparer/RefusesWorkloadMismatch (0.03s)
-    --- PASS: TestStep7Comparer/ScalesCadencesByTimeScale (0.07s)
-    --- PASS: TestStep7Comparer/ToleranceIsMaxOf2sAnd5Percent (0.14s)
-    --- PASS: TestStep7Comparer/ExitCodeIsZeroOnDisagreementUnlessStrict (0.04s)
-    --- PASS: TestStep7Comparer/PlacementDifferenceAloneDoesNotDisagree (0.01s)
-    --- PASS: TestStep7Comparer/EnvelopeContainsDefaultReplay (0.19s)
-    --- PASS: TestStep7Comparer/ProbesWhereTheSpecIsSilent (0.04s)
-    --- PASS: TestStep7Comparer/InsideEnvelopeOutsideToleranceVerdict (0.07s)
-PASS
-ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	16.056s
+== pytest (worker/)
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-8.4.2, pluggy-1.6.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker
+configfile: pyproject.toml
+testpaths: tests
+collecting ... collected 18 items
 
-== Docker events for container kgpu-test-pg-32039
-  19:46:12  create
-  19:46:12  start
-  19:46:32  kill
-  19:46:32  die
-  19:46:32  destroy
+tests/test_costmodel.py::test_matches_go_defaults PASSED                 [  5%]
+tests/test_costmodel.py::test_env_overrides PASSED                       [ 11%]
+tests/test_health.py::test_livez_always_and_healthz_follows_heartbeats PASSED [ 16%]
+tests/test_health.py::test_metrics_served_on_the_health_port PASSED      [ 22%]
+tests/test_store.py::test_claim_order_and_attempt PASSED                 [ 27%]
+tests/test_store.py::test_fencing_after_reap PASSED                      [ 33%]
+tests/test_store.py::test_memory_filter_and_release PASSED               [ 38%]
+tests/test_store.py::test_heartbeat_upsert PASSED                        [ 44%]
+tests/test_worker.py::test_worker_claims_builds_completes PASSED         [ 50%]
+tests/test_worker.py::test_lease_lost_mid_build_abandons_without_completing PASSED [ 55%]
+tests/test_worker.py::test_sigterm_releases_long_build_and_finishes_short_one PASSED [ 61%]
+tests/test_worker.py::test_two_workers_never_share_a_build PASSED        [ 66%]
+tests/test_worker.py::test_registers_before_first_claim PASSED           [ 72%]
+tests/test_worker.py::test_build_error_marks_failed_with_reason_and_worker_continues PASSED [ 77%]
+tests/test_worker.py::test_bad_config_is_refused_before_connecting PASSED [ 83%]
+tests/test_worker.py::test_survives_lost_database_connections_mid_build PASSED [ 88%]
+tests/test_worker.py::test_renew_outage_past_lease_deadline_assumes_lost PASSED [ 94%]
+tests/test_worker.py::test_waits_for_schema_at_startup PASSED            [100%]
+
+==================================== PASSES ====================================
+___________________________ test_matches_go_defaults ___________________________
+----------------------------- Captured stdout call -----------------------------
+100k x 128: cpu=20.631s gpu_total=4.639s mem=102400000
+_______________ test_livez_always_and_healthz_follows_heartbeats _______________
+----------------------------- Captured stdout call -----------------------------
+/livez before any heartbeat -> 200 {'status': 'alive'}
+/healthz before any heartbeat -> 503 {'status': 'postgres unreachable', 'last_heartbeat_age_s': None}
+/healthz right after a heartbeat -> 200 {'status': 'ok', 'last_heartbeat_age_s': 0.0}
+/healthz 0.45 s later (stale_after 0.3 s) -> 503 {'status': 'postgres unreachable', 'last_heartbeat_age_s': 0.5}
+liveness never depends on Postgres; readiness ages out with the heartbeat
+____________________ test_metrics_served_on_the_health_port ____________________
+----------------------------- Captured stdout call -----------------------------
+/metrics served on the probe port; worker_busy and every builds_total outcome present
+_________________________ test_claim_order_and_attempt _________________________
+----------------------------- Captured stdout call -----------------------------
+claim #1 -> Claimed(build_id='2:1', round_id=1, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576)
+claim #2 -> Claimed(build_id='1:1', round_id=1, attempt=1, n_vectors=100000, dim=128, mem_bytes=1048576)
+claim #3 on the empty queue -> None
+___________________________ test_fencing_after_reap ____________________________
+----------------------------- Captured stdout call -----------------------------
+worker-1 claims -> attempt 1
+  [db] build 1:2: {'state': 'leased', 'attempt': 1, 'lease_owner': 'worker-1', 'placement': 'gpu', 'lease_left_s': 30}
+worker-1 goes silent; the lease expires; the scheduler's reaper runs
+  [db] build 1:2: {'state': 'queued', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+worker-2 claims -> attempt 2
+  [db] build 1:2: {'state': 'leased', 'attempt': 2, 'lease_owner': 'worker-2', 'placement': 'gpu', 'lease_left_s': 30}
+worker-1 wakes up holding attempt 1:
+  renew(1)    -> rejected
+  complete(1) -> rejected
+  fail(1)     -> rejected
+  release(1)  -> rejected
+  [db] build 1:2: {'state': 'leased', 'attempt': 2, 'lease_owner': 'worker-2', 'placement': 'gpu', 'lease_left_s': 30}
+worker-2 renew(2), complete(2) -> accepted
+  [db] build 1:2: {'state': 'done', 'attempt': 2, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+worker-2 complete(2) again -> rejected (already done)
+________________________ test_memory_filter_and_release ________________________
+----------------------------- Captured stdout call -----------------------------
+8 GiB worker skipped the 16 GiB build and took 2:3
+released it
+re-claimed -> attempt 2
+____________________________ test_heartbeat_upsert _____________________________
+----------------------------- Captured stdout call -----------------------------
+two heartbeats, one row, capacity updated
+_____________________ test_worker_claims_builds_completes ______________________
+----------------------------- Captured stdout call -----------------------------
+two queued builds; one worker; fake builds take ~0.09 s each at 50x
+  [db] build 1:4: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:4: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] workers: [('gpu-1', 8589934592)]
+worker exited cleanly; builds_done=2 builds_lost=0
+____________ test_lease_lost_mid_build_abandons_without_completing _____________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:5: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:5: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-slow', 'placement': 'gpu', 'lease_left_s': 2}
+worker claimed (attempt 1) and is building
+the scheduler's reaper decides the lease expired, and another worker claims attempt 2
+  [db] build 1:5: {'state': 'leased', 'attempt': 2, 'lease_owner': 'gpu-other', 'placement': 'gpu', 'lease_left_s': 30}
+  [db] build 1:5: {'state': 'leased', 'attempt': 2, 'lease_owner': 'gpu-other', 'placement': 'gpu', 'lease_left_s': 30}
+worker's renew was rejected; it cancelled its build and left the row to gpu-other
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:277 renew rejected: lease lost, cancelling build
+WARNING  kgpu.worker:worker.py:242 lost ownership
+___________ test_sigterm_releases_long_build_and_finishes_short_one ____________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:6: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:6: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-term', 'placement': 'gpu', 'lease_left_s': 2}
+SIGTERM arrives with ~0.8 s of build left and a 0.2 s finish budget
+  [db] build 1:6: {'state': 'queued', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+the build went back to the queue immediately (no waiting for the reaper), attempt unchanged; counted as released, not lost
+the worker deregistered itself on the clean exit: pool state no longer counts it
+  [db] build 2:6: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:6: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-term2', 'placement': 'gpu', 'lease_left_s': 2}
+SIGTERM arrives with the short build mid-flight and a generous budget
+  [db] build 2:6: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+the short build was finished before exit
+_____________________ test_two_workers_never_share_a_build _____________________
+----------------------------- Captured stdout call -----------------------------
+12 builds, 2 workers: gpu-a did 6, gpu-b did 6, every attempt is 1
+______________________ test_registers_before_first_claim _______________________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:8: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:8: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-first', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] registered_at=05:42:12.425856 claim started_at=05:42:12.427238
+________ test_build_error_marks_failed_with_reason_and_worker_continues ________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:9: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:9: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:9: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:9: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-fail', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:9: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:9: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] 1:9: failed, reason='RuntimeError: injected failure for 1:9 (FAKE_FAIL_BUILD_IDS)'
+  [db] build 1:9: {'state': 'failed', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  the worker kept going and completed 2:9; the process did not crash
+------------------------------ Captured log call -------------------------------
+ERROR    kgpu.worker:worker.py:164 build failed
+Traceback (most recent call last):
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/worker.py", line 159, in _work
+    artifact = self.builder.build(job, progress, cur.cancel)
+  File "/Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/kgpu_worker/builder.py", line 78, in build
+    raise RuntimeError(f"injected failure for {job.build_id} (FAKE_FAIL_BUILD_IDS)")
+RuntimeError: injected failure for 1:9 (FAKE_FAIL_BUILD_IDS)
+_________________ test_bad_config_is_refused_before_connecting _________________
+----------------------------- Captured stdout call -----------------------------
+  {'COST_BANDWIDTH': '0'} -> ConfigError(COST_BANDWIDTH must be positive)
+  {'LEASE_SECONDS': '5', 'RENEW_INTERVAL_SECONDS': '5'} -> ConfigError(RENEW_INTERVAL_SECONDS must be less than LEASE_SECONDS)
+  {'FAKE_TIME_SCALE': '-1'} -> ConfigError(FAKE_TIME_SCALE must be positive)
+  {'COST_A': 'fast'} -> ConfigError(COST_* value is not a number (could not convert string to float: 'fast'))
+  {'LOG_FORMAT': 'yaml'} -> ConfigError(LOG_FORMAT must be json or text)
+______________ test_survives_lost_database_connections_mid_build _______________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:10: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+worker claimed and is building; now every one of its connections is killed server-side
+  terminated 3 backend connections (main, renewer, heartbeat)
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 2}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 1:10: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:10: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 2:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 2:10: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-outage', 'placement': 'gpu', 'lease_left_s': 3}
+  [db] build 2:10: {'state': 'done', 'attempt': 1, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+reconnected on every thread, renewed in time, completed attempt 1, then claimed and completed the next build
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:321 postgres unavailable during heartbeat, reconnecting
+WARNING  kgpu.worker:worker.py:233 postgres unavailable during complete, reconnecting
+______________ test_renew_outage_past_lease_deadline_assumes_lost ______________
+----------------------------- Captured stdout call -----------------------------
+  [db] build 1:11: {'state': 'queued', 'attempt': 0, 'lease_owner': None, 'placement': 'gpu', 'lease_left_s': None}
+  [db] build 1:11: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-blackout', 'placement': 'gpu', 'lease_left_s': 1}
+renews failed for longer than the lease: the worker assumed the lease lost and cancelled the build
+  [db] build 1:11: {'state': 'leased', 'attempt': 1, 'lease_owner': 'gpu-blackout', 'placement': 'gpu', 'lease_left_s': 0}
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:267 postgres unavailable during renew, reconnecting
+WARNING  kgpu.worker:worker.py:262 renew failing past the lease deadline: assuming the lease is lost, cancelling build
+WARNING  kgpu.worker:worker.py:242 lost ownership
+_______________________ test_waits_for_schema_at_startup _______________________
+----------------------------- Captured stdout call -----------------------------
+`workers` table hidden; starting a worker against a database with no schema for it
+  after 1.5 s: worker alive, not registered, no crash
+table restored (the scheduler has 'migrated')
+  [db] worker registered on its next retry
+------------------------------ Captured log call -------------------------------
+WARNING  kgpu.worker:worker.py:300 schema not ready, waiting for the scheduler to migrate
+WARNING  kgpu.worker:worker.py:300 schema not ready, waiting for the scheduler to migrate
+=========================== short test summary info ============================
+PASSED tests/test_costmodel.py::test_matches_go_defaults
+PASSED tests/test_costmodel.py::test_env_overrides
+PASSED tests/test_health.py::test_livez_always_and_healthz_follows_heartbeats
+PASSED tests/test_health.py::test_metrics_served_on_the_health_port
+PASSED tests/test_store.py::test_claim_order_and_attempt
+PASSED tests/test_store.py::test_fencing_after_reap
+PASSED tests/test_store.py::test_memory_filter_and_release
+PASSED tests/test_store.py::test_heartbeat_upsert
+PASSED tests/test_worker.py::test_worker_claims_builds_completes
+PASSED tests/test_worker.py::test_lease_lost_mid_build_abandons_without_completing
+PASSED tests/test_worker.py::test_sigterm_releases_long_build_and_finishes_short_one
+PASSED tests/test_worker.py::test_two_workers_never_share_a_build
+PASSED tests/test_worker.py::test_registers_before_first_claim
+PASSED tests/test_worker.py::test_build_error_marks_failed_with_reason_and_worker_continues
+PASSED tests/test_worker.py::test_bad_config_is_refused_before_connecting
+PASSED tests/test_worker.py::test_survives_lost_database_connections_mid_build
+PASSED tests/test_worker.py::test_renew_outage_past_lease_deadline_assumes_lost
+PASSED tests/test_worker.py::test_waits_for_schema_at_startup
+============================= 18 passed in 10.80s ==============================
+== pytest (builder/)
+============================= test session starts ==============================
+platform darwin -- Python 3.12.15, pytest-8.4.2, pluggy-1.7.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder
+configfile: pyproject.toml
+testpaths: tests
+collecting ... collected 9 items
+
+tests/test_groundtruth.py::test_exact_topk_matches_naive_loop_and_chunking_is_invisible PASSED [ 11%]
+tests/test_groundtruth.py::test_k_is_clamped_to_shard_size PASSED        [ 22%]
+tests/test_groundtruth.py::test_recall_at_by_hand PASSED                 [ 33%]
+tests/test_split.py::test_zipf_sizes_sum_and_shape PASSED                [ 44%]
+tests/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid PASSED [ 55%]
+tests/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded PASSED [ 66%]
+tests/test_split.py::test_write_split_round_trips_with_sha256 PASSED     [ 77%]
+tests/test_store.py::test_bytes_json_npy_round_trip_and_listing PASSED   [ 88%]
+tests/test_store.py::test_ensure_bucket_is_idempotent PASSED             [100%]
+
+==================================== PASSES ====================================
+_________ test_exact_topk_matches_naive_loop_and_chunking_is_invisible _________
+----------------------------- Captured stdout call -----------------------------
+700 queries x 3000 vectors: chunked top-10 equals the naive loop at 8 probed queries and is chunk-size independent
+________________________ test_zipf_sizes_sum_and_shape _________________________
+----------------------------- Captured stdout call -----------------------------
+1M across 6 shards, s=1: [408164, 204082, 136055, 102040, 81632, 68027]
+1M across 50 shards: largest 222262, smallest 4445, sum 1000000
+____________ test_plan_permutes_ranks_and_is_contiguous_and_seeded _____________
+----------------------------- Captured stdout call -----------------------------
+shard -> rank, offset, size: [(0, 5, 0, 81632), (1, 1, 81632, 408164), (2, 3, 489796, 136055), (3, 2, 625851, 204082), (4, 6, 829933, 68027), (5, 4, 897960, 102040)]
+___________________ test_write_split_round_trips_with_sha256 ___________________
+----------------------------- Captured stdout call -----------------------------
+4 shards written, manifest round-trips, every shard equals its contiguous slice
+__________________ test_bytes_json_npy_round_trip_and_listing __________________
+----------------------------- Captured stdout call -----------------------------
+bytes, JSON and .npy round-trip through MinIO; listing, exists and delete_prefix behave
+=========================== short test summary info ============================
+PASSED tests/test_groundtruth.py::test_exact_topk_matches_naive_loop_and_chunking_is_invisible
+PASSED tests/test_groundtruth.py::test_k_is_clamped_to_shard_size
+PASSED tests/test_groundtruth.py::test_recall_at_by_hand
+PASSED tests/test_split.py::test_zipf_sizes_sum_and_shape
+PASSED tests/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid
+PASSED tests/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded
+PASSED tests/test_split.py::test_write_split_round_trips_with_sha256
+PASSED tests/test_store.py::test_bytes_json_npy_round_trip_and_listing
+PASSED tests/test_store.py::test_ensure_bucket_is_idempotent
+============================== 9 passed in 0.31s ===============================
+
+== Docker events for container kgpu-test-pg-56911
+  22:42:07  create
+  22:42:07  start
+  22:42:20  kill
+  22:42:20  die
+  22:42:20  destroy
 
 == Result: PASS

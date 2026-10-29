@@ -734,3 +734,18 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | crosscheck/TestStep7Comparer/InsideEnvelopeOutsideToleranceVerdict | Live 91.58 against default 105.13; live 80. | "agree within tick-phase envelope"; DISAGREE. |
 | crosscheck/TestStep7KindPolicySwitch | Live kind: POLICY always_gpu → reactive → always_gpu with rollout restart, timing `rollout status` against the pod-log proof; restored afterwards. | The new pod's startup line names the policy. When status returned (about 1.3 s) the old-policy pod was still alive and draining; proof came at about 5.5 s (decision 30, bug 15, G7). |
 
+## Phase 4, step 1: the data (Python, `builder/tests`, pure except the store tests, which `scripts/test-db.sh` runs against a throwaway RustFS). Log: `phase4/step1-data.log` (the pipeline against the cluster), `latest.log` for the unit tests
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_split.py::test_zipf_sizes_sum_and_shape | 1M vectors across 6 and across 50 shards at s = 1. | Sizes sum exactly; descending; the top is N/H(n,1) (408,163 at 6; 222k at 50) with the remainder on the top ranks; the smallest 50-way shard is at least 4,400. |
+| builder/test_split.py::test_zipf_exponent_zero_is_uniform_and_small_totals_are_valid | s = 0; 7 vectors across 4 shards; 50 across 50 at s = 1.5. | Equal sizes at s = 0; every shard at least 1 vector; sums exact. |
+| builder/test_split.py::test_plan_permutes_ranks_and_is_contiguous_and_seeded | Plan a 6-way split with seeds 1 and 2. | Ranks 1..6 each used once; offsets contiguous and ending at N; the same seed replans identically, a different seed permutes differently (decision 9). |
+| builder/test_split.py::test_write_split_round_trips_with_sha256 | 1000 toy vectors written as 4 shards. | Every shard file equals its contiguous slice; the manifest carries one sha256 per object and round-trips through JSON. |
+| builder/test_groundtruth.py::test_exact_topk_matches_naive_loop_and_chunking_is_invisible | 700 queries over 3000 vectors, chunk 256 and 10,000. | The chunked top-10 equals a naive per-query sort at probed queries; the chunk size does not change the answer (decision 14). |
+| builder/test_groundtruth.py::test_k_is_clamped_to_shard_size | k = 100 against a 5-vector shard. | Five results per query, a permutation of the shard. |
+| builder/test_groundtruth.py::test_recall_at_by_hand | Two queries with known overlaps. | recall@4 = 6/8, recall@2 = 1/4. |
+| builder/test_store.py::test_bytes_json_npy_round_trip_and_listing | Put bytes, JSON and an array; list, size, exists, delete a prefix. | Everything round-trips through the object store; listing and deletion are exact (decisions 11, 13). |
+| builder/test_store.py::test_ensure_bucket_is_idempotent | Create the bucket three times. | No error. |
+| scripts/phase4-data.sh | Both datasets at 6 and 50 shards into the cluster's RustFS, then verified. | Every object present with the manifest's sha256; the bucket holds the four splits, the queries and the ground truth. |
+

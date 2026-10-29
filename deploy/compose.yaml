@@ -27,6 +27,25 @@ services:
     ports:
       - "127.0.0.1:${PG_PORT:-15432}:5432"   # for psql from the host; not needed by the stack
 
+  # Phase 4: the object store — vectors in, index files and manifests out
+  # (Phase 4 decision 1; RustFS instead of MinIO, whose images were withdrawn,
+  # decision 13). S3 API on 9000, a web console on 9001.
+  objectstore:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-kgpu}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-kgpu-secret}
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/health/live || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    ports:
+      - "127.0.0.1:${S3_PORT:-9000}:9000"   # the data tools and (step 2) the shards on the laptop
+      - "127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001"
+
   scheduler:
     build:
       context: ..
@@ -118,3 +137,4 @@ services:
 volumes:
   pgdata:
   timelines:
+  objects:

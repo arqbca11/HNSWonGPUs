@@ -8,7 +8,7 @@ Full roadmap, schema, policies and experiment plan: `docs/roadmap.md`. That is t
 
 ## Current phase
 
-**Phase 3 (placement policies and experiments) is in progress; step 7 (the simulator validated against the live kind cluster, decisions 26–30) is done.** Next: the FULL policy comparison on the validated simulator (the sweeps in `docs/roadmap.md`, Phase 3), which is the phase's "done when". Phase 2 is done, including its two post-close amendments (decisions 39, 40).
+**Phase 3's steps are done (step 7 validated the simulator against the live cluster, decisions 26–30); its FULL policy comparison, the phase's "done when", is still owed. Phase 4 (real CPU builds) has started: step 1, the data, is built — the `builder/` package, the two datasets split 6 and 50 ways with exact ground truth, and RustFS as the object store (Phase 4 decisions 9–14).** Next: Phase 4 step 2, the hnswlib builder CLI and the artifact store; the Phase 3 full comparison can run in parallel. Phase 2 is done, including its two post-close amendments (decisions 39, 40).
 Update this line when a phase is done. Don't start work that belongs to a later phase unless asked.
 
 ## Architecture
@@ -20,7 +20,8 @@ Update this line when a phase is done. Don't start work that belongs to a later 
 | `worker/` | Pulls GPU jobs, renews its lease, runs the build, publishes the result | Python |
 | `db/migrations/` | Postgres schema; Postgres is the only source of truth | SQL |
 | `experiments/` | Seeded workloads, discrete-event simulator, runner, results | Go / Python |
-| `deploy/` | Docker Compose; kind cluster and manifests for the control plane and GPU pool (scheduler, Postgres, workers). The shards run outside the cluster, as the database fleet would | YAML |
+| `builder/` | Phase 4: the dataset tools (download, Zipf split at 6 and 50 shards, exact per-shard ground truth, upload to the object store) and, from step 2, the hnswlib builder CLI that the worker and the shard both run | Python |
+| `deploy/` | Docker Compose; kind cluster and manifests for the control plane and GPU pool (scheduler, Postgres, the object store, workers). The shards run outside the cluster, as the database fleet would | YAML |
 
 ## Invariants (never break these)
 
@@ -76,10 +77,11 @@ Toolchain (macOS, Homebrew): `brew install go python@3.12 uv libpq kind kubectl 
 | --- | --- |
 | Check toolchain | `go version && python3.12 --version && uv --version && psql --version && docker compose version` |
 | Compile and vet Go | `go build ./... && go vet ./...` |
-| All tests, Go then Python (needs Docker; starts a throwaway Postgres) | `scripts/test-db.sh`. `--go` or `--py` for one side; explicit `go test` args (e.g. `scripts/test-db.sh -v -run Fencing ./scheduler/...`) run Go only. Go packages run one at a time (`-p 1`) because they share the database. Writes a narrated log to `test-logs/latest.log` (tracked) and `test-logs/history/` (local). `--save phase1/<name>` also keeps a tracked copy at `test-logs/phase1/<name>.log`; see `test-logs/README.md`. |
+| All tests, Go then Python (needs Docker; starts a throwaway Postgres and a throwaway RustFS object store) | `scripts/test-db.sh`. `--go` or `--py` for one side; explicit `go test` args (e.g. `scripts/test-db.sh -v -run Fencing ./scheduler/...`) run Go only. Go packages run one at a time (`-p 1`) because they share the database. Writes a narrated log to `test-logs/latest.log` (tracked) and `test-logs/history/` (local). `--save phase1/<name>` also keeps a tracked copy at `test-logs/phase1/<name>.log`; see `test-logs/README.md`. |
 | Go unit tests only, no database | `go test ./...` (database tests skip themselves when `TEST_DATABASE_URL` is unset) |
 | Python environment | `cd worker && uv sync` (creates `.venv` from `uv.lock`; `uv lock` after changing `pyproject.toml`) |
-| Python unit tests only, no database | `cd worker && uv run pytest` (database tests skip without `TEST_DATABASE_URL`) |
+| Python unit tests only, no database | `cd worker && uv run pytest` (database tests skip without `TEST_DATABASE_URL`); `cd builder && uv run pytest` (the store tests skip without `TEST_S3_ENDPOINT`) |
+| Phase 4 data pipeline (download, split, ground truth, upload, verify) | `cd builder && uv sync && uv run python -m kgpu_builder all sift-128 6` (datasets `sift-128`, `gist-960-300k`; splits 6 and 50; `KGPU_DATA_DIR` default `./data`, gitignored; `S3_ENDPOINT` default `http://127.0.0.1:9000`, the Compose store). Against the cluster's store for everything at once: `scripts/phase4-data.sh` (saves `test-logs/phase4/step1-data.log`; port-forwards until the cluster maps NodePort 30900). RustFS console: `http://127.0.0.1:9001` on Compose. |
 | Run the worker locally | `cd worker && DATABASE_URL=... LOG_FORMAT=text FAKE_TIME_SCALE=10 uv run python -m kgpu_worker` (env vars in `worker/kgpu_worker/config.py`) |
 | Build the worker image | `docker build -t kgpu-worker worker/` |
 | Workload generator tests (pure, no database) | `go test -v ./experiments/workload/` |
