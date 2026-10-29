@@ -1,318 +1,79 @@
 == Go tests against a throwaway Postgres
-date:      2026-10-23 01:55:53 PDT
-commit:    83ff845 (uncommitted changes)
+date:      2026-10-28 19:02:41 PDT
+commit:    d36dce5 (uncommitted changes)
 go:        go1.27.1
-postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-67833, port 31502)
-go:        go test -p 1 -count=1 -v -run TestSimSpec|TestSweepCSV ./scheduler/crosscheck/
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-23873, port 30571)
+go:        go test -p 1 -v -run TestStragglerOverride|TestTickPhaseByHand|TestPreemptionInSim|TestDeterminism|TestPresetsValidate ./experiments/workload/ ./experiments/sim/
 python:    skipped
 
 Lines starting with 'store_test.go:N:' are the test narrating what it did.
 Lines tagged [db] are the build row as Postgres had it at that moment.
 
 == go test
-=== RUN   TestSimSpec
-=== RUN   TestSimSpec/CostModelDefaultsAreTheDocumentedOnes
-    sim_test.go:35: costmodel.Default() = {A:1.4e-07 Speedup:10 GPUOverhead:2 Bandwidth:2e+08 M:16 MemFactor:2 BytesPerDim:4}
-    sim_test.go:39: ok: CPUBuild(100k,128) = 20.631162 as computed by hand (costmodel doc: A*n*ln n*dim)
-    sim_test.go:40: ok: GPUTotal(100k,128) = 4.639116 as computed by hand (costmodel doc: GPU build + transfer)
-=== RUN   TestSimSpec/LocalRoundByHand
-    sim_test.go:53: local, DDL at 0: policy=static_threshold:1125899906842624 completed=true round=25.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[25.6312] events=55
-    sim_test.go:57: ok: RoundS = 25.631162 as computed by hand (decision 30/21: latest build-or-query finish = build 20.6313 + 2 s + 3 s)
-    sim_test.go:58: ok: ShardFinishS = [25.6312] as computed by hand (Result doc: max(build finish, last query finish))
-    sim_test.go:59: ok: StragglerLagS = 0.000000 as computed by hand (one shard: last minus median = 0)
-    sim_test.go:68: local, DDL at 5: policy=static_threshold:1125899906842624 completed=true round=30.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[30.6312] events=57
-    sim_test.go:69: ok: RoundS with DDL at 5 s = 30.631162 as computed by hand (modeling assumption: round begins at the DDL pattern's origin; staggered shards start late)
-=== RUN   TestSimSpec/GPURoundIndexQueryWaitsForNextReport
-    sim_test.go:80: always_gpu: policy=always_gpu completed=true round=6.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[6.0000] events=14
-    sim_test.go:82: PollS=0.5: build done at 4.6391, first report at/after it 5.0000, index query runs 5.0000..6.0000
-    sim_test.go:83: ok: RoundS = 6.000000 as computed by hand (decision 21: report latency is in the model)
-    sim_test.go:87: ok: QueueWaits = [0.0000] as computed by hand (claimed at once by the idle worker)
-    sim_test.go:80: always_gpu: policy=always_gpu completed=true round=5.8000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[5.8000] events=25
-    sim_test.go:82: PollS=0.3: build done at 4.6391, first report at/after it 4.8000, index query runs 4.8000..5.8000
-    sim_test.go:83: ok: RoundS = 5.800000 as computed by hand (decision 21: report latency is in the model)
-    sim_test.go:87: ok: QueueWaits = [0.0000] as computed by hand (claimed at once by the idle worker)
-    sim_test.go:80: always_gpu: policy=always_gpu completed=true round=7.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[7.0000] events=7
-    sim_test.go:82: PollS=2.0: build done at 4.6391, first report at/after it 6.0000, index query runs 6.0000..7.0000
-    sim_test.go:83: ok: RoundS = 7.000000 as computed by hand (decision 21: report latency is in the model)
-    sim_test.go:87: ok: QueueWaits = [0.0000] as computed by hand (claimed at once by the idle worker)
-    sim_test.go:92: always_gpu, empty stream: policy=always_gpu completed=true round=4.6391s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[4.6391] events=11
-    sim_test.go:93: ok: RoundS (no queries) = 4.639116 as computed by hand (round = latest real-build finish when nothing else runs)
-=== RUN   TestSimSpec/FCFSQueueWaitsAndInterpolatedMedian
-    sim_test.go:102: 4 shards, 1 worker: policy=always_gpu completed=true round=18.5565s lag=6.9587s gpu=4 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 4.6391 9.2782 13.9173] shardFinish=[4.6391 9.2782 13.9173 18.5565] events=42
-    sim_test.go:103: ok: RoundS = 18.556465 as computed by hand (FCFS on one worker)
-    sim_test.go:104: ok: QueueWaits = [0.0000 4.6391 9.2782 13.9173] as computed by hand (Result doc: first claim minus submit)
-    sim_test.go:105: ok: ShardFinishS = [4.6391 9.2782 13.9173 18.5565] as computed by hand (one build per worker at a time)
-    sim_test.go:106: ok: StragglerLagS (even count) = 6.958674 as computed by hand (decision 21: interpolated median (2T+3T)/2)
-    sim_test.go:114: observation: ShardFinishS indexed by shard ID and simultaneous submits enqueued in shard-ID order: true (the docs do not say which order same-instant submits take)
-    sim_test.go:118: 3 shards, 1 worker: policy=always_gpu completed=true round=13.9173s lag=4.6391s gpu=3 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 4.6391 9.2782] shardFinish=[4.6391 9.2782 13.9173] events=31
-    sim_test.go:119: ok: StragglerLagS (odd count) = 4.639116 as computed by hand (3T - median 2T)
-=== RUN   TestSimSpec/ClaimPriorityThenEnqueuedOrder
-    sim_test.go:131: scripted priorities: policy=xcheck_script completed=true round=23.1956s lag=9.2782s gpu=5 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 8.7782 12.9173 17.0565 2.6391] shardFinish=[4.6391 23.1956 18.5565 13.9173 9.2782] events=52
-    sim_test.go:137: ok: finish of shard 0 = 4.639116 as computed by hand (decision 21: priority DESC, enqueued seq within)
-    sim_test.go:137: ok: finish of shard 1 = 23.195581 as computed by hand (decision 21: priority DESC, enqueued seq within)
-    sim_test.go:137: ok: finish of shard 2 = 18.556465 as computed by hand (decision 21: priority DESC, enqueued seq within)
-    sim_test.go:137: ok: finish of shard 3 = 13.917349 as computed by hand (decision 21: priority DESC, enqueued seq within)
-    sim_test.go:137: ok: finish of shard 4 = 9.278232 as computed by hand (decision 21: priority DESC, enqueued seq within)
-=== RUN   TestSimSpec/PreemptedBuildKeepsSubmitTimeSeq
-    sim_test.go:160: scripted preempt: policy=xcheck_script completed=true round=27.4675s lag=6.9587s gpu=4 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[13.5502 0.0000 17.6893 21.8284] shardFinish=[18.1893 13.5502 22.8284 27.4675] events=59
-    sim_test.go:161: T1 (400k GPU total) = 13.5502
-    sim_test.go:166: ok: shard 0 (preempted) finish = 18.189277 as computed by hand (decision 21: seq kept across a preemption, so it claims first among prio 5)
-    sim_test.go:167: ok: shard 2 finish = 22.828393 as computed by hand (enqueued at 0.5)
-    sim_test.go:168: ok: shard 3 finish = 27.467509 as computed by hand (enqueued at 1.0)
-    sim_test.go:170: ok: QueueWaits = [0.0000 13.5502 17.6893 21.8284] as computed by hand (first claim minus SUBMIT (decision 31: enqueued_at keeps the submit time))
-=== RUN   TestSimSpec/StaleAndForbiddenActionsAreSkipped
-    sim_test.go:192: preempt+renege everything: policy=xcheck_script completed=true round=23.1312s lag=9.2460s gpu=1 local=1 preempts=0 reneges=1 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[4.6391 23.1312] events=49
-    sim_test.go:199: ok: exactly one renege (the queued build), zero preempts (leased never moved; reneged build never preempted)
-    sim_test.go:209: reneged shard finished at 23.1312; 2+L=22.6312, 2.5+L=23.1312
-    sim_test.go:215: ticks observed by the policy: 11 over a 23.13 s round
-=== RUN   TestSimSpec/OneCopyEverAndNoPreemptWhileCopyInFlight
-    sim_test.go:241: speedup 10: policy=xcheck_script completed=true round=8.0677s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=1 (gpu-wins 1, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[8.0677] events=23
-    sim_test.go:248: speedup 1: policy=xcheck_script completed=true round=32.0366s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=1 (gpu-wins 0, local-wins 1) wasted=32.0000s queueWaits=[] shardFinish=[32.0366] events=70
-=== RUN   TestSimSpec/SubmitSeesNewJobWaitColdStartAndInf
-    sim_test.go:260: three submits: policy=xcheck_script completed=true round=13.9173s lag=4.6391s gpu=3 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 4.6391 9.2782] shardFinish=[4.6391 9.2782 13.9173] events=31
-    sim_test.go:264: submit of shard 0: Pool={LiveWorkers:1 LargestMem:17179869184 QueueWaitS:0} Est={LocalBuildS:20.631162433 GPUBuildS:4.063116243 TransferS:0.576} Status.Valid=false
-    sim_test.go:264: submit of shard 1: Pool={LiveWorkers:1 LargestMem:17179869184 QueueWaitS:4.639116242999999} Est={LocalBuildS:20.631162433 GPUBuildS:4.063116243 TransferS:0.576} Status.Valid=false
-    sim_test.go:264: submit of shard 2: Pool={LiveWorkers:1 LargestMem:17179869184 QueueWaitS:9.278232485999999} Est={LocalBuildS:20.631162433 GPUBuildS:4.063116243 TransferS:0.576} Status.Valid=false
-    sim_test.go:266: ok: submit-time QueueWaitS = [0.0000 4.6391 9.2782] as computed by hand (decision 13: behind every queued job)
-    sim_test.go:269: ok: Est.LocalBuildS = 20.631162 as computed by hand (sigma 0: the truth)
-    sim_test.go:270: ok: Est.GPUBuildS = 4.063116 as computed by hand (sigma 0: the truth)
-    sim_test.go:271: ok: Est.TransferS = 0.576000 as computed by hand (sigma 0: the truth)
-    sim_test.go:280: empty pool: policy=xcheck_script completed=false round=0.0000s lag=0.0000s gpu=0 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[0.0000] events=401
-    sim_test.go:282: ok: empty-pool QueueWaitS = 0.000000 as computed by hand (cold-start rule)
-    sim_test.go:294: fits nowhere: policy=xcheck_script completed=true round=20.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[20.6312] events=43
-    sim_test.go:298: ok: a 102.4 MB build against a 50 MB worker sees QueueWaitS=+Inf
-=== RUN   TestSimSpec/NodeLinkSharingThreeModes
-    sim_test.go:306: X=6.2080 G=26.7574
-    sim_test.go:310: one node, sharing on: policy=always_gpu completed=true round=39.1734s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[39.1734 39.1734] events=81
-    sim_test.go:311: ok: finishes = [39.1734 39.1734] as computed by hand (each transfer at 1/2 rate: both end at 2X)
-    sim_test.go:312: two nodes, sharing on: policy=always_gpu completed=true round=32.9654s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[32.9654 32.9654] events=68
-    sim_test.go:313: ok: finishes = [32.9654 32.9654] as computed by hand (a link each)
-    sim_test.go:314: one node, sharing off: policy=always_gpu completed=true round=32.9654s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[32.9654 32.9654] events=67
-    sim_test.go:315: ok: finishes = [32.9654 32.9654] as computed by hand (off = the fake worker that sleeps GPUTotal)
-    sim_test.go:321: staggered join, one node: policy=always_gpu completed=true round=39.1734s lag=1.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[36.1734 39.1734] events=83
-    sim_test.go:323: ok: s0 finish = 36.173395 as computed by hand (fluid: 1/k while k transfers run)
-    sim_test.go:324: ok: s1 finish = 39.173395 as computed by hand (fluid: back to full rate after s0 leaves)
-=== RUN   TestSimSpec/GPUExecutionIndependentOfReportAndTickGrid
-    sim_test.go:339: s1 DDL 1 PollS/ReconsiderS 0.5/2: policy=always_gpu completed=true round=39.1734s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[38.1734 39.1734] events=83
-    sim_test.go:339: s1 DDL 1 PollS/ReconsiderS 0.37/2: policy=always_gpu completed=true round=39.1734s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[38.1734 39.1734] events=232
-    sim_test.go:339: s1 DDL 1 PollS/ReconsiderS 0.5/3.3: policy=always_gpu completed=true round=39.1734s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[38.1734 39.1734] events=92
-    sim_test.go:339: s1 DDL 1 PollS/ReconsiderS 7/50: policy=always_gpu completed=true round=39.1734s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[38.1734 39.1734] events=16
-    sim_test.go:354: ok: staggered finishes = [38.1734 39.1734] as computed by hand (decision 12 fluid, hand-replayed)
-    sim_test.go:339: s1 DDL 0 PollS/ReconsiderS 0.5/2: policy=always_gpu completed=true round=39.1734s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[39.1734 39.1734] events=81
-    sim_test.go:339: s1 DDL 0 PollS/ReconsiderS 0.37/2: policy=always_gpu completed=true round=39.1734s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[39.1734 39.1734] events=127
-    sim_test.go:339: s1 DDL 0 PollS/ReconsiderS 0.5/3.3: policy=always_gpu completed=true round=39.1734s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[39.1734 39.1734] events=90
-    sim_test.go:339: s1 DDL 0 PollS/ReconsiderS 7/50: policy=always_gpu completed=true round=39.1734s lag=0.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[39.1734 39.1734] events=8
-    sim_test.go:352: ok: simultaneous finishes = [39.1734 39.1734] as computed by hand (decision 12 fluid: both transfers end at 2X, both builds then take G)
-=== RUN   TestSimSpec/SharingNeverSpeedsABuildSixEqualBuilds
-    sim_test.go:375: sharing off: policy=always_gpu completed=true round=98.8962s lag=32.9654s gpu=6 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 32.9654 32.9654 65.9308 65.9308] shardFinish=[32.9654 32.9654 65.9308 65.9308 98.8962 98.8962] events=201
-    sim_test.go:376: sharing on: policy=always_gpu completed=true round=117.5202s lag=39.1734s gpu=6 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 39.1734 39.1734 78.3468 78.3468] shardFinish=[39.1734 39.1734 78.3468 78.3468 117.5202 117.5202] events=242
-    sim_test.go:382: ok: sharing off = [32.9654 32.9654 65.9308 65.9308 98.8962 98.8962] as computed by hand (fake-worker model: pairs of X+G)
-    sim_test.go:383: ok: sharing on = [39.1734 39.1734 78.3468 78.3468 117.5202 117.5202] as computed by hand (fluid model: pairs of 2X+G)
-=== RUN   TestSimSpec/ReplayQueuePredictsTheSimulator
-    sim_test.go:411: 5 builds, 2 workers, 1 node: policy=always_gpu completed=true round=105.6668s lag=32.5469s gpu=5 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 39.1734 55.9108 73.1199] shardFinish=[39.1734 73.1199 55.9108 105.6668 99.5083] events=222
-    sim_test.go:419: shard 0 (100k): replay start 0.0000 done 39.1734 | sim finish 39.1734
-    sim_test.go:419: shard 1 (200k): replay start 0.0000 done 73.1199 | sim finish 73.1199
-    sim_test.go:419: shard 2 (50k): replay start 39.1734 done 55.9108 | sim finish 55.9108
-    sim_test.go:419: shard 3 (150k): replay start 55.9108 done 105.6668 | sim finish 105.6668
-    sim_test.go:419: shard 4 (80k): replay start 73.1199 done 99.5083 | sim finish 99.5083
-    sim_test.go:421: ok: sim finishes vs replay DoneS = [39.1734 55.9108 73.1199 99.5083 105.6668] as computed by hand (decision 12 = decision 22 with sharing on, no noise)
-    sim_test.go:440: s1 joins at 1 s: policy=always_gpu completed=true round=39.1734s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[38.1734 39.1734] events=83
-    sim_test.go:441: ok: replay's prediction for s1 (absolute) = 33.965395 as computed by hand (busy worker opaque: no contention seen)
-    sim_test.go:443: ok: sim's s1 finish = 39.173395 as computed by hand (execution shares the link with s0's in-flight transfer)
-    sim_test.go:444: legitimate disagreement = 5.2080 s (= X-1): the estimator's documented opacity, not a bug
-    sim_test.go:446: s1 joins at 1 s, sharing off: policy=always_gpu completed=true round=33.9654s lag=0.5000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000] shardFinish=[32.9654 33.9654] events=70
-    sim_test.go:448: ok: sim's s1 finish with sharing off = 33.965395 as computed by hand (with sharing off the opacity costs nothing: replay exact)
-=== RUN   TestSimSpec/ReactivePreemptsHurtingLocalBuild
-    sim_test.go:463: reactive: policy=reactive completed=true round=22.5000s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000] shardFinish=[22.5000] events=66
-    sim_test.go:469: queue wait of the preempted build = 2.0000: claim time minus submit (0) — equals the preempt tick when a worker is idle
-    sim_test.go:478: ok: RoundS 22.5000 = CPU freed at 2.5 + 20 s of queued queries (stay-local would have been ≈ 52.04)
-=== RUN   TestSimSpec/NoPreemptOfBuildThatFitsNoWorker
-    sim_test.go:496: reactive, too big: policy=reactive completed=true round=63.7466s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[63.7466] events=168
-    sim_test.go:500: ok: too-big shard's finish = 63.746564 as computed by hand (builds locally to the end, then drains)
-    sim_test.go:502: always_gpu, too big: policy=always_gpu completed=true round=43.7466s lag=20.2446s gpu=1 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[43.7466 3.2575] events=90
-=== RUN   TestSimSpec/SpeculationGPUWinsBackdatedAndIndexWaitsForResolve
-    sim_test.go:517: no queries: policy=reactive_spec completed=true round=8.0677s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=1 (gpu-wins 1, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[8.0677] events=23
-    sim_test.go:521: ok: RoundS = 8.067663 as computed by hand (decision 16: backdated to the copy's finish, not the resolving tick (10 s))
-    sim_test.go:522: ok: WastedGPUS = 0.000000 as computed by hand (the GPU copy won; nothing on a worker was wasted)
-    sim_test.go:531: one index query: policy=reactive_spec completed=true round=11.5000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=1 (gpu-wins 1, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[11.5000] events=25
-    sim_test.go:532: index query finished with the round at 11.5000; settle tick 10 → report at 10 or 10.5 → +1 s
-=== RUN   TestSimSpec/SpeculationLocalWinsWastedWorkerSeconds
-    sim_test.go:547: speedup 1: policy=reactive_spec completed=true round=32.0366s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=1 (gpu-wins 0, local-wins 1) wasted=32.0000s queueWaits=[] shardFinish=[32.0366] events=70
-    sim_test.go:551: ok: RoundS = 32.036634 as computed by hand (the local build's own finish; the copy is invisible)
-    sim_test.go:552: ok: WastedGPUS = 32.000000 as computed by hand (claimed at tick 2, cancelled at tick 34)
-=== RUN   TestSimSpec/SpeculationOneInFlightAtATime
-    sim_test.go:567: two locals, two workers: policy=reactive_spec completed=true round=16.0677s lag=4.0000s gpu=2 local=0 preempts=0 reneges=0 reprio=0 spec=2 (gpu-wins 2, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[8.0677 16.0677] events=40
-    sim_test.go:571: ok: ShardFinishS = [8.0677 16.0677] as computed by hand (second copy only after the first settles at tick 10)
-=== RUN   TestSimSpec/KilledWorkerLeaseRequeuesAfterLeaseS
-    sim_test.go:580: kill at 2, LeaseS 10: policy=always_gpu completed=true round=16.6391s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[16.6391] events=35
-    sim_test.go:581: ok: RoundS = 16.639116 as computed by hand (decision 21: a dead worker's lease requeues after LeaseS)
-    sim_test.go:582: ok: QueueWaits = [0.0000] as computed by hand (first claim minus submit)
-    sim_test.go:589: only worker killed: policy=always_gpu completed=false round=0.0000s lag=0.0000s gpu=0 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[0.0000] events=1001
-    sim_test.go:589: only worker killed: policy=reactive completed=false round=0.0000s lag=0.0000s gpu=0 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[0.0000] events=1001
-=== RUN   TestSimSpec/ShrunkenPoolMakesReactiveRenege
-    sim_test.go:609: no kill: policy=reactive completed=true round=52.5398s lag=21.0159s gpu=10 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 10.5080 10.5080 21.0159 21.0159 31.5239 31.5239 42.0319 42.0319] shardFinish=[10.5080 10.5080 21.0159 21.0159 31.5239 31.5239 42.0319 42.0319 52.5398 52.5398] events=111
-    sim_test.go:610: kill at 1: policy=reactive completed=true round=73.5557s lag=15.7619s gpu=7 local=3 preempts=0 reneges=3 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 10.5080 21.0159 42.0319 52.5398 63.0478] shardFinish=[42.0319 10.5080 21.0159 31.5239 52.5398 63.0478 73.5557 70.2996 70.2996 70.2996] events=156
-=== RUN   TestSimSpec/NoiseNeverTouchesExecution
-    sim_test.go:624: static local: policy=static_threshold:1125899906842624 completed=true round=25.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[25.6312] events=55
-    sim_test.go:625: ok: local RoundS under noise = 25.631162 as computed by hand (execution uses the truth)
-    sim_test.go:627: always_gpu FCFS: policy=always_gpu completed=true round=18.5565s lag=6.9587s gpu=4 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 4.6391 9.2782 13.9173] shardFinish=[4.6391 9.2782 13.9173 18.5565] events=42
-    sim_test.go:628: ok: FCFS finishes under noise = [4.6391 9.2782 13.9173 18.5565] as computed by hand (execution uses the truth)
-    sim_test.go:624: static local: policy=static_threshold:1125899906842624 completed=true round=25.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[25.6312] events=55
-    sim_test.go:625: ok: local RoundS under noise = 25.631162 as computed by hand (execution uses the truth)
-    sim_test.go:627: always_gpu FCFS: policy=always_gpu completed=true round=18.5565s lag=6.9587s gpu=4 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 4.6391 9.2782 13.9173] shardFinish=[4.6391 9.2782 13.9173 18.5565] events=42
-    sim_test.go:628: ok: FCFS finishes under noise = [4.6391 9.2782 13.9173 18.5565] as computed by hand (execution uses the truth)
-=== RUN   TestSimSpec/NoiseThreeFactorsPersistAcrossTicks
-    sim_test.go:638: sigma 0.5: policy=xcheck_script completed=true round=20.6312s lag=7.9960s gpu=1 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[4.6391 20.6312] events=44
-    sim_test.go:650: shard 1 factors: local 0.8658, gpu 0.7606, transfer 0.4469
-    sim_test.go:662: ok so far: shard 1's noised estimates identical on submit and on all 10 ticks
-    sim_test.go:668: first tick: worker w00 BusyRemainingS=0.5030; truth-based T-2=2.6391; noisedTotal-2=0.5030
-    sim_test.go:682: tick #1: worker w00 BusyRemainingS=0.5030 (the true build on it runs until 4.6391)
-    sim_test.go:682: tick #2: worker w00 BusyRemainingS=0.0000 (the true build on it runs until 4.6391)
-    sim_test.go:682: tick #3: worker w00 BusyRemainingS=0.0000 (the true build on it runs until 4.6391)
-    sim_test.go:682: tick #4: worker w00 BusyRemainingS=0.0000 (the true build on it runs until 4.6391)
-    sim_test.go:687: sigma 0: policy=xcheck_script completed=true round=20.6312s lag=7.9960s gpu=1 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[4.6391 20.6312] events=44
-    sim_test.go:696: ok: sigma-0 busy-remaining at first tick = 2.639116 as computed by hand (truth minus elapsed (first tick at 2 s))
-=== RUN   TestSimSpec/NoiseMovesTheOracleLocalVsGPU
-    sim_test.go:710: local 20.6312 vs GPU 20.5161
-    sim_test.go:736: σ=0.5, noise seeds 1..40, workload seed 1: LLLGLGGGLLGLGLLLLGLGGGGLGGLLGGLGLLGGLLLL (22 local)
-    sim_test.go:737: σ=0.5, noise seeds 1..40, workload seed 2: LLLGGLGGLLGLLGLLGLLGGGGLGGLLGGLGLLGLLLGG
-=== RUN   TestSimSpec/DeterminismUnderNoiseAndKills
-    sim_test.go:805: skewed         always_gpu       completed=true round=30.041 lag=0.035 gpu=6 local=0 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: skewed         static_threshold completed=true round=33.401 lag=3.387 gpu=1 local=5 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: skewed         reactive         completed=true round=30.041 lag=0.035 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: skewed         reactive_spec    completed=true round=30.041 lag=0.035 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: skewed         clairvoyant      completed=true round=33.401 lag=3.387 gpu=1 local=5 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: staggered      always_gpu       completed=true round=40.114 lag=0.119 gpu=6 local=0 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: staggered      static_threshold completed=true round=42.176 lag=2.179 gpu=1 local=5 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: staggered      reactive         completed=true round=40.114 lag=0.119 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: staggered      reactive_spec    completed=true round=40.114 lag=0.119 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: staggered      clairvoyant      completed=true round=42.176 lag=2.179 gpu=2 local=4 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: shrinking_pool always_gpu       completed=true round=49.994 lag=19.979 gpu=6 local=0 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: shrinking_pool static_threshold completed=true round=49.994 lag=19.962 gpu=1 local=5 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: shrinking_pool reactive         completed=true round=49.994 lag=19.979 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: shrinking_pool reactive_spec    completed=true round=49.994 lag=19.979 gpu=6 local=0 pre=5 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: shrinking_pool clairvoyant      completed=true round=49.994 lag=19.962 gpu=1 local=5 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: bimodal        always_gpu       completed=true round=100.204 lag=70.101 gpu=4 local=2 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: bimodal        static_threshold completed=true round=100.204 lag=70.101 gpu=0 local=6 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: bimodal        reactive         completed=true round=100.204 lag=70.101 gpu=0 local=6 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:805: bimodal        reactive_spec    completed=true round=100.204 lag=70.101 gpu=0 local=6 pre=0 ren=0 spec=1 wasted=2.00
-    sim_test.go:805: bimodal        clairvoyant      completed=true round=100.204 lag=70.101 gpu=0 local=6 pre=0 ren=0 spec=0 wasted=0.00
-    sim_test.go:809: ok if no errors above: 20 cells identical across two sequential runs and one concurrent run
-=== RUN   TestSimSpec/FuturesRelativeToDDLAndClamped
-    sim_test.go:819: futures: map[0:[{ArriveS:0 DurS:1 NeedsIndex:false} {ArriveS:3 DurS:2 NeedsIndex:true}] 1:[]]
-=== RUN   TestSimSpec/NewPresetsGenerateValidateComplete
-    sim_test.go:831: PresetNames = [uniform skewed bimodal downstream_heavy staggered shrinking_pool high_dim production]
-    sim_test.go:840: high_dim: dim=1536 sizes={Kind:zipf Min:10000 Max:200000 ZipfExponent:1 BimodalHeavyFraction:0} pool={Workers:2 WorkerMemBytes:1128960000}
-    sim_test.go:863: high_dim seed 1: policy=always_gpu completed=true round=536.0560s lag=497.8514s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 13.5980 22.0624] shardFinish=[536.0560 29.9947 29.9869 36.2659 40.1432 259.7893] events=6284
-    sim_test.go:863: high_dim seed 1: policy=reactive_spec completed=true round=536.0560s lag=495.8514s gpu=4 local=2 preempts=4 reneges=0 reprio=4 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 2.0000 15.5980 24.0624] shardFinish=[536.0560 30.9489 29.9869 38.2659 42.1432 259.7893] events=6284
-    sim_test.go:863: high_dim seed 1: policy=clairvoyant completed=true round=536.0560s lag=497.9945s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 16.7374 0.0000 22.0624] shardFinish=[536.0560 29.9947 35.9797 29.9863 40.1432 259.7893] events=6284
-    sim_test.go:863: high_dim seed 2: policy=always_gpu completed=true round=536.8100s lag=497.7135s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 13.5980 16.7374] shardFinish=[536.8100 29.8412 29.8277 32.8677 259.6706 45.3252] events=6686
-    sim_test.go:863: high_dim seed 2: policy=reactive_spec completed=true round=536.8100s lag=496.2215s gpu=4 local=2 preempts=4 reneges=0 reprio=4 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000 2.0000 18.7374 15.5980] shardFinish=[536.8100 29.8412 29.8277 36.8517 259.6706 44.3252] events=6686
-    sim_test.go:863: high_dim seed 2: policy=clairvoyant completed=true round=536.8100s lag=498.3180s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 16.7374 22.0624 0.0000] shardFinish=[536.8100 29.8412 36.6321 40.3517 259.6706 30.1961] events=6686
-    sim_test.go:863: high_dim seed 3: policy=always_gpu completed=true round=537.4812s lag=499.2457s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 16.7374 22.0624] shardFinish=[30.0823 258.7192 29.9503 537.4812 34.4314 42.0397] events=6375
-    sim_test.go:863: high_dim seed 3: policy=reactive_spec completed=true round=537.4812s lag=497.1350s gpu=4 local=2 preempts=4 reneges=0 reprio=3 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[18.7374 2.0000 15.5980 2.0000] shardFinish=[47.0104 258.7192 29.9503 537.4812 33.6820 29.9764] events=6375
-    sim_test.go:863: high_dim seed 3: policy=clairvoyant completed=true round=537.4812s lag=499.4134s gpu=4 local=2 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 0.0000 22.0624 16.7374] shardFinish=[30.0823 258.7192 29.9503 537.4812 39.5959 36.5397] events=6375
-    sim_test.go:885: production: dim=1536 sizes={Kind:zipf Min:1000000 Max:10000000 ZipfExponent:1 BimodalHeavyFraction:0} pool={Workers:2 WorkerMemBytes:85899345920} horizon=10m0s meanQ=50ms
-    sim_test.go:899: production seed 1: largest build 10000000 vectors, local 9.63 h, GPU mem 122.9 GB vs worker 85.9 GB
-    sim_test.go:900: production seed 1, default Config: policy=reactive completed=true round=34897.4532s lag=32300.6354s gpu=5 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000 1970.8905 1285.5298 2234.7114 0.0000] shardFinish=[34897.4532 1401.3749 2837.5307 2356.1049 2977.7882 2095.3480] events=113763
-=== RUN   TestSimSpec/SafetyCapDefaultIsDocumentedConsistently
-    sim_test.go:911: zero workers, default cap: policy=always_gpu completed=false round=0.0000s lag=0.0000s gpu=0 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[0.0000] events=172801
-    sim_test.go:912: incomplete round reports RoundS=0 s (0.00 h)
-    sim_test.go:920: gap: an incomplete round reports RoundS=0 (and ShardFinishS [0]); the Result doc does not say what RoundS holds when Completed=false — a consumer that forgets the completed column reads a hang as the fastest round
-    sim_test.go:930: one local build of 7 h, default cap: policy=static_threshold:1125899906842624 completed=true round=25169.5138s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[25169.5138] events=50341
-    sim_test.go:934: ok: RoundS = 25169.513807 as computed by hand (the build itself)
-    sim_test.go:930: one local build of 25.4 h, default cap: policy=static_threshold:1125899906842624 completed=false round=0.0000s lag=0.0000s gpu=0 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[0.0000] events=172801
-    sim_test.go:937: verdict: the cap behaves as decision 21's 24 h; `go doc experiments/sim` Config.MaxModeledS still says "default 6 h modeled" — stale
---- PASS: TestSimSpec (0.79s)
-    --- PASS: TestSimSpec/CostModelDefaultsAreTheDocumentedOnes (0.00s)
-    --- PASS: TestSimSpec/LocalRoundByHand (0.00s)
-    --- PASS: TestSimSpec/GPURoundIndexQueryWaitsForNextReport (0.00s)
-    --- PASS: TestSimSpec/FCFSQueueWaitsAndInterpolatedMedian (0.00s)
-    --- PASS: TestSimSpec/ClaimPriorityThenEnqueuedOrder (0.00s)
-    --- PASS: TestSimSpec/PreemptedBuildKeepsSubmitTimeSeq (0.00s)
-    --- PASS: TestSimSpec/StaleAndForbiddenActionsAreSkipped (0.00s)
-    --- PASS: TestSimSpec/OneCopyEverAndNoPreemptWhileCopyInFlight (0.00s)
-    --- PASS: TestSimSpec/SubmitSeesNewJobWaitColdStartAndInf (0.00s)
-    --- PASS: TestSimSpec/NodeLinkSharingThreeModes (0.00s)
-    --- PASS: TestSimSpec/GPUExecutionIndependentOfReportAndTickGrid (0.00s)
-    --- PASS: TestSimSpec/SharingNeverSpeedsABuildSixEqualBuilds (0.00s)
-    --- PASS: TestSimSpec/ReplayQueuePredictsTheSimulator (0.00s)
-    --- PASS: TestSimSpec/ReactivePreemptsHurtingLocalBuild (0.00s)
-    --- PASS: TestSimSpec/NoPreemptOfBuildThatFitsNoWorker (0.00s)
-    --- PASS: TestSimSpec/SpeculationGPUWinsBackdatedAndIndexWaitsForResolve (0.00s)
-    --- PASS: TestSimSpec/SpeculationLocalWinsWastedWorkerSeconds (0.00s)
-    --- PASS: TestSimSpec/SpeculationOneInFlightAtATime (0.00s)
-    --- PASS: TestSimSpec/KilledWorkerLeaseRequeuesAfterLeaseS (0.00s)
-    --- PASS: TestSimSpec/ShrunkenPoolMakesReactiveRenege (0.00s)
-    --- PASS: TestSimSpec/NoiseNeverTouchesExecution (0.00s)
-    --- PASS: TestSimSpec/NoiseThreeFactorsPersistAcrossTicks (0.00s)
-    --- PASS: TestSimSpec/NoiseMovesTheOracleLocalVsGPU (0.00s)
-    --- PASS: TestSimSpec/DeterminismUnderNoiseAndKills (0.15s)
-    --- PASS: TestSimSpec/FuturesRelativeToDDLAndClamped (0.00s)
-    --- PASS: TestSimSpec/NewPresetsGenerateValidateComplete (0.61s)
-    --- PASS: TestSimSpec/SafetyCapDefaultIsDocumentedConsistently (0.03s)
-=== RUN   TestSweepCSV
-=== RUN   TestSweepCSV/ByteIdenticalReruns
-    sweep_test.go:112: sweep -scenarios skewed,staggered -policies all -rounds 3 -sigma 0,0.6 -kill_at 4 → exit err=<nil>; stderr: sweep: 60 rows
-    sweep_test.go:116: sweep -scenarios skewed,staggered -policies all -rounds 3 -sigma 0,0.6 -kill_at 4 → exit err=<nil>; stderr: sweep: 60 rows
-    sweep_test.go:124: ok: 9329 bytes, 60 rows, byte-identical across reruns (with noise and a kill)
-    sweep_test.go:132: policies under 'all': map[always_gpu:true clairvoyant:true reactive:true reactive_spec:true static_threshold:200000:true]
-=== RUN   TestSweepCSV/HeaderCarriesEveryAxis
-    sweep_test.go:139: sweep -rounds 1 -policies always_gpu → exit err=<nil>; stderr: sweep: 1 rows
-    sweep_test.go:144: header: scenario,policy,seed,n_shards,dim,workers,workers_per_node,worker_mem_bytes,share_links,sigma,zipf,load,needs_index,speedup,kill_at,reconsider_s,poll_s,lease_s,noise_seed,completed,round_s,straggler_s,builds_gpu,builds_local,preempts,reneges,reprioritizes,speculations,spec_gpu_wins,spec_local_wins,wasted_gpu_s,wasted_cpu_s,queue_wait_p50_s,queue_wait_p99_s,events
-=== RUN   TestSweepCSV/NonOverriddenAxesEchoThePreset
-    sweep_test.go:166: sweep -scenarios skewed -policies always_gpu -rounds 1 → exit err=<nil>; stderr: sweep: 1 rows
-    sweep_test.go:172: row: map[builds_gpu:6 builds_local:0 completed:true dim:128 events:5277 kill_at:0 lease_s:30 load:1 n_shards:6 needs_index:0.5 noise_seed:1 policy:always_gpu poll_s:0.5 preempts:0 queue_wait_p50_s:3.710980416 queue_wait_p99_s:7.526656436 reconsider_s:2 reneges:0 reprioritizes:0 round_s:29.99764248 scenario:skewed seed:1 share_links:true sigma:0 spec_gpu_wins:0 spec_local_wins:0 speculations:0 speedup:10 straggler_s:0.0071703925 wasted_cpu_s:0 wasted_gpu_s:0 worker_mem_bytes:17179869184 workers:2 workers_per_node:1 zipf:1]
-    sweep_test.go:177: ok: n_shards = 6 echoes the preset (NShards)
-    sweep_test.go:177: ok: dim = 128 echoes the preset (Dim)
-    sweep_test.go:177: ok: workers = 2 echoes the preset (Pool.Workers)
-    sweep_test.go:177: ok: worker_mem_bytes = 1.7179869184e+10 echoes the preset (Pool.WorkerMemBytes)
-    sweep_test.go:177: ok: zipf = 1 echoes the preset (Sizes.ZipfExponent)
-    sweep_test.go:177: ok: needs_index = 0.5 echoes the preset (Stream.NeedsIndexFraction)
-    sweep_test.go:177: ok: speedup = 10 echoes the preset (cost model default)
-    sweep_test.go:177: ok: load = 1 echoes the preset (multiplier default)
-    sweep_test.go:177: ok: sigma = 0 echoes the preset (default)
-    sweep_test.go:190: sweep -scenarios skewed -policies always_gpu -rounds 1 -zipf 1.5 -dim 768 -workers 4 -needs_index 1 -speedup 40 -shards 8 -load 2 -workers_per_node 2 → exit err=<nil>; stderr: sweep: 1 rows
-    sweep_test.go:197: overridden row: map[builds_gpu:8 builds_local:0 completed:true dim:768 events:13871 kill_at:0 lease_s:30 load:2 n_shards:8 needs_index:1 noise_seed:1 policy:always_gpu poll_s:0.5 preempts:0 queue_wait_p50_s:0 queue_wait_p99_s:6.148560871 reconsider_s:2 reneges:0 reprioritizes:0 round_s:40.1615627 scenario:skewed seed:1 share_links:true sigma:0 spec_gpu_wins:0 spec_local_wins:0 speculations:0 speedup:40 straggler_s:8.129706228 wasted_cpu_s:0 wasted_gpu_s:0 worker_mem_bytes:17179869184 workers:4 workers_per_node:2 zipf:1.5]
-    sweep_test.go:204: sweep -scenarios uniform -policies always_gpu -rounds 1 → exit err=<nil>; stderr: sweep: 1 rows
-    sweep_test.go:208: uniform row zipf="0" (preset Sizes={Kind:uniform Min:100000 Max:100000 ZipfExponent:0 BimodalHeavyFraction:0}) — echoes the preset's own field
-=== RUN   TestSweepCSV/RowsAreSelfDescribing
-    sweep_test.go:226: sweep -scenarios downstream_heavy -policies reactive_spec -rounds 3 -sigma 0.6 → exit err=<nil>; stderr: sweep: 3 rows
-    sweep_test.go:232: sweep -scenarios downstream_heavy -policies reactive_spec -rounds 3 -sigma 0.6 -poll_s 2 → exit err=<nil>; stderr: sweep: 3 rows
-    sweep_test.go:262: flag [-poll_s 2]: no row both identically configured and differently resulting
-    sweep_test.go:232: sweep -scenarios downstream_heavy -policies reactive_spec -rounds 3 -sigma 0.6 -reconsider_s 6 → exit err=<nil>; stderr: sweep: 3 rows
-    sweep_test.go:262: flag [-reconsider_s 6]: no row both identically configured and differently resulting
-    sweep_test.go:232: sweep -scenarios downstream_heavy -policies reactive_spec -rounds 3 -sigma 0.6 -noise_seed 9 → exit err=<nil>; stderr: sweep: 3 rows
-    sweep_test.go:262: flag [-noise_seed 9]: no row both identically configured and differently resulting
-=== RUN   TestSweepCSV/RowMatchesSimRunAndPercentileRule
-    sweep_test.go:271: sweep -scenarios skewed -policies always_gpu,reactive_spec,clairvoyant -rounds 2 -sigma 0.3 → exit err=<nil>; stderr: sweep: 6 rows
-    sweep_test.go:301: always_gpu seed 1: CSV round_s=29.99764248 p50=3.710980416 p99=7.526656436; sim.Run round=29.99764248 p50=3.71098042 p99=7.52665644 (sorted[int(p*(n-1))] over 6 waits)
-    sweep_test.go:301: always_gpu seed 2: CSV round_s=29.99243469 p50=3.257452134 p99=7.526656436; sim.Run round=29.99243469 p50=3.25745213 p99=7.52665644 (sorted[int(p*(n-1))] over 6 waits)
-    sweep_test.go:301: reactive_spec seed 1: CSV round_s=29.99764248 p50=5.710980416 p99=7.526656436; sim.Run round=29.99764248 p50=5.71098042 p99=7.52665644 (sorted[int(p*(n-1))] over 5 waits)
-    sweep_test.go:301: reactive_spec seed 2: CSV round_s=29.99243469 p50=4.989966777 p99=7.526656436; sim.Run round=29.99243469 p50=4.98996678 p99=7.52665644 (sorted[int(p*(n-1))] over 5 waits)
-    sweep_test.go:301: clairvoyant seed 1: CSV round_s=32.84653947 p50=0 p99=0; sim.Run round=32.84653947 p50=0.00000000 p99=0.00000000 (sorted[int(p*(n-1))] over 1 waits)
-    sweep_test.go:301: clairvoyant seed 2: CSV round_s=29.99243469 p50=0 p99=0; sim.Run round=29.99243469 p50=0.00000000 p99=0.00000000 (sorted[int(p*(n-1))] over 2 waits)
-=== RUN   TestSweepCSV/StrictNamesFailLoudly
-    sweep_test.go:313: sweep -policies reactiv -rounds 1 → exit err=exit status 1; stderr: 2026/10/23 01:55:56 unknown policy "reactiv"
-    sweep_test.go:313: sweep -policies static_threshold: -rounds 1 → exit err=exit status 1; stderr: 2026/10/23 01:55:56 static_threshold: bad threshold ""
-    sweep_test.go:313: sweep -policies always_gpu: -rounds 1 → exit err=exit status 1; stderr: 2026/10/23 01:55:56 policy "always_gpu" takes no argument
-    sweep_test.go:313: sweep -scenarios skewd -rounds 1 → exit err=exit status 1; stderr: 2026/10/23 01:55:56 workload: unknown preset "skewd" (known: [uniform skewed bimodal downstream_heavy staggered shrinking_pool high_dim production])
-    sweep_test.go:313: sweep -sigma abc -rounds 1 → exit err=exit status 1; stderr: 2026/10/23 01:55:56 bad float "abc"
---- PASS: TestSweepCSV (0.84s)
-    --- PASS: TestSweepCSV/ByteIdenticalReruns (0.75s)
-    --- PASS: TestSweepCSV/HeaderCarriesEveryAxis (0.01s)
-    --- PASS: TestSweepCSV/NonOverriddenAxesEchoThePreset (0.01s)
-    --- PASS: TestSweepCSV/RowsAreSelfDescribing (0.02s)
-    --- PASS: TestSweepCSV/RowMatchesSimRunAndPercentileRule (0.05s)
-    --- PASS: TestSweepCSV/StrictNamesFailLoudly (0.01s)
+=== RUN   TestDeterminism
+    generate_test.go:49: Contract (workload.go): Generate is pure; same Scenario and seed give byte-identical output. CLAUDE.md invariant 10: workloads are seeded and reproducible.
+    generate_test.go:61: uniform: generated twice with seed 42 -> 134784 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: skewed: generated twice with seed 42 -> 345996 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: bimodal: generated twice with seed 42 -> 345901 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: downstream_heavy: generated twice with seed 42 -> 199156 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: staggered: generated twice with seed 42 -> 477855 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: shrinking_pool: generated twice with seed 42 -> 346004 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: high_dim: generated twice with seed 42 -> 345998 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: production: generated twice with seed 42 -> 2897141 bytes of JSON, identical; seed 43 differs, as expected.
+    generate_test.go:61: hour_build: generated twice with seed 42 -> 346009 bytes of JSON, identical; seed 43 differs, as expected.
+--- PASS: TestDeterminism (0.04s)
+=== RUN   TestPresetsValidate
+    generate_test.go:66: Contract: consumers run Validate() on every workload. Every preset must pass at 6 shards (roadmap default) and 50 (Phase 1 step 7), over several seeds.
+    generate_test.go:81: uniform n=6: 5 seeds validate; seed 1 has 1252 shard-level queries, cluster rate 23.7/s, horizon 30s.
+    generate_test.go:81: skewed n=6: 5 seeds validate; seed 1 has 3412 shard-level queries, cluster rate 63.2/s, horizon 30s.
+    generate_test.go:81: bimodal n=6: 5 seeds validate; seed 1 has 3411 shard-level queries, cluster rate 63.2/s, horizon 30s.
+    generate_test.go:81: downstream_heavy n=6: 5 seeds validate; seed 1 has 2010 shard-level queries, cluster rate 46.5/s, horizon 30s.
+    generate_test.go:81: staggered n=6: 5 seeds validate; seed 1 has 4632 shard-level queries, cluster rate 63.2/s, horizon 40s.
+    generate_test.go:81: shrinking_pool n=6: 5 seeds validate; seed 1 has 3412 shard-level queries, cluster rate 63.2/s, horizon 30s.
+    generate_test.go:81: high_dim n=6: 5 seeds validate; seed 1 has 3412 shard-level queries, cluster rate 63.2/s, horizon 30s.
+    generate_test.go:81: production n=6: 5 seeds validate; seed 1 has 28810 shard-level queries, cluster rate 25.3/s, horizon 10m0s.
+    generate_test.go:81: hour_build n=6: 5 seeds validate; seed 1 has 3412 shard-level queries, cluster rate 63.2/s, horizon 30s.
+    generate_test.go:81: uniform n=50: 5 seeds validate; seed 1 has 11699 shard-level queries, cluster rate 44.1/s, horizon 30s.
+    generate_test.go:81: skewed n=50: 5 seeds validate; seed 1 has 29934 shard-level queries, cluster rate 117.6/s, horizon 30s.
+    generate_test.go:81: bimodal n=50: 5 seeds validate; seed 1 has 30021 shard-level queries, cluster rate 117.6/s, horizon 30s.
+    generate_test.go:81: downstream_heavy n=50: 5 seeds validate; seed 1 has 12052 shard-level queries, cluster rate 83.7/s, horizon 30s.
+    generate_test.go:81: staggered n=50: 5 seeds validate; seed 1 has 40086 shard-level queries, cluster rate 117.6/s, horizon 40s.
+    generate_test.go:81: shrinking_pool n=50: 5 seeds validate; seed 1 has 29934 shard-level queries, cluster rate 117.6/s, horizon 30s.
+    generate_test.go:81: high_dim n=50: 5 seeds validate; seed 1 has 29934 shard-level queries, cluster rate 117.6/s, horizon 30s.
+    generate_test.go:81: production n=50: 5 seeds validate; seed 1 has 238535 shard-level queries, cluster rate 47.1/s, horizon 10m0s.
+    generate_test.go:81: hour_build n=50: 5 seeds validate; seed 1 has 29934 shard-level queries, cluster rate 117.6/s, horizon 30s.
+    generate_test.go:90: Unknown preset name and 0 shards are rejected with an error.
+--- PASS: TestPresetsValidate (0.13s)
+=== RUN   TestStragglerOverride
+    generate_test.go:460: Decision 27 (Phase 3 step 7): SizeDist.Straggler replaces ONE shard's size — the largest draw — with exactly that many vectors; every other shard and the whole query stream are the draws the base preset makes for the same seed.
+    generate_test.go:487: n=6 seed=1: shard 0 (skewed's rank-1, 200000 vectors) became 12.3M; the other 5 shards and all 3412 queries identical to skewed
+    generate_test.go:487: n=6 seed=2: shard 0 (skewed's rank-1, 200000 vectors) became 12.3M; the other 5 shards and all 3670 queries identical to skewed
+    generate_test.go:487: n=6 seed=3: shard 3 (skewed's rank-1, 200000 vectors) became 12.3M; the other 5 shards and all 3466 queries identical to skewed
+    generate_test.go:487: n=50 seed=1: shard 10 (skewed's rank-1, 200000 vectors) became 12.3M; the other 49 shards and all 29934 queries identical to skewed
+    generate_test.go:487: n=50 seed=2: shard 14 (skewed's rank-1, 200000 vectors) became 12.3M; the other 49 shards and all 30388 queries identical to skewed
+    generate_test.go:487: n=50 seed=3: shard 23 (skewed's rank-1, 200000 vectors) became 12.3M; the other 49 shards and all 28865 queries identical to skewed
+--- PASS: TestStragglerOverride (0.03s)
 PASS
-ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	1.891s
+ok  	github.com/arqbca11/HNSWonGPUs/experiments/workload	0.393s
+=== RUN   TestPreemptionInSim
+    sim_test.go:179: preempted once; round 28.50 s
+    sim_test.go:192: the round beat the stay-local projection; the wait measures from submit; 2.50 s of CPU recorded wasted
+--- PASS: TestPreemptionInSim (0.00s)
+=== RUN   TestTickPhaseByHand
+    sim_test.go:222: first tick at t=1: round 27.5000 s, wasted CPU 1.5000 s; at t=2 (default): 28.5000 s and 2.5000 s — the whole timeline shifted by exactly the phase
+--- PASS: TestTickPhaseByHand (0.00s)
+=== RUN   TestDeterminism
+    sim_test.go:311: two runs of skewed/seed 7/sigma 0.3 are identical: round 30.041 s, 5612 events
+    sim_test.go:317: seed 8 differs as it should: 30.056 s
+--- PASS: TestDeterminism (0.01s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/experiments/sim	0.177s
 
-== Docker events for container kgpu-test-pg-67833
-  01:55:51  create
-  01:55:52  start
-  01:55:57  kill
-  01:55:57  die
-  01:55:57  destroy
+== Docker events for container kgpu-test-pg-23873
+  19:02:40  create
+  19:02:40  start
+  19:02:42  kill
+  19:02:42  die
+  19:02:42  destroy
 
 == Result: PASS
