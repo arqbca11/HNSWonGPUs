@@ -2,8 +2,6 @@
 
 A scheduler that places HNSW vector index builds from many database shards onto a small shared pool of GPU workers, or back onto each shard's own CPU, and measures which placement policy gets the whole cluster back to normal fastest.
 
-**Status: Phases 1 and 2 are done; Phase 3 (placement policies and experiments) is in progress — the policies, the GPU finish estimator, the reconsider timer that executes preemption/reneging/speculation, and the experiment pipeline (discrete-event simulator, seeded sweep runner, plots) are built; next is validating the simulator against the live cluster, which closes the phase.** Phase 1 built the lease-based scheduler, the Postgres schema, the Python worker and the shard simulator, correct under failure at 6 and 50 shards. Phase 2 moved the control plane and GPU pool onto a kind Kubernetes cluster — two stand-in GPU nodes advertising countable fake GPU cards, probes, graceful shutdown, Prometheus and a Grafana round dashboard — with the shards running outside the cluster, as a database fleet would, and closed with failure injections watched live on the dashboard: a worker crashed mid-build, the scheduler pod deleted mid-round, both GPU nodes drained. The [roadmap](docs/roadmap.md) has all six phases.
-
 ## The problem
 
 A sharded vector database receives one DDL: build an index on every shard. Each shard can build on its own CPU, which blocks the queries arriving at that shard until the build finishes, or hand the build to a shared GPU, which is faster but may already have a queue. Results are gathered from every shard, so the slowest shard sets the pace for the cluster.
