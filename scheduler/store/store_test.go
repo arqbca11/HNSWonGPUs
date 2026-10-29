@@ -1101,3 +1101,50 @@ func tsub(t *time.Time, t0 time.Time) any {
 	}
 	return t.Sub(t0)
 }
+
+// Phase 4 decisions 15 and 19: a round names its data, and a running local
+// build can fail (the recall gate refused it) under the same guard as done.
+func TestRoundDatasetAndLocalFail(t *testing.T) {
+	s, pool := newStore(t)
+	ctx := context.Background()
+	t.Log("--- a modeled round has no dataset; a real-data round names it")
+	r0, _ := s.CreateRound(ctx, "test", 1, 2)
+	rd, _, _ := s.GetRound(ctx, r0)
+	if rd.Dataset != nil {
+		t.Fatalf("modeled round dataset %v, want nil", *rd.Dataset)
+	}
+	r1, err := s.CreateRoundWithDataset(ctx, "skewed", 1, 6, "sift-128")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd, _, _ = s.GetRound(ctx, r1)
+	if rd.Dataset == nil || *rd.Dataset != "sift-128" || rd.NShards != 6 {
+		t.Fatalf("round %+v, want dataset sift-128 at 6 shards", rd)
+	}
+	t.Logf("[db] round %d: dataset=%s n_shards=%d; round %d: dataset=NULL", r1, *rd.Dataset, rd.NShards, r0)
+
+	t.Log("--- FailLocal: only a running local build, once; the reason is kept")
+	local := submit(t, s, r1, 0, "local", 0, 1<<20)
+	gpu := submit(t, s, r1, 1, "gpu", 0, 1<<20)
+	ok, err := s.FailLocal(ctx, local, "recall@10 0.84 < 0.90")
+	if err != nil || !ok {
+		t.Fatalf("FailLocal: ok=%v err=%v", ok, err)
+	}
+	st, _ := state(t, pool, local)
+	var reason string
+	pool.QueryRow(ctx, `SELECT fail_reason FROM builds WHERE build_id=$1`, local).Scan(&reason)
+	if st != "failed" || reason != "recall@10 0.84 < 0.90" {
+		t.Fatalf("after FailLocal: state %s reason %q", st, reason)
+	}
+	t.Logf("[db] %s: state=%s fail_reason=%q", local, st, reason)
+	if ok, _ := s.FailLocal(ctx, local, "again"); ok {
+		t.Fatal("a second FailLocal must find nothing to update")
+	}
+	if ok, _ := s.CompleteLocal(ctx, local); ok {
+		t.Fatal("CompleteLocal after FailLocal must be refused")
+	}
+	if ok, _ := s.FailLocal(ctx, gpu, "x"); ok {
+		t.Fatal("FailLocal on a gpu build must be refused")
+	}
+	t.Log("second fail, a later done, and a fail on a gpu build: all refused (0 rows)")
+}

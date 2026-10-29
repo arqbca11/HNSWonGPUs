@@ -1,0 +1,11 @@
+-- Phase 4 step 2 (owner approved 2026-10-29): a round names its data.
+--
+-- dataset: which Phase 4 dataset the round's builds read their vectors from
+-- (sift-128, gist-960-300k); the split is the round's n_shards. NULL means a
+-- modeled round: the fake builder sleeps for the cost model's time and no
+-- vectors exist. The shard simulator sets it when it creates the round, like
+-- a DDL names its table; the worker reads it with the claim, so a build row
+-- stays what it was (shard_id, n_vectors, dim) and the data it refers to is
+-- splits/<dataset>/<n_shards>/vectors/shard_<shard_id>.npy in the object
+-- store (Phase 4 decisions 9, 15).
+ALTER TABLE rounds ADD COLUMN dataset text;

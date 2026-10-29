@@ -81,6 +81,10 @@ func genSizes(d SizeDist, n int, rng *rand.Rand) []int64 {
 	}
 	out := make([]int64, n)
 	switch d.Kind {
+	case "split":
+		// Phase 4 decision 16: the sizes are the committed split's, in shard
+		// order, and no random draw is consumed for them.
+		return splitSizes(d, n)
 	case "zipf":
 		// Rank-size Zipf: the shard of rank r gets Max / r^s, clamped at Min.
 		// Ranks are assigned to shards by a seeded permutation, so the largest

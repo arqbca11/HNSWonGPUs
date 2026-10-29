@@ -591,3 +591,62 @@ func TestSubmitQueueWaitColdStart(t *testing.T) {
 	}
 	t.Logf("    placed %s, gpu_queue_wait_ms %d: an empty pool may be about to fill (G1)", b.Placement, waitMs(t, b))
 }
+
+// Phase 4 decisions 15 and 19 through the API: a round created with a
+// dataset reports it, and a running local build can be failed with a reason
+// under the same guard as done.
+func TestRoundDatasetAndLocalFailAPI(t *testing.T) {
+	h := newHarness(t)
+	var cr CreateRoundResponse
+	if code := h.call("POST", "/rounds", CreateRoundRequest{Scenario: "skewed", Seed: 1, NShards: 2, Dataset: "sift-128"}, &cr); code != 201 {
+		t.Fatalf("create round: %d", code)
+	}
+	var rs RoundStatus
+	h.call("GET", fmt.Sprintf("/rounds/%d", cr.RoundID), nil, &rs)
+	if rs.Round.Dataset == nil || *rs.Round.Dataset != "sift-128" {
+		t.Fatalf("round status %+v, want dataset sift-128", rs.Round)
+	}
+	t.Logf("round %d created with dataset %s; GET /rounds/%d shows it", cr.RoundID, *rs.Round.Dataset, cr.RoundID)
+	var cr0 CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "skewed", Seed: 1, NShards: 2}, &cr0)
+	h.call("GET", fmt.Sprintf("/rounds/%d", cr0.RoundID), nil, &rs)
+	if rs.Round.Dataset != nil {
+		t.Fatalf("a round without a dataset must report null, got %v", *rs.Round.Dataset)
+	}
+
+	t.Log("--- a local build (20M vectors fit no worker) fails with a reason; the guards")
+	var local, gpu SubmitBuildResponse
+	if err := h.st.Heartbeat(context.Background(), "gpu-1", 8<<30, "node-1"); err != nil {
+		t.Fatal(err)
+	}
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 0, NVectors: 20_000_000, Dim: 128}, &local)
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 1, NVectors: 10_000, Dim: 128}, &gpu)
+	if local.Placement != "local" || gpu.Placement != "gpu" {
+		t.Fatalf("placements: %s / %s", local.Placement, gpu.Placement)
+	}
+	if code := h.call("POST", "/builds/"+local.BuildID+"/fail", LocalFailRequest{}, nil); code != 400 {
+		t.Fatalf("fail without a reason: %d, want 400", code)
+	}
+	if code := h.call("POST", "/builds/"+local.BuildID+"/fail", LocalFailRequest{Reason: "recall@10 0.84 < 0.90"}, nil); code != 200 {
+		t.Fatalf("fail: %d", code)
+	}
+	var b store.BuildRow
+	h.call("GET", "/builds/"+local.BuildID, nil, &b)
+	if b.State != "failed" || b.FailReason == nil || *b.FailReason != "recall@10 0.84 < 0.90" {
+		t.Fatalf("after fail: %+v", b)
+	}
+	t.Logf("[db] %s: state=%s fail_reason=%q", local.BuildID, b.State, *b.FailReason)
+	if code := h.call("POST", "/builds/"+local.BuildID+"/fail", LocalFailRequest{Reason: "again"}, nil); code != 409 {
+		t.Fatalf("second fail: %d, want 409", code)
+	}
+	if code := h.call("POST", "/builds/"+local.BuildID+"/done", nil, nil); code != 409 {
+		t.Fatalf("done after fail: %d, want 409", code)
+	}
+	if code := h.call("POST", "/builds/"+gpu.BuildID+"/fail", LocalFailRequest{Reason: "x"}, nil); code != 409 {
+		t.Fatalf("fail on a gpu build: %d, want 409", code)
+	}
+	if code := h.call("POST", "/builds/nope:1/fail", LocalFailRequest{Reason: "x"}, nil); code != 404 {
+		t.Fatalf("fail on an unknown build: %d, want 404", code)
+	}
+	t.Log("second fail 409, done after fail 409, fail on a gpu build 409, unknown build 404")
+}

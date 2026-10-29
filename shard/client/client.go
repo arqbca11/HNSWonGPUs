@@ -44,6 +44,12 @@ type CreateRoundRequest struct {
 	Scenario string `json:"scenario"`
 	Seed     int64  `json:"seed"`
 	NShards  int32  `json:"n_shards"`
+	Dataset  string `json:"dataset,omitempty"` // Phase 4 decision 15
+}
+
+// LocalFailRequest is the body of POST /builds/{id}/fail (Phase 4 decision 19).
+type LocalFailRequest struct {
+	Reason string `json:"reason"`
 }
 
 type SubmitBuildRequest struct {
@@ -172,10 +178,15 @@ type WorkersResponse struct {
 // ---- calls ---------------------------------------------------------------------
 
 func (c *Client) CreateRound(ctx context.Context, scenario string, seed int64, nShards int32) (int64, error) {
+	return c.CreateRoundWithDataset(ctx, scenario, seed, nShards, "")
+}
+
+// CreateRoundWithDataset names the round's data (Phase 4 decision 15).
+func (c *Client) CreateRoundWithDataset(ctx context.Context, scenario string, seed int64, nShards int32, dataset string) (int64, error) {
 	var out struct {
 		RoundID int64 `json:"round_id"`
 	}
-	_, err := c.do(ctx, "POST", "/rounds", CreateRoundRequest{Scenario: scenario, Seed: seed, NShards: nShards}, &out, 201)
+	_, err := c.do(ctx, "POST", "/rounds", CreateRoundRequest{Scenario: scenario, Seed: seed, NShards: nShards, Dataset: dataset}, &out, 201)
 	return out.RoundID, err
 }
 
@@ -187,6 +198,12 @@ func (c *Client) Submit(ctx context.Context, req SubmitBuildRequest) (SubmitBuil
 
 func (c *Client) LocalDone(ctx context.Context, buildID string) (accepted bool, err error) {
 	code, err := c.do(ctx, "POST", "/builds/"+buildID+"/done", nil, nil, 200, 409)
+	return code == 200, err
+}
+
+// LocalFail reports a local build the recall gate refused (Phase 4 decision 19).
+func (c *Client) LocalFail(ctx context.Context, buildID string, reason string) (accepted bool, err error) {
+	code, err := c.do(ctx, "POST", "/builds/"+buildID+"/fail", LocalFailRequest{Reason: reason}, nil, 200, 409)
 	return code == 200, err
 }
 

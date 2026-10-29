@@ -13,6 +13,11 @@ import (
 
 // RoundConfig drives one round.
 type RoundConfig struct {
+	// Dataset names the round's data (Phase 4 decision 15): "" is a modeled
+	// round (fake builds, sleeps); otherwise the builds read
+	// splits/<Dataset>/<n_shards>/ from the object store and the sizes come
+	// from the committed split (decision 16).
+	Dataset string
 	Shard        Config
 	MinWorkers   int           // wait until this many workers are live before starting (0 = don't wait)
 	WaitWorkers  time.Duration // how long to wait for MinWorkers
@@ -43,7 +48,7 @@ func RunRound(ctx context.Context, api *client.Client, w workload.Workload, cfg 
 			}
 		}
 	}
-	roundID, err := api.CreateRound(ctx, w.Scenario.Name, w.Seed, int32(w.Scenario.NShards))
+	roundID, err := api.CreateRoundWithDataset(ctx, w.Scenario.Name, w.Seed, int32(w.Scenario.NShards), cfg.Dataset)
 	if err != nil {
 		return nil, fmt.Errorf("create round: %w", err)
 	}

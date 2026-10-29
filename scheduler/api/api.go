@@ -65,6 +65,7 @@ func New(st *store.Store, pol policy.Policy, cm costmodel.Model, cfg Config, log
 	s.mux.HandleFunc("POST /builds", s.submitBuild)
 	s.mux.HandleFunc("GET /builds/{id}", s.getBuild)
 	s.mux.HandleFunc("POST /builds/{id}/done", s.localBuildDone)
+	s.mux.HandleFunc("POST /builds/{id}/fail", s.localBuildFail)
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}", s.jobArrived)
 	s.mux.HandleFunc("POST /shards/{round}/{shard}/report", s.shardReport)
 	s.mux.HandleFunc("POST /jobs/{round}/{shard}/{seq}/start", s.jobStart)
@@ -87,6 +88,13 @@ type CreateRoundRequest struct {
 	Scenario string `json:"scenario"`
 	Seed     int64  `json:"seed"`
 	NShards  int32  `json:"n_shards"`
+	Dataset  string `json:"dataset,omitempty"` // Phase 4 decision 15; "" = a modeled round
+}
+
+// LocalFailRequest is the body of POST /builds/{id}/fail: a local build the
+// recall gate refused (Phase 4 decision 19).
+type LocalFailRequest struct {
+	Reason string `json:"reason"`
 }
 
 type CreateRoundResponse struct {
@@ -105,7 +113,7 @@ func (s *Server) createRound(w http.ResponseWriter, r *http.Request) {
 	if req.Scenario == "" {
 		req.Scenario = "default"
 	}
-	id, err := s.st.CreateRound(r.Context(), req.Scenario, req.Seed, req.NShards)
+	id, err := s.st.CreateRoundWithDataset(r.Context(), req.Scenario, req.Seed, req.NShards, req.Dataset)
 	if err != nil {
 		s.internal(w, "create round", err)
 		return
@@ -552,6 +560,45 @@ func (s *Server) localBuildDone(w http.ResponseWriter, r *http.Request) {
 	b, _, _ := s.st.GetBuild(ctx, id)
 	s.log.Info("local build done", "build_id", id, "round_id", b.RoundID, "attempt", b.Attempt, "shard_id", b.ShardID)
 	writeJSON(w, http.StatusOK, map[string]string{"build_id": id, "state": "done"})
+}
+
+// localBuildFail: the shard's local build was refused by the recall gate (or
+// could not run). The same guard as done: only a running local build.
+func (s *Server) localBuildFail(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req LocalFailRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Reason == "" {
+		writeError(w, http.StatusBadRequest, "reason is required")
+		return
+	}
+	if len(req.Reason) > 500 {
+		req.Reason = req.Reason[:500]
+	}
+	ctx := r.Context()
+	ok, err := s.st.FailLocal(ctx, id, req.Reason)
+	if err != nil {
+		s.internal(w, "fail local", err)
+		return
+	}
+	if !ok {
+		b, found, err := s.st.GetBuild(ctx, id)
+		if err != nil {
+			s.internal(w, "get build", err)
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "no such build")
+			return
+		}
+		writeError(w, http.StatusConflict, "build is "+b.Placement+"/"+b.State+", not a running local build")
+		return
+	}
+	b, _, _ := s.st.GetBuild(ctx, id)
+	s.log.Warn("local build failed", "build_id", id, "round_id", b.RoundID, "attempt", b.Attempt, "shard_id", b.ShardID, "reason", req.Reason)
+	writeJSON(w, http.StatusOK, map[string]string{"build_id": id, "state": "failed"})
 }
 
 // ---- follow-up jobs -------------------------------------------------------

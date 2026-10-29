@@ -98,7 +98,10 @@ type Scenario struct {
 
 // SizeDist describes how NVectors is distributed across shards.
 type SizeDist struct {
-	Kind string // "uniform", "zipf", "bimodal"
+	Kind string // "uniform", "zipf", "bimodal", or "split" (the committed split of Split at the scenario's shard count, decision 16)
+	// Split names the dataset whose committed split supplies the sizes when
+	// Kind is "split" (ApplySplit sets it; Min/Max then describe the split).
+	Split string
 	// Min and Max bound NVectors for every shard.
 	Min, Max int64
 	// ZipfExponent applies to "zipf" (roadmap sweep: 0.5, 1.0, 1.5).

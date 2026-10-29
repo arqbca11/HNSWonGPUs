@@ -45,24 +45,36 @@ type Round struct {
 	Scenario   string     `json:"scenario"`
 	Seed       int64      `json:"seed"`
 	NShards    int32      `json:"n_shards"`
+	Dataset    *string    `json:"dataset"` // Phase 4 decision 15: the data the round's builds read; nil = a modeled (fake) round
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 }
 
-// CreateRound inserts a round expecting nShards shards and returns its id.
+// CreateRound inserts a modeled round expecting nShards shards and returns
+// its id (dataset NULL: the fake builder).
 func (s *Store) CreateRound(ctx context.Context, scenario string, seed int64, nShards int32) (int64, error) {
+	return s.CreateRoundWithDataset(ctx, scenario, seed, nShards, "")
+}
+
+// CreateRoundWithDataset is CreateRound naming the round's data (Phase 4
+// decision 15); "" means a modeled round.
+func (s *Store) CreateRoundWithDataset(ctx context.Context, scenario string, seed int64, nShards int32, dataset string) (int64, error) {
 	var id int64
+	var ds *string
+	if dataset != "" {
+		ds = &dataset
+	}
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO rounds (scenario, seed, n_shards) VALUES ($1, $2, $3) RETURNING round_id`,
-		scenario, seed, nShards).Scan(&id)
+		`INSERT INTO rounds (scenario, seed, n_shards, dataset) VALUES ($1, $2, $3, $4) RETURNING round_id`,
+		scenario, seed, nShards, ds).Scan(&id)
 	return id, err
 }
 
 func (s *Store) GetRound(ctx context.Context, id int64) (Round, bool, error) {
 	var r Round
 	err := s.pool.QueryRow(ctx,
-		`SELECT round_id, scenario, seed, n_shards, started_at, finished_at FROM rounds WHERE round_id = $1`, id).
-		Scan(&r.RoundID, &r.Scenario, &r.Seed, &r.NShards, &r.StartedAt, &r.FinishedAt)
+		`SELECT round_id, scenario, seed, n_shards, dataset, started_at, finished_at FROM rounds WHERE round_id = $1`, id).
+		Scan(&r.RoundID, &r.Scenario, &r.Seed, &r.NShards, &r.Dataset, &r.StartedAt, &r.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Round{}, false, nil
 	}
@@ -619,6 +631,16 @@ func (s *Store) CompleteLocal(ctx context.Context, buildID string) (bool, error)
 		SET state = 'done', finished_at = now()
 		WHERE build_id = $1 AND placement = 'local' AND state = 'running'`,
 		buildID)
+}
+
+// FailLocal marks a running local build failed with a reason: the recall
+// gate refused it (Phase 4 decisions 4, 19). Guarded like CompleteLocal.
+func (s *Store) FailLocal(ctx context.Context, buildID string, reason string) (bool, error) {
+	return s.guarded(ctx, `
+		UPDATE builds
+		SET state = 'failed', fail_reason = $2, finished_at = now()
+		WHERE build_id = $1 AND placement = 'local' AND state = 'running'`,
+		buildID, reason)
 }
 
 // Reaped identifies one expired lease the reaper acted on. Outcome is

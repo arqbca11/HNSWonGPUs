@@ -1,0 +1,414 @@
+{
+  "dataset": "gist-960-300k",
+  "dim": 960,
+  "metric": "euclidean",
+  "n_shards": 50,
+  "n_vectors": 300000,
+  "zipf_exponent": 1.0,
+  "perm_seed": 1,
+  "shards": [
+    {
+      "shard_id": 0,
+      "rank": 16,
+      "offset": 0,
+      "size": 4168
+    },
+    {
+      "shard_id": 1,
+      "rank": 26,
+      "offset": 4168,
+      "size": 2564
+    },
+    {
+      "shard_id": 2,
+      "rank": 38,
+      "offset": 6732,
+      "size": 1754
+    },
+    {
+      "shard_id": 3,
+      "rank": 24,
+      "offset": 8486,
+      "size": 2779
+    },
+    {
+      "shard_id": 4,
+      "rank": 31,
+      "offset": 11265,
+      "size": 2150
+    },
+    {
+      "shard_id": 5,
+      "rank": 7,
+      "offset": 13415,
+      "size": 9526
+    },
+    {
+      "shard_id": 6,
+      "rank": 28,
+      "offset": 22941,
+      "size": 2381
+    },
+    {
+      "shard_id": 7,
+      "rank": 50,
+      "offset": 25322,
+      "size": 1333
+    },
+    {
+      "shard_id": 8,
+      "rank": 4,
+      "offset": 26655,
+      "size": 16670
+    },
+    {
+      "shard_id": 9,
+      "rank": 29,
+      "offset": 43325,
+      "size": 2299
+    },
+    {
+      "shard_id": 10,
+      "rank": 10,
+      "offset": 45624,
+      "size": 6668
+    },
+    {
+      "shard_id": 11,
+      "rank": 34,
+      "offset": 52292,
+      "size": 1961
+    },
+    {
+      "shard_id": 12,
+      "rank": 17,
+      "offset": 54253,
+      "size": 3923
+    },
+    {
+      "shard_id": 13,
+      "rank": 25,
+      "offset": 58176,
+      "size": 2667
+    },
+    {
+      "shard_id": 14,
+      "rank": 1,
+      "offset": 60843,
+      "size": 66679
+    },
+    {
+      "shard_id": 15,
+      "rank": 21,
+      "offset": 127522,
+      "size": 3176
+    },
+    {
+      "shard_id": 16,
+      "rank": 23,
+      "offset": 130698,
+      "size": 2900
+    },
+    {
+      "shard_id": 17,
+      "rank": 8,
+      "offset": 133598,
+      "size": 8335
+    },
+    {
+      "shard_id": 18,
+      "rank": 49,
+      "offset": 141933,
+      "size": 1360
+    },
+    {
+      "shard_id": 19,
+      "rank": 36,
+      "offset": 143293,
+      "size": 1852
+    },
+    {
+      "shard_id": 20,
+      "rank": 18,
+      "offset": 145145,
+      "size": 3705
+    },
+    {
+      "shard_id": 21,
+      "rank": 20,
+      "offset": 148850,
+      "size": 3334
+    },
+    {
+      "shard_id": 22,
+      "rank": 48,
+      "offset": 152184,
+      "size": 1389
+    },
+    {
+      "shard_id": 23,
+      "rank": 30,
+      "offset": 153573,
+      "size": 2222
+    },
+    {
+      "shard_id": 24,
+      "rank": 32,
+      "offset": 155795,
+      "size": 2083
+    },
+    {
+      "shard_id": 25,
+      "rank": 22,
+      "offset": 157878,
+      "size": 3031
+    },
+    {
+      "shard_id": 26,
+      "rank": 45,
+      "offset": 160909,
+      "size": 1481
+    },
+    {
+      "shard_id": 27,
+      "rank": 2,
+      "offset": 162390,
+      "size": 33340
+    },
+    {
+      "shard_id": 28,
+      "rank": 12,
+      "offset": 195730,
+      "size": 5557
+    },
+    {
+      "shard_id": 29,
+      "rank": 40,
+      "offset": 201287,
+      "size": 1666
+    },
+    {
+      "shard_id": 30,
+      "rank": 15,
+      "offset": 202953,
+      "size": 4446
+    },
+    {
+      "shard_id": 31,
+      "rank": 5,
+      "offset": 207399,
+      "size": 13336
+    },
+    {
+      "shard_id": 32,
+      "rank": 43,
+      "offset": 220735,
+      "size": 1550
+    },
+    {
+      "shard_id": 33,
+      "rank": 41,
+      "offset": 222285,
+      "size": 1626
+    },
+    {
+      "shard_id": 34,
+      "rank": 44,
+      "offset": 223911,
+      "size": 1515
+    },
+    {
+      "shard_id": 35,
+      "rank": 27,
+      "offset": 225426,
+      "size": 2469
+    },
+    {
+      "shard_id": 36,
+      "rank": 46,
+      "offset": 227895,
+      "size": 1449
+    },
+    {
+      "shard_id": 37,
+      "rank": 35,
+      "offset": 229344,
+      "size": 1905
+    },
+    {
+      "shard_id": 38,
+      "rank": 3,
+      "offset": 231249,
+      "size": 22227
+    },
+    {
+      "shard_id": 39,
+      "rank": 13,
+      "offset": 253476,
+      "size": 5130
+    },
+    {
+      "shard_id": 40,
+      "rank": 11,
+      "offset": 258606,
+      "size": 6062
+    },
+    {
+      "shard_id": 41,
+      "rank": 37,
+      "offset": 264668,
+      "size": 1802
+    },
+    {
+      "shard_id": 42,
+      "rank": 6,
+      "offset": 266470,
+      "size": 11114
+    },
+    {
+      "shard_id": 43,
+      "rank": 9,
+      "offset": 277584,
+      "size": 7409
+    },
+    {
+      "shard_id": 44,
+      "rank": 33,
+      "offset": 284993,
+      "size": 2020
+    },
+    {
+      "shard_id": 45,
+      "rank": 42,
+      "offset": 287013,
+      "size": 1587
+    },
+    {
+      "shard_id": 46,
+      "rank": 47,
+      "offset": 288600,
+      "size": 1418
+    },
+    {
+      "shard_id": 47,
+      "rank": 19,
+      "offset": 290018,
+      "size": 3510
+    },
+    {
+      "shard_id": 48,
+      "rank": 14,
+      "offset": 293528,
+      "size": 4763
+    },
+    {
+      "shard_id": 49,
+      "rank": 39,
+      "offset": 298291,
+      "size": 1709
+    }
+  ],
+  "sha256": {
+    "vectors/shard_0.npy": "3ab856347907962fd067d60eb890affc6123181d43260579771669d318f2d373",
+    "vectors/shard_1.npy": "0412c24a313d6b28b6155d24e308f586fd4caf4e40b488791f5ac2396169f223",
+    "vectors/shard_2.npy": "f564112990c00e95704bb9c3d413bba91899804e46d27cf6bc588262a146112a",
+    "vectors/shard_3.npy": "95ea5a38446bc266f42b8c93776225b158c91b74d972c8f1f9dd477d05c10ae4",
+    "vectors/shard_4.npy": "ba6fa7f71c29b08e7da9c2f9bfd472e89ef23b5197b9bed4b2afb41bccecdcb0",
+    "vectors/shard_5.npy": "f12e541aee17d0833263787d21dde5752b25e266e2bfaab3da805e7dbbb312c2",
+    "vectors/shard_6.npy": "f7e6f7e3d7c6c708fbf653cfc10097d35d2ed0ce688c0a182c8db56a16e66c7d",
+    "vectors/shard_7.npy": "a7368b31a6d4d5d2b8f68cfe8c723f734e0a4531fbac09981ae6a7f8b78fd98e",
+    "vectors/shard_8.npy": "b5b7c0e0df2d3c4e2802beb9d33b17ff378486564d9c604b3416726ae096f58d",
+    "vectors/shard_9.npy": "a63b2ac4d3aa604f90cea1335d45b287f8b65c3cf92ade143f98a97b918935e8",
+    "vectors/shard_10.npy": "0779035da7729f81b353dc2fdda46eb4eb6bad7cb132f9d0b9ee620ba8d28b6a",
+    "vectors/shard_11.npy": "d0f04478a09370b31385a0bd79e9e9530089b9cbb415d6274ee7cd351c0a4537",
+    "vectors/shard_12.npy": "3d6de7aff63d8a5967c4dea2a417f58782523b3e05ed77be541b4a46efd8d0d9",
+    "vectors/shard_13.npy": "94a483c6734465012cf8c1457c27d3b38208d61200bcdbebea6941a855dcf6af",
+    "vectors/shard_14.npy": "d942f438f19b589957471567d526fd69b3e12010d1bd057ac1c29700bf6b5f27",
+    "vectors/shard_15.npy": "ce1050fcbbb3b0caf94f345d78ceb6f8084790c305de267e7d81fad1304471fb",
+    "vectors/shard_16.npy": "6433b9c33b4abad5e404f905d4173e7fc0e563a11b97e5c368e548a006e45e7c",
+    "vectors/shard_17.npy": "8551d64d226d623d6d1ce55f27e56ee0b78ce97bf8a267f218cfcc35c9799b98",
+    "vectors/shard_18.npy": "e2f2c55772f2e55a15e95a5cfa5badecacac0b404811049aad9dff2175f3a9d9",
+    "vectors/shard_19.npy": "e1da88bc57db04a3161698b31034e96a6c205f1a53edae87b8b52e6a969d34ae",
+    "vectors/shard_20.npy": "250ff1cd0cd559164afa00852e238b8a11bef19c91b87251aab9b2ac1d6ee79f",
+    "vectors/shard_21.npy": "0ba41c95aa24101e040eaa6640f452b688bb6b61f9bdbd9dffa42b7cf95fd3a2",
+    "vectors/shard_22.npy": "8c33b2e3a541a8785b5262440dbe40da665aaa023ac2b681a025bb8455a4bda1",
+    "vectors/shard_23.npy": "d3190eefc4c669b1e228f4ce1f70eaf316490b1329b914c653c52b67c57e41f0",
+    "vectors/shard_24.npy": "00a54cb01875651ace329e4877e9c9ea40ec1236cbb429dbd6ccc2048c1fbb75",
+    "vectors/shard_25.npy": "0ffc07a0c51a40891cc6b9cc9ef06a66d02f9884f4e51e4a6b0a068a9d609d8e",
+    "vectors/shard_26.npy": "d23c800d68bd65ed364fadf6086f5eba01da45de8ec404f67ad1c851f0d5e19c",
+    "vectors/shard_27.npy": "e3b5cd40347140d2a04a5fc657d2bbca1e53fcedc6e487d54c5febd74cd57cd8",
+    "vectors/shard_28.npy": "c301d034ebe659cf8164619440c5ee2a37b736ac9254df7ebdcc8d4ca7468fdf",
+    "vectors/shard_29.npy": "484bf46f50d5fba7421e2be900330a773e97f4ae417c9f5ee95ffcc65a73ce4b",
+    "vectors/shard_30.npy": "3601477847f08c1fe8988ab6cb61f37b8e13fabeb13e045a3d225dc3ff93d094",
+    "vectors/shard_31.npy": "d2061a241e6d8546b46de9ba318c93b1c8098b96d90f8eaec51e0bf4672445a2",
+    "vectors/shard_32.npy": "4d698a0b1c12fe1b24880d323469fd9fb172061c6ee4d305e6947e73bd1bd8cf",
+    "vectors/shard_33.npy": "678e24250ba4595e8c6549bc5c7241f60c10bd32ad1d8a3abf74198c38456b33",
+    "vectors/shard_34.npy": "c204a704708ee175f6226789a66f57335a26ac16c565f4c5e0e0b2ee9951a4a2",
+    "vectors/shard_35.npy": "0617ebbebf8bda35c1eec254653270489893f140b3498104f1261f12979db56a",
+    "vectors/shard_36.npy": "bf211cf3f5af5a1d8a2673e4cc525b550de2a0cb6abb1cf604d8c49869872891",
+    "vectors/shard_37.npy": "d5c4e4a687a73ff452e3987a178ef7e6f630c9be288ad1e5ce673afea251bcb1",
+    "vectors/shard_38.npy": "dcfa0273206dee77348cb98c20a85994a7afb99a7c5b634fa56ae62f4b12f0dc",
+    "vectors/shard_39.npy": "6fed86f9d4f6e48921eed0e3b80e8d27ea6d302762b02edc5a93ef387273d953",
+    "vectors/shard_40.npy": "1b235ba354a61000cf8988779689164b53e820c2b80eb95cd582446965b857d0",
+    "vectors/shard_41.npy": "f5dc8ed9eacceea4f1e6b8094ca392479fb5039cb59c15576de58ea445c59908",
+    "vectors/shard_42.npy": "d2a5301a0fe256effd8da92dc8ab457a4f9eba3e7cde83d8be3df25c23b29a56",
+    "vectors/shard_43.npy": "60fe92cce2659fdc4a45727928dd796ed329149b5aa4dc2d70a945222833ae8c",
+    "vectors/shard_44.npy": "6514da8b27814758a171dd355da18fd8bd793eae9d5ed2b09334eae351b57364",
+    "vectors/shard_45.npy": "5ed748ef0fa758148a3ae714184ee4c67d36861a9942981ca80b6b1a391d0168",
+    "vectors/shard_46.npy": "986b21d54f31f6b20afb3a993b39d2f91902c2e677e7b1eefca38f9ae7dac38e",
+    "vectors/shard_47.npy": "342f505722a6ebee68311fbbcddaadad83df52fa44c14c6a1b802b3d5e7e02cc",
+    "vectors/shard_48.npy": "3bfaf7c0bdf7957ffc4ff4f0b9c3cd3f9aef16b8b1238bf8b7e706c1f0786030",
+    "vectors/shard_49.npy": "dcafcdcfd67540d245e68cdc7d80df164635ae252e0c8a69841035b642e6db3f",
+    "ground_truth/shard_0.npy": "93c1441366393873c08b43c1ddf8ddbb3b35f469bf608e8da92bdd593bf93c29",
+    "ground_truth/shard_1.npy": "25ee944702f8193c5ec86d8fc1d3dc2093cc5d8ada329ce26a113b2e9a7b4610",
+    "ground_truth/shard_2.npy": "6153a21c9302c9e7854e7271509f6ff50fdc4e682ca8752d714bbd1b9c642606",
+    "ground_truth/shard_3.npy": "dc233406e13f564c9efa9626a0eb6b9feaa71e4c7da1bb66b6d392c86e9803c0",
+    "ground_truth/shard_4.npy": "0ead48dea617b5d94af839067001c8746342638b79c3f1368a5112c0a9306e93",
+    "ground_truth/shard_5.npy": "a5cc5416af720989b1a09809034ad1956c357624882fc9b1deb0f5a2321b9c65",
+    "ground_truth/shard_6.npy": "a7a633cffcf8ce1229681ad5f2023abed7a469e141b33813a73d7d208ae4d64c",
+    "ground_truth/shard_7.npy": "fe14540db25e293c6a7304cf864e25f617a0649892bbd96120bbb8ea2318268a",
+    "ground_truth/shard_8.npy": "bade1eee5eea10755f23799f25e7fc5780367c6a36e1c84f9b644a2188bd5e18",
+    "ground_truth/shard_9.npy": "bfb72863ad33dfedd040016826256e9a7f4af78e2a7f5f9cabeed9fe912056d6",
+    "ground_truth/shard_10.npy": "575e660ba70e91d4730e4cf92d7404005beb178737934d5de3af44089d3e7dae",
+    "ground_truth/shard_11.npy": "bc443ca2d668027c15246ea51ebc68ee0569ebeac1d3767b85bdd04dd1514b3a",
+    "ground_truth/shard_12.npy": "6d53a0e71c8c053d1d56a855b491811b251b787156a3c66572021ad70793800a",
+    "ground_truth/shard_13.npy": "85278426b028cbbd7058676c5a9f750cd5bce99be6e96861ccd357f9aad9351f",
+    "ground_truth/shard_14.npy": "cc927f645f5070e54610fa39ecdc31a159922881303242e371d054617a53eaec",
+    "ground_truth/shard_15.npy": "7907870444d49f6c048c5f31cd99ac60d3e6eb854f756ffb0af798c8f186e3d9",
+    "ground_truth/shard_16.npy": "35cb3ef1cc9ff5f205de29c146bc1b9f5e4a069dc350fe54e45a322c7dab8e1d",
+    "ground_truth/shard_17.npy": "b4d33334cff131178367694deb511e8ac3f64256dfab96e4228b50b6880f7627",
+    "ground_truth/shard_18.npy": "30aaa67cf5fa84ca1150864ea7368397fd9eae9ea4f9ae6d269cc28489888512",
+    "ground_truth/shard_19.npy": "7028e1859e9684d85c608c4b5e81cd35ba309ce40eee951637efbd38a213d713",
+    "ground_truth/shard_20.npy": "cf725201985d0c73293b030c83bf13a321203d31122cbeee04cbdffa6ba15304",
+    "ground_truth/shard_21.npy": "e8d7adcca6f1da0aae6adc5a94df3dfea8907ab597f951ed9df7dea4b7e2a808",
+    "ground_truth/shard_22.npy": "864dcb18afab978ef275a65a858052216a304b44ef9cb76588eb9663f99edc53",
+    "ground_truth/shard_23.npy": "4df0c3c84243c9277069469cef7a949968d18fed7363b809cc3a1a1143c45503",
+    "ground_truth/shard_24.npy": "32d4a906faf98003980488225c71b05c3162ef064da839616287ab0cf09464be",
+    "ground_truth/shard_25.npy": "f679e0f3f307f3c8dc3e88588cadced256ecd9ff6d6577fe71a3b5a5b6547fba",
+    "ground_truth/shard_26.npy": "a5b79031f59ce91611eb39062831d8006a7f58e5ebb576632c94a3a5de9299dc",
+    "ground_truth/shard_27.npy": "026fd51e74863759da828dbedebb6fbf3bca092e58728064603d241cfd9afc7a",
+    "ground_truth/shard_28.npy": "5684890158e92f8f1ac4b6727d1019727d0e1fdd085b5bca6628273f6a1a0f23",
+    "ground_truth/shard_29.npy": "9b6a52dc0af110ed3ec071b88d73c3100d78e98ef1a32a6cb20b9b54852f0200",
+    "ground_truth/shard_30.npy": "3b2a5948305fd29e38b290e611d767d4840b4d888c24602d8830f7cf271080a0",
+    "ground_truth/shard_31.npy": "a3e9b3595d8813408d29f622c2521365f00eefe35b0fb1f3e28a256aa3cf811d",
+    "ground_truth/shard_32.npy": "e5489ff89929b4d062e4e566ee9ced6fa3b521956cf6a5a9efee2bbe3474516b",
+    "ground_truth/shard_33.npy": "6f0c86efad29a6b3bfdda741de53dd682c1d4c12ffd4218b65f983a9e0ffc0e6",
+    "ground_truth/shard_34.npy": "6cab7e069548af10c614795119004528ea1eedbd47dd0637642142af4100941e",
+    "ground_truth/shard_35.npy": "745b227ad41c478049ef08a816b1631ac4c433e8f06865f99b9cdf5bff79b1d5",
+    "ground_truth/shard_36.npy": "9b8073c94310fb1452be099c0d4566a11f8eb27d6c45526a19d43542c2787d7b",
+    "ground_truth/shard_37.npy": "07e49f7ac9065bf440746ea0ced875bb4d78a5efe791386f898b01faf3a46b75",
+    "ground_truth/shard_38.npy": "6386d2620acf5f7a481d440cf8586a97e824fb146dcc79d1e262bce9df1db0a2",
+    "ground_truth/shard_39.npy": "db44bc1da7fec956a63b6387238a4fb244afeee8985fcad7b6f9a09ba8974fb2",
+    "ground_truth/shard_40.npy": "acfad83d4aab016bca61979e3aafe2724fca3f92812b28e9b3f86e65a1d54ec1",
+    "ground_truth/shard_41.npy": "a1a4f1f97817ae082d9389abb3ab7a866eccc4e3c86d6457e6435b602a4d1e28",
+    "ground_truth/shard_42.npy": "4f42acaeb9c801dd77a2277280a153ab88b3e75147af90aa1aae8941bc0f5511",
+    "ground_truth/shard_43.npy": "f41cd9277c7bec75445175afb05d5100e7d02caacb443c1beee12436ed54cd43",
+    "ground_truth/shard_44.npy": "b768fe55081d6f1734171465002687002e7dcb8c317aca12b238c82ac907c825",
+    "ground_truth/shard_45.npy": "a67a5c3eba28a24c690289a6e972b59c98c5b76db94f1575e79525d856d25b1b",
+    "ground_truth/shard_46.npy": "d6e587f95be079a9c02ed0f22c721134efe11fd3a5082a2f9709b9c78a496036",
+    "ground_truth/shard_47.npy": "0ce15daf07d0324bc378fc25fac333e025769b19278c7413466c2b580fa757f7",
+    "ground_truth/shard_48.npy": "dfceef3b51d8bd1368647e51c7fd84017486dd24d987d4ba974bfe52fe1b4ff7",
+    "ground_truth/shard_49.npy": "0cadf0633c5536e716b2af7e7c8fa94c0073a7a78e9b36b71f0b2c65ab1c361f"
+  },
+  "ground_truth_k": 100
+}

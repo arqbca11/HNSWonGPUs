@@ -1,0 +1,62 @@
+{
+  "dataset": "sift-128",
+  "dim": 128,
+  "metric": "euclidean",
+  "n_shards": 6,
+  "n_vectors": 1000000,
+  "zipf_exponent": 1.0,
+  "perm_seed": 1,
+  "shards": [
+    {
+      "shard_id": 0,
+      "rank": 5,
+      "offset": 0,
+      "size": 81632
+    },
+    {
+      "shard_id": 1,
+      "rank": 1,
+      "offset": 81632,
+      "size": 408164
+    },
+    {
+      "shard_id": 2,
+      "rank": 3,
+      "offset": 489796,
+      "size": 136055
+    },
+    {
+      "shard_id": 3,
+      "rank": 2,
+      "offset": 625851,
+      "size": 204082
+    },
+    {
+      "shard_id": 4,
+      "rank": 6,
+      "offset": 829933,
+      "size": 68027
+    },
+    {
+      "shard_id": 5,
+      "rank": 4,
+      "offset": 897960,
+      "size": 102040
+    }
+  ],
+  "sha256": {
+    "vectors/shard_0.npy": "26db6624063b502873e30f78017dbe743409de8fb33890f92c6ef7fcb64d6b1a",
+    "vectors/shard_1.npy": "3baf20ea6d2ee12376c60636654957dd0ab9ba3aa4c9d1b51556487bc8657753",
+    "vectors/shard_2.npy": "9f59f520a4aff06414d06d8bd33cabe430be62b40506ea359c93cafc7aae520c",
+    "vectors/shard_3.npy": "d7389a20c159367b0d99bbbfc8f5954403c76fa56728aff366d83ef63bf1f33f",
+    "vectors/shard_4.npy": "5ffd872a0a3e73996432ebeda741786c46d438abe504e664e995b9e43b757cb6",
+    "vectors/shard_5.npy": "fb4031cfb2409d7aae416a9286914e992b745880aa9925a59c02b56d8d71ae6f",
+    "ground_truth/shard_0.npy": "91b60122f07dd31eb981739088e1d5c7e6650fca589906d08e73c86f018cb1f6",
+    "ground_truth/shard_1.npy": "76a555ed483cd710d79f1864226ec077e48603c2c354c63a6da3715cb239fb69",
+    "ground_truth/shard_2.npy": "2a1d0e79158c4c8571aed17a5f47e8c1ea34941ba81f9e63c6fd8b1797a59e5c",
+    "ground_truth/shard_3.npy": "1ab84ff6c664a6d1675866789f3eaeaf9398c9f144a838277c9fd6832f48d6f0",
+    "ground_truth/shard_4.npy": "b1785ff63e9a71e7c52c5c6b2e7720c073931d5681e9a30f837eaed4d2638d1e",
+    "ground_truth/shard_5.npy": "8e8edc3dcd1549f88e2e1cdc39bb938e1a5a2a00c5f24f130d8a8dc7749a105b"
+  },
+  "ground_truth_k": 100
+}
