@@ -219,6 +219,7 @@ func TestSweepCSV(t *testing.T) {
 		// missing — every knob that can change a result is recorded.
 		cfgCols := []string{"scenario", "policy", "seed", "n_shards", "dim", "workers", "workers_per_node", "worker_mem_bytes",
 			"share_links", "sigma", "zipf", "load", "needs_index", "speedup", "kill_at",
+			"cost_a", "bandwidth", "gpu_overhead", // Phase 4 step 4: the calibrated constants are knobs too
 			"reconsider_s", "poll_s", "lease_s", "noise_seed"}
 		resCols := []string{"round_s", "straggler_s", "builds_gpu", "builds_local", "preempts", "reneges", "speculations", "queue_wait_p50_s", "queue_wait_p99_s"}
 		base := []string{"-scenarios", "downstream_heavy", "-policies", "reactive_spec", "-rounds", "3", "-sigma", "0.6"}

@@ -1,0 +1,35 @@
+# Internal load balancers: a private IP in the VPC for the scheduler and the
+# object store, reachable from the shard VM and not from the internet. The
+# NodePort numbers of the base are dropped (GKE allocates its own).
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler
+  namespace: kgpu
+  annotations:
+    networking.gke.io/load-balancer-type: Internal
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: null
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: objectstore
+  namespace: kgpu
+  annotations:
+    networking.gke.io/load-balancer-type: Internal
+spec:
+  type: LoadBalancer
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+      nodePort: null
+    - name: console
+      port: 9001
+      targetPort: 9001

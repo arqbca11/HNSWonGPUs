@@ -1,0 +1,44 @@
+# The worker-side calibration (Phase 4 closing step): the same grid the shard
+# VM runs, on a `workers` node with the worker image, 8 and 2 threads, the
+# CSV uploaded to the object store under calibration/ when done. A Job is a
+# pod Kubernetes runs to completion once (restarting it on failure up to
+# backoffLimit); `kubectl -n kgpu logs job/calibrate -f` follows it.
+#   kubectl apply -f deploy/k8s-gcp/calibrate-job.yaml
+#   kubectl -n kgpu delete job calibrate     # before a rerun
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: calibrate
+  namespace: kgpu
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-nodepool: workers
+      containers:
+        - name: calibrate
+          image: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker:p4
+          envFrom:
+            - secretRef:
+                name: objectstore
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              H=$(hostname)
+              python -m kgpu_builder calibrate sift-128 6 --sizes 10000,20000,50000,100000,200000,400000 --threads 8,2 --repeats 2 --out /tmp/$H-sift-128-6.csv
+              python -m kgpu_builder calibrate gist-960-300k 6 --sizes 10000,30000,60000,120000 --threads 8,2 --repeats 2 --out /tmp/$H-gist-960-300k-6.csv
+              python -m kgpu_builder fit /tmp/$H-sift-128-6.csv /tmp/$H-gist-960-300k-6.csv --shard-threads 2 --worker-threads 8
+              python - <<'PY'
+              import glob, os
+              from kgpu_builder.config import Config
+              from kgpu_builder.store import Store
+              st = Store(Config.from_env())
+              for p in glob.glob("/tmp/*.csv"):
+                  st.put_bytes("calibration/" + os.path.basename(p), open(p, "rb").read(), "text/csv"); print("uploaded calibration/" + os.path.basename(p))
+              PY
+          resources:
+            requests: {cpu: "7", memory: "2Gi"}
+            limits: {memory: "6Gi"}

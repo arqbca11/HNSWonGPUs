@@ -1,0 +1,14 @@
+# A GKE persistent disk mounts owned by root; the RustFS image runs as uid
+# 10001 and could not write /data (the first bring-up's CrashLoopBackOff).
+# fsGroup makes the kubelet chown the volume to that group at mount time.
+# kind's local volumes were world-writable, so the base never needed this.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: objectstore
+  namespace: kgpu
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001

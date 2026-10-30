@@ -1,0 +1,24 @@
+# Phase 4 step 4: the kind manifests applied to the GKE cluster (decision 25).
+#   kubectl apply -k deploy/k8s-gcp
+# Everything is the Phase 2 base plus the differences a managed cluster needs:
+# images from Artifact Registry instead of `kind load`; the workers on the
+# CPU node pool `workers` with CPU requests instead of the fake card resource
+# (Phase 5 swaps in nvidia.com/gpu); the scheduler and the object store behind
+# internal load balancers, so the shard VM outside the cluster reaches them by
+# a stable private IP; real builds at time scale 1.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s
+images:
+  - name: kgpu-scheduler
+    newName: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-scheduler
+    newTag: p4
+  - name: kgpu-worker
+    newName: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker
+    newTag: p4
+patches:
+  - path: worker-cpu-pool.yaml
+  - path: services-internal-lb.yaml
+  - path: config-real-builds.yaml
+  - path: objectstore-fsgroup.yaml

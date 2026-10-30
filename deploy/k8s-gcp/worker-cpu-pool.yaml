@@ -1,0 +1,22 @@
+# The workers run on the `workers` node pool (n2-standard-8, one worker per
+# node) with CPU requests, not the kind cluster's fake card resource. The
+# base's nodeSelector and toleration for kgpu.io/gpu are replaced: GKE labels
+# every node with its pool name. BUILD_THREADS stays 8 (the pool's vCPUs).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: kgpu
+spec:
+  replicas: 2
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: workers
+        kgpu.io/gpu: null
+      tolerations: []
+      containers:
+        - name: worker
+          resources:
+            requests: {cpu: "7", memory: "2Gi"}
+            limits: {memory: "6Gi", kgpu.io/gpu-card: null}   # no fake card on GKE

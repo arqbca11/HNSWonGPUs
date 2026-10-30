@@ -426,6 +426,18 @@ Kubernetes can start a replacement pod while the original is still running on a 
 - [ ] Measure dispatch latency and GPU idle time for long-running workers against one Job per build. Per-build pods pay pod startup and possibly a large image pull; long-running workers hold GPUs while idle.
 - [ ] Put the mapping table in `docs/`, noting what still had to be built by hand
 
+## Candidate extensions after Phase 5 (recorded, not committed)
+
+Two directions the owner raised during Phase 4 step 4 (2026-10-30). Neither changes the scheduler's protocol: shards report, the scheduler replies, workers pull.
+
+### The shards as a cloud-native fleet
+
+Today the shards run outside the cluster on a VM, as an on-premises database fleet would (Phase 4 decision 8). Newer distributed databases (CockroachDB, YugabyteDB, TiDB, Vitess, CloudNativePG) ship a Kubernetes *operator* and live as pods. The extension runs the shards as a StatefulSet on a dedicated node pool, one shard pod per node so a shard's CPU stays whole (a 2-CPU pod *limit* on a shared node is kernel throttling in 100 ms slices, not two owned cores, and would put an artefact into every local build time), with the shard's load readable from the pod's metrics as well as from its reports. The interesting question is what the placement policies gain when the scheduler can watch the shards the way an operator does, instead of only hearing from them at the report cadence. Kept out of Phases 4 and 5 because their measurements depend on the shard's CPU being unambiguous, which a VM is.
+
+### A global index as a build DAG
+
+Today each shard builds its own HNSW graph and a cross-shard query fans out and merges top-k lists. A *global* index (one graph over the whole table; Oracle sharding supports a global index on a sharded table) is in practice built in two stages: N partition builds, then a merge that re-links each vector by searching the other partitions' graphs for better neighbours (cuVS's multi-GPU CAGRA does this; Milvus, Weaviate and Vespa keep the partitions and route queries to the near ones instead). For the scheduler that turns a bag of independent builds into a dependency graph: the merge cannot start until the slowest partition finishes, so round completion becomes the critical path into the merge, and the policies get a new question — which partitions to offload so the merge starts earliest. The naive alternative, shipping every vector to the coordinator or to one GPU and building there, is what sharding exists to avoid.
+
 ## Open questions
 
 - [ ] Is batching several small builds onto one GPU worker in scope?
