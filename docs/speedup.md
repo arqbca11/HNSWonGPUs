@@ -19,7 +19,7 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **Unknown for a GPU** (Phase 5). Measured for a CPU worker with 8 threads over a shard with 2, on the laptop: **2.0×** (evidence 6, a rehearsal) | Measured (laptop; decision 7 says the number that counts comes from the cloud topology) |
-| The cost model's CPU constant and its error, measured | **A ≈ 7.5e-8 s per n·ln(n)·dim at 2 threads on this laptop, 1.9× below Phase 1's 1.4e-7; and the n·ln(n) shape is off by a quarter across 10k–400k (time grows like n^1.3), so the estimate error for the sweeps' sigma axis is ~0.25** (evidence 6) | Measured (laptop rehearsal) |
+| The cost model's CPU constant and its error, measured | **A ≈ 6.1e-8 s per n·ln(n)·dim at 2 threads on this laptop (log-space fit), 2.3× below Phase 1's 1.4e-7; the n·ln(n) shape is off by up to ±50 % across 10k–400k (time grows like n^1.3), so the estimate error for the sweeps' sigma axis is ~0.25 RMS** (evidence 6) | Measured (laptop rehearsal) |
 | Does the simulator's number survive contact with the live stack? | **Yes, within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds**: 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
 ## The assumption underneath everything
@@ -141,12 +141,13 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 | Quantity | Measured | Phase 1 placeholder |
 | --- | --- | --- |
-| A (s per n·ln(n)·dim), 2 threads | 7.46e-8 | 1.4e-7 (1.9× pessimistic for these cores) |
-| A, 8 threads | 3.71e-8 | — |
-| 8 threads over 2 ("speedup" with CPU workers) | **2.0×** | 10× was the GPU placeholder |
-| Shape | t ∝ n^1.27–1.30 (5 % residuals); the n·ln(n) fit is off 0.56..1.21 across the grid | n·ln(n) |
-| Estimate error of the n·ln(n) fit (sigma of the log residuals) | **0.22–0.25** | the sweeps assumed 0, 0.3, 0.6 |
-| Fetch from the object store | 170–230 MB/s | 200 MB/s |
+| A (s per n·ln(n)·dim), 2 threads, log-space fit | 6.08e-8 (a linear-space fit says 7.46e-8 and hides a −0.21 mean log residual — the step 3 cross-check's finding) | 1.4e-7 (2.3× pessimistic for these cores) |
+| A, 8 threads | 2.97e-8 | — |
+| 8 threads over 2 ("speedup" with CPU workers) | **2.05×** | 10× was the GPU placeholder |
+| Shape | t ∝ n^1.27–1.30 (5 % residuals); the n·ln(n) fit is off 0.69..1.52 across the grid | n·ln(n) |
+| Estimate error of the n·ln(n) fit (RMS of the centred log residuals) | **0.22–0.25** | the sweeps assumed 0, 0.3, 0.6 |
+| Per-build fixed cost (fetch + gate), 8 threads | 1.18 s | 2 s |
+| Fetch from the object store | 153–213 MB/s (median 181) | 200 MB/s |
 | Recall@10 at the gate's ef_search 100 | 0.998 → 0.984 (SIFT 10k → 400k), 0.989 → 0.939 (GIST 10k → 120k) | gate at 0.9 |
 
 **What it changes.** Nothing in the current answers' *round-level* numbers yet — those wait for the cloud calibration — but two things about how they will be produced: the sweeps' sigma axis has a measured point (0.25) instead of three guesses, and the cost model's shape is now an open question with data behind it (the power law would predict the hour-long build 1.9× faster than n·ln(n) scaled from the small shards does). Both go to the Phase 3 decisions when the cloud data arrives.

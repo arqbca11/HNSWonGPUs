@@ -883,3 +883,34 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | builder/test_calibrate.py::test_env_overrides_needs_both_thread_counts | A fit at one thread count only. | The environment block refuses with a ValueError. |
 | builder/test_calibrate.py::test_calibrate_grid_through_the_cli | A toy split (shards of 2000 and 4000 × 32) in a throwaway store; the grid 1000 and 4000 vectors × 1 and 2 threads; then fit; then a size beyond the shard. | Four rows from the largest shard with recall > 0.9, build time, index bytes, peak RSS and dim; fit prints per-thread constants and the COST_* block; the oversize point is refused in one line (decision 23). |
 
+## Phase 4, step 3, cross-check of the calibration method (Python, `builder/tests/test_xcheck_calibrate.py`; the grid tests need `TEST_S3_ENDPOINT`). Log: `phase4/step3-crosscheck-calibration.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_xcheck_calibrate.py::test_xc_fit_constant_power_law_and_ratios_by_hand | 20 noisy points at 2 and 8 threads; `fit`'s printout compared with a hand computation. | A is the geometric mean of t/x with x = n·ln(n)·dim (decision 24 as amended); ratio range, p, c and power sigma match the hand values; one residual row per point. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_sigma_is_population_or_sample | Three points whose population and sample standard deviations differ by √1.5. | Sigma is the population standard deviation of ln(measured/fitted). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_env_block_by_hand | Shard, worker and a noisier third thread count, each with a different fetch speed; `--overhead 3.5`. | COST_A = shard A; SPEEDUP = A ratio; OVERHEAD = 3.5; SIGMA = the larger of the pair's sigmas; BANDWIDTH = median of the worker points only. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_bandwidth_median_of_even_count | Four worker points at 200/100/50/25 MB/s. | COST_BANDWIDTH is the median, 75 MB/s (F1). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_repeats_are_separate_points | Three repeats at one size and one point at another. | Four points, and A equals the every-point fit, not the averaged-per-size one. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_mixed_dims_in_one_file | Exact points at dim 128 and 960 in one file. | A recovered exactly, ratios 1, sigma 0, speedup 2. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_fitted_column_is_the_worker_cost_model | Fit, then evaluate the worker's cost model with a = COST_A. | The residual table's fitted column equals `Model.cpu_build_s(n, dim)`. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_single_point | One point. | A = t/x, sigma 0, no block, the power exponent nan (F2). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_repeats_at_one_size_only | Three repeats at one size per thread count. | Block emitted; the exponent nan, not a number (F2). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_two_thread_counts_one_point_each | One point at 2 threads, one at 8. | Speedup 2, sigma 0, bandwidth from the worker point. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_no_points_refused_in_one_line | An empty file; a header-only file. | Non-zero exit, one line, no traceback. |
+| builder/test_xcheck_calibrate.py::test_xc_fit_non_numeric_build_s_refused_in_one_line | A row with `build_s = abc`. | Non-zero exit with a one-line error (F3). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_size_one_point | A size-1 point (n·ln n = 0) among good ones. | No crash: refused in one line (F4). |
+| builder/test_xcheck_calibrate.py::test_xc_fit_requested_pair_missing | Data at 2 and 8 threads, block asked for 2 and 4. | Per-thread fits printed, no COST_* block, the message names 4, exit 0 (G7). |
+| builder/test_xcheck_calibrate.py::test_xc_rehearsal_csvs_reproduce_evidence6 | The committed laptop CSVs recomputed by hand and through `fit`. | Evidence 6's A 6.08e-8 / 2.97e-8, speedup 2.05, p 1.27 / 1.30, sigmas 0.22 / 0.25, ratios 0.69..1.49 / 0.70..1.52, fetch 153–213 MB/s, the COST_* block and the median bandwidth reproduce. |
+| builder/test_xcheck_calibrate.py::test_xc_grid_schema_and_row_order | Toy split; grid with sizes 1000,500 × threads 2,1 × 2 repeats. | Header = the committed schema; threads outer, sizes inner, repeats innermost and increasing; M 16, efC 200. |
+| builder/test_xcheck_calibrate.py::test_xc_grid_prefix_of_largest_shard_gated_on_its_own_truth | Largest shard with NaN rows past 2000 and a deliberately wrong stored ground truth; sizes 500 and 2000. | Every row from the largest shard with recall ≥ 0.9: a clean prefix gated on its own exact top-10 (decision 23). |
+| builder/test_xcheck_calibrate.py::test_xc_grid_shard_override | `--shard 2` on a split whose largest is shard 1. | The row is shard 2's. |
+| builder/test_xcheck_calibrate.py::test_xc_point_json_has_exactly_the_csv_fields | One `calibrate-point`. | The JSON's keys are exactly the CSV header in order; count fields are integers. |
+| builder/test_xcheck_calibrate.py::test_xc_grid_size_beyond_shard | `calibrate-point` 2501 of 2500; grid 600,2600 on a 2500-vector shard. | Point refused in one line; the grid refuses before any point runs (F6). |
+| builder/test_xcheck_calibrate.py::test_xc_grid_peak_rss_is_per_point | Grid 120k then 1k × 4 then 2 threads on a 120k × 32 shard. | A 1k point after a 120k point reports its own, smaller RSS; RSS is in bytes. |
+| builder/test_xcheck_calibrate.py::test_xc_grid_interrupted_keeps_rows_and_rerun_appends | A 40-repeat grid whose parent is SIGKILLed at 3 rows, then rerun into the same file. | Rows kept, complete and unchanged; no orphan children; the rerun appends with the repeat numbering continued (G4); header written once. |
+| builder/test_xcheck_calibrate.py::test_xc_grid_existing_csv_with_other_header | `--out` points at an existing `a,b,c` CSV. | Refused (F7). |
+| builder/test_xcheck_calibrate.py::test_xc_plot_committed_csvs | The plot on both committed CSVs together and on each alone. | Exit 0 and a valid PNG. |
+| builder/test_xcheck_calibrate.py::test_xc_plot_synthetic_and_one_series | The plot on a synthetic two-thread CSV and on a one-thread-count CSV. | Exit 0 and a valid PNG. |
+| builder/test_xcheck_calibrate.py::test_xc_plot_empty_csv | The plot on a header-only CSV. | Refused in one line, like `fit` (G5). |
+

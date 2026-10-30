@@ -19,9 +19,8 @@ from plotlib import load  # noqa: E402
 
 
 def fit_a(points):
-    sx = sum(p["x"] * p["t"] for p in points)
-    sxx = sum(p["x"] * p["x"] for p in points)
-    return sx / sxx
+    # the same log-space fit as kgpu_builder.calibrate: the geometric mean of t/x
+    return math.exp(sum(math.log(p["t"] / p["x"]) for p in points) / len(points))
 
 
 def main() -> None:
@@ -30,6 +29,8 @@ def main() -> None:
     ap.add_argument("-o", "--out", default="calibration.png")
     args = ap.parse_args()
     rows = load(args.csv)
+    if not rows:
+        raise SystemExit(f"plot_calibration: no points in {' '.join(args.csv)}")
     series = defaultdict(list)
     for r in rows:
         n, d, t = int(r["size"]), int(r["dim"]), float(r["build_s"])

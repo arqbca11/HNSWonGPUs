@@ -17,9 +17,11 @@
                                              row per point (decision 23)
     calibrate-point <dataset> <n_shards> --shard K --size N --threads T [--repeat R]
                                              one point, in this process; the JSON row on stdout
-    fit       <csv> [--shard-threads 2] [--worker-threads 8] [--overhead 2.0]
-                                             fit A per thread count, print residuals, sigma and the
-                                             COST_* environment block (decision 24)
+    fit       <csv>... [--shard-threads 2] [--worker-threads 8] [--overhead S]
+                                             fit A per thread count (in log space), print residuals,
+                                             sigma and the COST_* block (decision 24); several CSVs
+                                             are fitted together; without fits for the requested
+                                             thread pair the block is omitted with a note (exit 0)
     download  <dataset>                      fetch the HDF5 (resumable), verify size
     split     <dataset> <n_shards> [--zipf S] [--seed P]
                                              write the split locally: vectors per shard + manifest
@@ -247,7 +249,15 @@ def cmd_calibrate(cfg: Config, args) -> int:
     threads = [int(x) for x in args.threads.split(",")]
     out = args.out or str(cfg.data_dir / "calibration" / f"{args.dataset}-{args.n_shards}-{os.uname().nodename}.csv")
     _log(f"calibrate {args.dataset} split {args.n_shards}, shard {shard}: sizes {sizes} x threads {threads} x {args.repeats} repeat(s) -> {out}")
-    cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log)
+    # every size against the shard before any point runs (cross-check F6)
+    shard_rows = int(next(s for s in st.get_json(f"splits/{args.dataset}/{args.n_shards}/manifest.json")["shards"] if s["shard_id"] == shard)["size"])
+    bad = [s for s in sizes if s < 2 or s > shard_rows]
+    if bad:
+        raise SystemExit(f"calibrate: sizes {bad} are outside 2..{shard_rows} (shard {shard} has {shard_rows} vectors)")
+    try:
+        cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log)
+    except (ValueError, RuntimeError) as e:
+        raise SystemExit(f"calibrate: {e}") from None
     _log(f"wrote {out}")
     return 0
 
@@ -263,21 +273,40 @@ def cmd_calibrate_point(cfg: Config, args) -> int:
 
 def cmd_fit(args) -> int:
     import csv as _csv
-    rows = list(_csv.DictReader(open(args.csv)))
+    rows = []
+    for path in args.csv:
+        with open(path, newline="") as f:
+            rd = _csv.DictReader(f)
+            if rd.fieldnames != cal.POINT_FIELDS:
+                raise SystemExit(f"fit: {path} is not a calibration CSV (header {rd.fieldnames[:3] if rd.fieldnames else None}...)")
+            rows += list(rd)
     if not rows:
-        raise SystemExit(f"fit: {args.csv} has no points")
-    fits = cal.fit_points(rows)
+        raise SystemExit(f"fit: {' '.join(args.csv)}: no points")
+    try:
+        for r in rows:
+            for k in ("size", "dim", "threads", "build_s", "fetch_s", "fetch_bytes", "gate_s", "recall"):
+                float(r[k])
+        fits = cal.fit_points(rows)
+    except (ValueError, KeyError) as e:
+        raise SystemExit(f"fit: bad point in {' '.join(args.csv)}: {e}") from None
     for f in fits:
+        # one line per thread count in a fixed shape (scripts parse it), the extras on a second line;
+        # the power law prints nan when fewer than two distinct sizes make it undetermined
+        c, pe, ps = (f.power_c, f.power_p, f.power_sigma) if f.power_p is not None else (float("nan"), float("nan"), float("nan"))
         _log(f"threads {f.threads}: {f.n_points} points; A = {f.a:.4g} s per n·ln(n)·dim (ratio {f.min_ratio:.2f}..{f.max_ratio:.2f}, sigma {f.sigma:.3f}); "
-             f"power law t = {f.power_c:.3g} · n^{f.power_p:.3f} · dim (sigma {f.power_sigma:.3f}); min recall {f.recall_min:.3f}; fetch {f.bandwidth_bps / 1e6:.0f} MB/s")
+             f"power law t = {c:.3g} · n^{pe:.3f} · dim (sigma {ps:.3f}); min recall {f.recall_min:.3f}; fetch {f.bandwidth_bps / 1e6:.0f} MB/s")
+        _log(f"   fitted in log space; a linear-space least squares would give A = {f.a_linear:.4g} and hide a {f.bias_linear:+.3f} mean log residual; "
+             f"fetch+gate per point {f.overhead_s:.2f} s (the measured overhead)")
     _log("\n".join(cal.residual_table(rows, fits)))
     try:
         env = cal.env_overrides(fits, args.shard_threads, args.worker_threads, args.overhead)
-        _log("COST_* for a cluster whose shards build with %d threads and whose workers with %d:" % (args.shard_threads, args.worker_threads))
-        for k, v in env.items():
-            _log(f"  {k}={v}")
     except ValueError as e:
         _log(f"(no environment block: {e})")
+        return 0
+    _log("COST_* for a cluster whose shards build with %d threads and whose workers with %d (overhead %s):"
+         % (args.shard_threads, args.worker_threads, "given" if args.overhead is not None else "the workers' median fetch + gate"))
+    for k, v in env.items():
+        _log(f"  {k}={v}")
     return 0
 
 
@@ -297,9 +326,9 @@ def main(argv=None) -> int:
     cp.add_argument("--threads", type=int, required=True); cp.add_argument("--repeat", type=int, default=0)
     cp.add_argument("--m", type=int, default=16); cp.add_argument("--ef-construction", type=int, default=200)
     ft = sub.add_parser("fit")
-    ft.add_argument("csv")
+    ft.add_argument("csv", nargs="+")
     ft.add_argument("--shard-threads", type=int, default=2); ft.add_argument("--worker-threads", type=int, default=8)
-    ft.add_argument("--overhead", type=float, default=2.0)
+    ft.add_argument("--overhead", type=float, default=None)
     b = sub.add_parser("build")
     b.add_argument("--build-id", required=True)
     b.add_argument("--attempt", type=int, required=True)

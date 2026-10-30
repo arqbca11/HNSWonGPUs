@@ -1,0 +1,360 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.15, pytest-8.4.2, pluggy-1.7.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder
+configfile: pyproject.toml
+collecting ... collected 32 items
+
+tests/test_xcheck_calibrate.py::test_xc_fit_constant_power_law_and_ratios_by_hand ran: kgpu_builder fit pts.csv  -> exit 0
+threads 2: 10 points; A = 8.335e-08 s per n·ln(n)·dim (ratio 0.74..1.19, sigma 0.138); power law t = 5.89e-07 · n^1.041 · dim (sigma 0.124); min recall 0.990; fetch 120 MB/s
+   fitted in log space; a linear-space least squares would give A = 7.068e-08 and hide a +0.165 mean log residual; fetch+gate per point 1.77 s (the measured overhead)
+threads 8: 10 points; A = 3.434e-08 s per n·ln(n)·dim (ratio 0.70..1.39, sigma 0.200); power law t = 5.26e-08 · n^1.177 · dim (sigma 0.164); min recall 0.990; fetch 167 MB/s
+   fitted in log space; a linear-space least squares would give A = 4.004e-08 and hide a -0.154 mean log residual; fetch+gate per point 1.30 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      1.06      0.98   1.08      1.10   0.990
+      2    10000   128      1.00      0.98   1.02      1.10   0.990
+      2    30000   128      3.25      3.30   0.99      3.44   0.990
+      2    30000   128      3.61      3.30   1.09      3.44   0.990
+      2   100000   128     12.02     12.28   0.98     12.03   0.990
+      2   100000   128     14.63     12.28   1.19     12.03   0.990
+      2   200000   128     28.72     26.04   1.10     24.75   0.990
+      2   200000   128     27.96     26.04   1.07     24.75   0.990
+      2   400000   128     45.43     55.05   0.83     50.91   0.990
+      2   400000   128     40.64     55.05   0.74     50.91   0.990
+      8    10000   128      0.33      0.40   0.81      0.34   0.990
+      8    10000   128      0.37      0.40   0.90      0.34   0.990
+      8    30000   128      1.63      1.36   1.20      1.25   0.990
+      8    30000   128      0.96      1.36   0.70      1.25   0.990
+      8   100000   128      5.84      5.06   1.15      5.15   0.990
+      8   100000   128      4.34      5.06   0.86      5.15   0.990
+      8   200000   128     12.87     10.73   1.20     11.65   0.990
+      8   200000   128     10.63     10.73   0.99     11.65   0.990
+      8   400000   128     22.48     22.68   0.99     26.33   0.990
+      8   400000   128     31.53     22.68   1.39     26.33   0.990
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=8.335e-08
+  COST_SPEEDUP=2.427
+  COST_GPU_OVERHEAD=1.30
+  COST_BANDWIDTH=1.672e+08
+  KGPU_ESTIMATE_SIGMA=0.200
+
+threads 2: A printed 8.3350e-08 vs hand 8.3348e-08; ratio 0.74..1.19 vs 0.738..1.191; p 1.041 vs 1.0406; c 5.89e-07 vs 5.891e-07; power sigma 0.124 vs 0.1237; n 10 vs 10
+threads 8: A printed 3.4340e-08 vs hand 3.4337e-08; ratio 0.7..1.39 vs 0.704..1.390; p 1.177 vs 1.1767; c 5.26e-08 vs 5.262e-08; power sigma 0.164 vs 0.1645; n 10 vs 10
+residual table: 20 rows for 20 points
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_sigma_is_population_or_sample ran: kgpu_builder fit s.csv  -> exit 0
+printed sigma 0.286; population std 0.2858; sample std 0.3500; RMS of ln ratio (no mean removed) 0.2858; mean ln ratio -0.0000
+=> fit's sigma is the population standard deviation
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_env_block_by_hand ran: kgpu_builder fit env.csv --shard-threads 2 --worker-threads 8 --overhead 3.5 -> exit 0
+threads 2: 5 points; A = 1.11e-07 s per n·ln(n)·dim (ratio 0.44..2.21, sigma 0.523); power law t = 1.67e-06 · n^0.977 · dim (sigma 0.490); min recall 0.990; fetch 10 MB/s
+   fitted in log space; a linear-space least squares would give A = 1.031e-07 and hide a +0.074 mean log residual; fetch+gate per point 20.10 s (the measured overhead)
+threads 4: 5 points; A = 4.088e-08 s per n·ln(n)·dim (ratio 0.57..1.80, sigma 0.383); power law t = 2.61e-06 · n^0.851 · dim (sigma 0.144); min recall 0.990; fetch 10 MB/s
+   fitted in log space; a linear-space least squares would give A = 2.588e-08 and hide a +0.457 mean log residual; fetch+gate per point 20.10 s (the measured overhead)
+threads 8: 5 points; A = 4e-08 s per n·ln(n)·dim (ratio 0.90..1.18, sigma 0.089); power law t = 1.11e-07 · n^1.123 · dim (sigma 0.069); min recall 0.990; fetch 100 MB/s
+   fitted in log space; a linear-space least squares would give A = 4.534e-08 and hide a -0.125 mean log residual; fetch+gate per point 2.10 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      2.89      1.31   2.21      1.72   0.990
+      2    40000   128      2.66      6.02   0.44      6.66   0.990
+      2   160000   128     34.09     27.23   1.25     25.81   0.990
+      2   320000   128     51.08     57.62   0.89     50.78   0.990
+      2   640000   128    112.17    121.54   0.92     99.93   0.990
+      4    10000   128      0.87      0.48   1.80      0.85   0.990
+      4    40000   128      2.37      2.22   1.07      2.77   0.990
+      4   160000   128     11.43     10.03   1.14      9.03   0.990
+      4   320000   128     17.08     21.23   0.80     16.29   0.990
+      4   640000   128     25.42     44.77   0.57     29.38   0.990
+      8    10000   128      0.47      0.47   0.99      0.44   0.990
+      8    40000   128      1.96      2.17   0.90      2.08   0.990
+      8   160000   128      9.70      9.82   0.99      9.88   0.990
+      8   320000   128     19.89     20.77   0.96     21.53   0.990
+      8   640000   128     51.73     43.80   1.18     46.88   0.990
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead given):
+  COST_A=1.11e-07
+  COST_SPEEDUP=2.775
+  COST_GPU_OVERHEAD=3.50
+  COST_BANDWIDTH=1e+08
+  KGPU_ESTIMATE_SIGMA=0.523
+
+hand: A2 1.1097e-07 A8 3.9996e-08 speedup 2.7746; sigma2 0.5226 sigma8 0.0894 sigma4 0.3830; median bandwidth: worker 1.0000e+08, shard 1.0000e+07, shard+worker 2.5000e+07, all points 1.0000e+07
+printed block: {'COST_A': '1.11e-07', 'COST_SPEEDUP': '2.775', 'COST_GPU_OVERHEAD': '3.50', 'COST_BANDWIDTH': '1e+08', 'KGPU_ESTIMATE_SIGMA': '0.523'}
+=> COST_BANDWIDTH 1.0000e+08 is the median over: ['worker points']
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_bandwidth_median_of_even_count ran: kgpu_builder fit even.csv  -> exit 0
+worker bandwidths 200/100/50/25 MB/s -> COST_BANDWIDTH 7.5000e+07 (numpy median 7.5e7; lower middle 5e7; upper middle 1e8)
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_repeats_are_separate_points ran: kgpu_builder fit rep.csv  -> exit 0
+printed: 4 points, A 7.2280e-08; hand, every repeat a point: 7.2284e-08; hand, repeats averaged per size: 1.2998e-07; residual rows 4
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_mixed_dims_in_one_file ran: kgpu_builder fit mixed.csv  -> exit 0
+threads 2: 6 points; A = 1e-07 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = 3.79e-07 · n^1.097 · dim (sigma 0.003); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 1e-07 and hide a -0.000 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads 8: 6 points; A = 5e-08 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = 1.89e-07 · n^1.097 · dim (sigma 0.003); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 5e-08 and hide a -0.000 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      1.18      1.18   1.00      1.18   0.990
+      2    10000   960      8.84      8.84   1.00      8.85   0.990
+      2    50000   128      6.92      6.92   1.00      6.90   0.990
+      2    50000   960     51.93     51.93   1.00     51.72   0.990
+      2   120000   128     17.96     17.96   1.00     18.01   0.990
+      2   120000   960    134.73    134.73   1.00    135.09   0.990
+      8    10000   128      0.59      0.59   1.00      0.59   0.990
+      8    10000   960      4.42      4.42   1.00      4.43   0.990
+      8    50000   128      3.46      3.46   1.00      3.45   0.990
+      8    50000   960     25.97     25.97   1.00     25.86   0.990
+      8   120000   128      8.98      8.98   1.00      9.01   0.990
+      8   120000   960     67.36     67.36   1.00     67.54   0.990
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=1e-07
+  COST_SPEEDUP=2.000
+  COST_GPU_OVERHEAD=1.10
+  COST_BANDWIDTH=2e+08
+  KGPU_ESTIMATE_SIGMA=0.000
+
+threads 2: A 1e-07 (true 1e-07), ratio 1.0..1.0, sigma 0.0
+threads 8: A 5e-08 (true 5e-08), ratio 1.0..1.0, sigma 0.0
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_fitted_column_is_the_worker_cost_model ran: kgpu_builder fit cm.csv  -> exit 0
+COST_A 1.071e-07: worker cost model cpu_build_s ['7.42', '33.47', '70.73']; fit's fitted column [7.42, 33.48, 70.76]
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_single_point ran: kgpu_builder fit one.csv  -> exit 0
+threads 2: 1 points; A = 4.524e-06 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = nan · n^nan · dim (sigma nan); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 4.524e-06 and hide a +0.000 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2     1000    16      0.50      0.50   1.00       n/a   0.990
+(no environment block: need fits for 2 and 8 threads; have [2])
+
+A printed 4.524e-06 vs t/x 4.5239e-06; sigma 0.0; power exponent printed nan
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_repeats_at_one_size_only ran: kgpu_builder fit onesize.csv  -> exit 0
+threads 2: 3 points; A = 9.967e-08 s per n·ln(n)·dim (ratio 0.90..1.10, sigma 0.082); power law t = nan · n^nan · dim (sigma nan); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 1e-07 and hide a -0.003 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads 8: 3 points; A = 4.983e-08 s per n·ln(n)·dim (ratio 0.90..1.10, sigma 0.082); power law t = nan · n^nan · dim (sigma nan); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 5e-08 and hide a -0.003 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    20000   128      2.28      2.53   0.90       n/a   0.990
+      2    20000   128      2.54      2.53   1.00       n/a   0.990
+      2    20000   128      2.79      2.53   1.10       n/a   0.990
+      8    20000   128      1.14      1.26   0.90       n/a   0.990
+      8    20000   128      1.27      1.26   1.00       n/a   0.990
+      8    20000   128      1.39      1.26   1.10       n/a   0.990
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=9.967e-08
+  COST_SPEEDUP=2.000
+  COST_GPU_OVERHEAD=1.10
+  COST_BANDWIDTH=2e+08
+  KGPU_ESTIMATE_SIGMA=0.082
+
+exponents printed: 2 threads p=nan, 8 threads p=nan
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_two_thread_counts_one_point_each ran: kgpu_builder fit two.csv  -> exit 0
+threads 2: 1 points; A = 4.524e-06 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = nan · n^nan · dim (sigma nan); min recall 0.990; fetch 19 MB/s
+   fitted in log space; a linear-space least squares would give A = 4.524e-06 and hide a +0.000 mean log residual; fetch+gate per point 0.11 s (the measured overhead)
+threads 8: 1 points; A = 2.262e-06 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = nan · n^nan · dim (sigma nan); min recall 0.990; fetch 10 MB/s
+   fitted in log space; a linear-space least squares would give A = 2.262e-06 and hide a +0.000 mean log residual; fetch+gate per point 0.12 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2     1000    16      0.50      0.50   1.00       n/a   0.990
+      8     1000    16      0.25      0.25   1.00       n/a   0.990
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=4.524e-06
+  COST_SPEEDUP=2.000
+  COST_GPU_OVERHEAD=0.12
+  COST_BANDWIDTH=9.6e+06
+  KGPU_ESTIMATE_SIGMA=0.000
+
+block {'COST_A': '4.524e-06', 'COST_SPEEDUP': '2.000', 'COST_GPU_OVERHEAD': '0.12', 'COST_BANDWIDTH': '9.6e+06', 'KGPU_ESTIMATE_SIGMA': '0.000'}: speedup 0.5/0.25 = 2; sigma of single points 0; bandwidth of the worker point 9.6e6, of the shard point 1.92e7
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_no_points_refused_in_one_line[empty-file] ran: kgpu_builder fit e.csv  -> exit 1
+stdout '' stderr 'fit: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_fit_no_points_refused_0/e.csv is not a calibration CSV (header None...)\n'
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_no_points_refused_in_one_line[header-only] ran: kgpu_builder fit e.csv  -> exit 1
+stdout '' stderr 'fit: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_fit_no_points_refused_1/e.csv: no points\n'
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_non_numeric_build_s_refused_in_one_line ran: kgpu_builder fit bad.csv  -> exit 1
+exit 1; stderr 1 lines; last: "fit: bad point in /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_fit_non_numeric_build_0/bad.csv: could not convert string to float: 'abc'"
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_size_one_point ran: kgpu_builder fit n1.csv  -> exit 1
+exit 1; stderr tail ['fit: bad point in /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_fit_size_one_point0/n1.csv: threads 2: every point needs size >= 2 and build_s > 0']
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_fit_requested_pair_missing ran: kgpu_builder fit pair.csv --worker-threads 4 -> exit 0
+threads 2: 2 points; A = 1e-07 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = 3.66e-07 · n^1.100 · dim (sigma 0.000); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 1e-07 and hide a +0.000 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads 8: 2 points; A = 5e-08 s per n·ln(n)·dim (ratio 1.00..1.00, sigma 0.000); power law t = 1.83e-07 · n^1.100 · dim (sigma 0.000); min recall 0.990; fetch 200 MB/s
+   fitted in log space; a linear-space least squares would give A = 5e-08 and hide a +0.000 mean log residual; fetch+gate per point 1.10 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      1.18      1.18   1.00      1.18   0.990
+      2    50000   128      6.92      6.92   1.00      6.92   0.990
+      8    10000   128      0.59      0.59   1.00      0.59   0.990
+      8    50000   128      3.46      3.46   1.00      3.46   0.990
+(no environment block: need fits for 2 and 4 threads; have [2, 8])
+
+exit 0; per-thread fits printed for [2, 8]; block keys []
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_rehearsal_csvs_reproduce_evidence6 committed: SIFT 24 rows, GIST 16 rows (Step 3 notes: 40 rows); header == schema: True
+SIFT: sizes [10000, 20000, 50000, 100000, 200000, 400000], threads [2, 8], repeats per point {2}, shard {'1'}
+  SIFT 2 threads: recall at smallest size [0.9982, 0.9982], at largest [0.9838, 0.9838]
+  SIFT 8 threads: recall at smallest size [0.998, 0.998], at largest [0.985, 0.9846]
+GIST: sizes [10000, 30000, 60000, 120000], threads [2, 8], repeats per point {2}, shard {'1'}
+  GIST 2 threads: recall at smallest size [0.9888, 0.9892], at largest [0.9392, 0.939]
+  GIST 8 threads: recall at smallest size [0.988, 0.989], at largest [0.9396, 0.9378]
+hand, threads 2: 20 points, A 6.0801e-08, ratio 0.69..1.49, sigma pop 0.217 (sample 0.223; RMS incl. bias 0.217, mean ln ratio +0.000), p 1.269, power sigma 0.064, fetch median 1.9091e+08 B/s (range 164..213 MB/s)
+hand, threads 8: 20 points, A 2.9660e-08, ratio 0.70..1.52, sigma pop 0.245 (sample 0.252; RMS incl. bias 0.245, mean ln ratio -0.000), p 1.296, power sigma 0.054, fetch median 1.8129e+08 B/s (range 153..200 MB/s)
+ran: kgpu_builder fit both.csv  -> exit 0
+fit printed: {2: {'n': 20, 'a': 6.08e-08, 'ratio_min': 0.69, 'ratio_max': 1.49, 'sigma': 0.217, 'c': 3.53e-08, 'p': 1.269, 'psigma': 0.064, 'recall_min': 0.939, 'fetch_mbs': 191}, 8: {'n': 20, 'a': 2.966e-08, 'ratio_min': 0.7, 'ratio_max': 1.52, 'sigma': 0.245, 'c': 1.28e-08, 'p': 1.296, 'psigma': 0.054, 'recall_min': 0.938, 'fetch_mbs': 181}}
+block: {'COST_A': '6.08e-08', 'COST_SPEEDUP': '2.050', 'COST_GPU_OVERHEAD': '1.18', 'COST_BANDWIDTH': '1.813e+08', 'KGPU_ESTIMATE_SIGMA': '0.245'}
+  ok  A 6.08e-8 / 2.97e-8 (hand 6.080e-08 / 2.966e-08)
+  ok  speedup 2.05 (hand 2.050)
+  ok  p 1.27 / 1.30 (hand 1.269 / 1.296)
+  ok  sigma 0.22 / 0.25 (hand 0.217 / 0.245)
+  ok  power sigma 0.06 / 0.05 (hand 0.064 / 0.054)
+  ok  2 threads ratio 0.69..1.49 (hand 0.688..1.490)
+  ok  8 threads ratio 0.70..1.52 (hand 0.698..1.518)
+  ok  'Fetch from the store ran at 150-215 MB/s' (every point: 153..213 MB/s)
+  ok  fit CLI agrees with the hand numbers at 2 threads
+  ok  fit CLI agrees with the hand numbers at 8 threads
+  ok  the CLI block matches the Step 3 notes' COST_A 6.08e-08, SPEEDUP 2.050, SIGMA 0.245 ({'COST_A': '6.08e-08', 'COST_SPEEDUP': '2.050', 'COST_GPU_OVERHEAD': '1.18', 'COST_BANDWIDTH': '1.813e+08', 'KGPU_ESTIMATE_SIGMA': '0.245'})
+  ok  COST_BANDWIDTH 1.813e+08 is the median of the worker points' bytes/s (median 1.8129e+08; upper middle of the 20 1.8413e+08; lower middle 1.7846e+08; shard points' median 1.9091e+08)
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_schema_and_row_order (bucket xcc-76555bdea9: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate xcal 3 --sizes 1000,500 --threads 2,1 --repeats 2 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_schema_and_row_or0/grid.csv -> exit 0 in 2.1s
+calibrate xcal split 3, shard 1: sizes [1000, 500] x threads [2, 1] x 2 repeat(s) -> /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_schema_and_row_or0/grid.csv
+  xcal shard 1 size    1000 x 16 threads 2 repeat 0: build    0.02 s, recall@10 1.000, index    0.2 MB, peak rss     84 MB, fetch    21 MB/s
+  xcal shard 1 size    1000 x 16 threads 2 repeat 1: build    0.02 s, recall@10 1.000, index    0.2 MB, peak rss     84 MB, fetch    32 MB/s
+  xcal shard 1 size     500 x 16 threads 2 repeat 0: build    0.01 s, recall@10 1.000, index    0.1 MB, peak rss     84 MB, fetch    38 MB/s
+  xcal shard 1 size     500 x 16 threads 2 repeat 1: build    0.01 s, recall@10 1.000, index    0.1 MB, peak rss     84 MB, fetch    32 MB/s
+  xcal shard 1 size    1000 x 16 threads 1 repeat 0: build    0.03 s, recall@10 1.000, index    0.2 MB, peak rss     84 MB, fetch    31 MB/s
+  xcal shard 1 size    1000 x 16 threads 1 repeat 1: build    0.03 s, recall@10 1.000, index    0.2 MB, peak rss     84 MB, fetch    27 MB/s
+  xcal shard 1 size     500 x 16 threads 1 repeat 0: build    0.01 s, recall@10 1.000, index    0.1 MB, peak rss     84 MB, fetch    20 MB/s
+  xcal shard 1 size     500 x 16 threads 1 repeat 1: build    0.01 s, recall@10 1.000, index    0.1 MB, peak rss     84 MB, fetch    28 MB/s
+wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_schema_and_row_or0/grid.csv
+
+header: dataset,n_shards,shard,size,dim,threads,m,ef_construction,repeat,fetch_s,fetch_bytes,build_s,gate_s,recall,index_bytes,maxrss_bytes,host,at
+row order (threads, size, repeat): [(2, 1000, 0), (2, 1000, 1), (2, 500, 0), (2, 500, 1), (1, 1000, 0), (1, 1000, 1), (1, 500, 0), (1, 500, 1)]
+=> sizes within a thread count run in the order [1000, 500] (asked 1000,500): as given; threads asked 2,1, run [2, 1]
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_prefix_of_largest_shard_gated_on_its_own_truth (bucket xcc-2fc2f71799: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate xcal 3 --sizes 500,2000 --threads 2 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_prefix_of_largest0/prefix.csv -> exit 0 in 0.7s
+calibrate xcal split 3, shard 1: sizes [500, 2000] x threads [2] x 1 repeat(s) -> /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_prefix_of_largest0/prefix.csv
+  xcal shard 1 size     500 x 16 threads 2 repeat 0: build    0.01 s, recall@10 1.000, index    0.1 MB, peak rss     84 MB, fetch    34 MB/s
+  xcal shard 1 size    2000 x 16 threads 2 repeat 0: build    0.04 s, recall@10 1.000, index    0.4 MB, peak rss     85 MB, fetch    24 MB/s
+wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_prefix_of_largest0/prefix.csv
+
+size 500: shard 1, fetch_bytes 192000 (shard 1's vectors are 192000 B raw; shard 2's 160000), recall 1.0
+size 2000: shard 1, fetch_bytes 192000 (shard 1's vectors are 192000 B raw; shard 2's 160000), recall 1.0
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_shard_override (bucket xcc-c914be20fe: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate xcal 3 --shard 2 --sizes 800 --threads 1 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_shard_override0/ovr.csv -> exit 0 in 0.4s
+--shard 2: rows [('2', '800', '160000')]
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_point_json_has_exactly_the_csv_fields (bucket xcc-753443cff6: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate-point xcal 3 --shard 1 --size 700 --threads 1 --repeat 4 -> exit 0 in 0.2s
+stdout: {"dataset": "xcal", "n_shards": 3, "shard": 1, "size": 700, "dim": 16, "threads": 1, "m": 16, "ef_construction": 200, "repeat": 4, "fetch_s": 0.005533933639526367, "fetch_bytes": 192000, "build_s": 0.01936817169189453, "gate_s": 0.009019136428833008, "recall": 1.0, "index_bytes": 149096, "maxrss_bytes": 84475904, "host": "Ruoqis-MacBook-Air.local", "at": "2026-10-30T21:39:37Z"}
+JSON keys == CSV header (same order): True; missing set(), extra set()
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_size_beyond_shard (bucket xcc-89f8f5ab58: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate-point xcal 3 --shard 2 --size 2501 --threads 1 -> exit 1 in 0.2s
+calibrate-point size 2501 of 2500: exit 1, stderr "calibrate-point: size 2501 exceeds shard 2's 2500 vectors"
+ran: kgpu_builder calibrate xcal 3 --shard 2 --sizes 600,2600 --threads 1 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_size_beyond_shard0/beyond.csv -> exit 1 in 0.2s
+grid: exit 1; stderr 1 lines, last ['calibrate: sizes [2600] are outside 2..2500 (shard 2 has 2500 vectors)']; rows kept []
+=> refused before measuring anything
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_peak_rss_is_per_point (bucket xcc-91a5b0b62f: xcal split 3, shard sizes [1000, 120000] x 32, 600 queries)
+ran: kgpu_builder calibrate xcal 3 --sizes 120000,1000 --threads 4,2 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_peak_rss_is_per_p0/rss.csv -> exit 0 in 13.7s
+threads 4 size 120000: peak RSS   288.0 MiB, index   31.6 MiB
+threads 4 size   1000: peak RSS   125.8 MiB, index    0.3 MiB
+threads 2 size 120000: peak RSS   285.9 MiB, index   31.6 MiB
+threads 2 size   1000: peak RSS   124.7 MiB, index    0.3 MiB
+small points that ran after a large one: rows [1, 3]
+platform darwin: maxrss_bytes looked like bytes here (ru_maxrss is bytes on macOS, KiB on Linux)
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_interrupted_keeps_rows_and_rerun_appends (bucket xcc-aeb2a5b61a: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+parent killed with 3 rows on disk; 3 s later 3 rows; orphan children still running: 0; file ends with a newline: True
+ran: kgpu_builder calibrate xcal 3 --sizes 500 --threads 1 --repeats 1 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_interrupted_keeps0/intr.csv -> exit 0 in 0.5s
+rerun into the same CSV: exit 0; rows 3 -> 4; header lines 1; repeat column now ['0', '1', '2', '3']
+=> the rerun continued the repeat numbering
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_grid_existing_csv_with_other_header (bucket xcc-86bb10292e: xcal split 3, shard sizes [1500, 3000, 2500] x 16, 600 queries)
+ran: kgpu_builder calibrate xcal 3 --sizes 500 --threads 1 --out /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_existing_csv_with0/other.csv -> exit 1 in 0.2s
+exit 1; stderr tail ["calibrate: /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_grid_existing_csv_with0/other.csv exists with a different header (['a', 'b', 'c']...); choose another --out"]; file now:
+a,b,c
+1,2,3
+
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_plot_committed_csvs plot ['laptop-sift-128-6.csv', 'laptop-gist-960-300k-6.csv'] -> exit 0; stdout 'wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_committed_csvs0/both.png: 40 points in 4 series'; png 156354 bytes
+plot ['laptop-sift-128-6.csv'] -> exit 0; stdout 'wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_committed_csvs0/sift.png: 24 points in 2 series'; png 107654 bytes
+plot ['laptop-gist-960-300k-6.csv'] -> exit 0; stdout 'wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_committed_csvs0/gist.png: 16 points in 2 series'; png 100680 bytes
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_plot_synthetic_and_one_series plot ['toy.csv'] -> exit 0; stdout 'wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_synthetic_and_one0/toy.png: 12 points in 2 series'; png 81716 bytes
+plot ['one_series.csv'] -> exit 0; stdout 'wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_synthetic_and_one0/one.png: 6 points in 1 series'; png 61681 bytes
+PASSED
+tests/test_xcheck_calibrate.py::test_xc_plot_empty_csv plot ['empty.csv'] -> exit 1; stdout ''; png False bytes
+stderr tail: ['plot_calibration: no points in /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_xc_plot_empty_csv0/empty.csv']
+=> refused
+PASSED
+tests/test_calibrate.py::test_fit_recovers_the_constant_exactly_without_noise {2: (1.4e-07, 0.0, 1.0942), 8: (5.6e-08, 0.0, 1.0942)}
+{'COST_A': '1.4e-07', 'COST_SPEEDUP': '2.500', 'COST_GPU_OVERHEAD': '2.00', 'COST_BANDWIDTH': '1.5e+08', 'KGPU_ESTIMATE_SIGMA': '0.000'}
+PASSED
+tests/test_calibrate.py::test_fit_sigma_is_the_std_of_the_log_residuals 40 points with log-normal noise sigma 0.3: fitted sigma 0.279, A 1.401e-07, power exponent 1.053
+PASSED
+tests/test_calibrate.py::test_fit_sees_a_steeper_curve_in_the_power_exponent t ∝ n^1.3: power fit p = 1.300; the n·ln(n) fit's ratios span 0.71..1.43
+PASSED
+tests/test_calibrate.py::test_env_overrides_needs_both_thread_counts PASSED
+tests/test_calibrate.py::test_calibrate_grid_through_the_cli rs/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_calibrate_grid_through_th0/cal.csv
+  toy shard 1 size    1000 x 32 threads 1 repeat 0: build    0.04 s, recall@10 1.000, index    0.3 MB, peak rss     85 MB, fetch    27 MB/s
+  toy shard 1 size    4000 x 32 threads 1 repeat 0: build    0.22 s, recall@10 0.996, index    1.1 MB, peak rss     88 MB, fetch    24 MB/s
+  toy shard 1 size    1000 x 32 threads 2 repeat 0: build    0.03 s, recall@10 1.000, index    0.3 MB, peak rss     86 MB, fetch    67 MB/s
+  toy shard 1 size    4000 x 32 threads 2 repeat 0: build    0.12 s, recall@10 0.996, index    1.1 MB, peak rss     88 MB, fetch    77 MB/s
+wrote /private/var/folders/_1/k3pftdyd21scs4qtq9n8wshm0000gn/T/pytest-of-ruoqibai/pytest-49/test_calibrate_grid_through_th0/cal.csv
+ 
+A = 1.3e-07 s per n·ln(n)·dim (ratio 0.85..1.18, sigma 0.161); power law t = 2.12e-06 · n^0.899 · dim (sigma 0.000); min recall 0.996; fetch 72 MB/s
+   fitted in log space; a linear-space least squares would give A = 1.124e-07 and hide a +0.146 mean log residual; fetch+gate per point 0.01 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      1     1000    32      0.04      0.04   0.88      0.04   1.000
+      1     4000    32      0.22      0.20   1.13      0.22   0.996
+      2     1000    32      0.03      0.03   1.18      0.03   1.000
+      2     4000    32      0.12      0.14   0.85      0.12   0.996
+COST_* for a cluster whose shards build with 1 threads and whose workers with 2 (overhead the workers' median fetch + gate):
+  COST_A=1.838e-07
+  COST_SPEEDUP=1.414
+  COST_GPU_OVERHEAD=0.01
+  COST_BANDWIDTH=7.21e+07
+  KGPU_ESTIMATE_SIGMA=0.161
+
+a size beyond the shard is refused: calibrate-point: size 5000 exceeds shard 0's 2000 vectors
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_constant_power_law_and_ratios_by_hand
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_sigma_is_population_or_sample
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_env_block_by_hand
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_bandwidth_median_of_even_count
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_repeats_are_separate_points
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_mixed_dims_in_one_file
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_fitted_column_is_the_worker_cost_model
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_single_point
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_repeats_at_one_size_only
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_two_thread_counts_one_point_each
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_no_points_refused_in_one_line[empty-file]
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_no_points_refused_in_one_line[header-only]
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_non_numeric_build_s_refused_in_one_line
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_size_one_point
+PASSED tests/test_xcheck_calibrate.py::test_xc_fit_requested_pair_missing
+PASSED tests/test_xcheck_calibrate.py::test_xc_rehearsal_csvs_reproduce_evidence6
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_schema_and_row_order
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_prefix_of_largest_shard_gated_on_its_own_truth
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_shard_override
+PASSED tests/test_xcheck_calibrate.py::test_xc_point_json_has_exactly_the_csv_fields
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_size_beyond_shard
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_peak_rss_is_per_point
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_interrupted_keeps_rows_and_rerun_appends
+PASSED tests/test_xcheck_calibrate.py::test_xc_grid_existing_csv_with_other_header
+PASSED tests/test_xcheck_calibrate.py::test_xc_plot_committed_csvs
+PASSED tests/test_xcheck_calibrate.py::test_xc_plot_synthetic_and_one_series
+PASSED tests/test_xcheck_calibrate.py::test_xc_plot_empty_csv
+PASSED tests/test_calibrate.py::test_fit_recovers_the_constant_exactly_without_noise
+PASSED tests/test_calibrate.py::test_fit_sigma_is_the_std_of_the_log_residuals
+PASSED tests/test_calibrate.py::test_fit_sees_a_steeper_curve_in_the_power_exponent
+PASSED tests/test_calibrate.py::test_env_overrides_needs_both_thread_counts
+PASSED tests/test_calibrate.py::test_calibrate_grid_through_the_cli
+============================= 32 passed in 32.24s ==============================
