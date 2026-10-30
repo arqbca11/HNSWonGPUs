@@ -18,7 +18,8 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
-| Per-build speedup, measured | **Unknown.** hnswlib (CPU) vs cuVS (GPU) on real hardware is Phase 5 | — |
+| Per-build speedup, measured | **Unknown for a GPU** (Phase 5). Measured for a CPU worker with 8 threads over a shard with 2, on the laptop: **2.0×** (evidence 6, a rehearsal) | Measured (laptop; decision 7 says the number that counts comes from the cloud topology) |
+| The cost model's CPU constant and its error, measured | **A ≈ 7.5e-8 s per n·ln(n)·dim at 2 threads on this laptop, 1.9× below Phase 1's 1.4e-7; and the n·ln(n) shape is off by a quarter across 10k–400k (time grows like n^1.3), so the estimate error for the sweeps' sigma axis is ~0.25** (evidence 6) | Measured (laptop rehearsal) |
 | Does the simulator's number survive contact with the live stack? | **Yes, within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds**: 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
 ## The assumption underneath everything
@@ -132,4 +133,22 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **What it changes in the current-answer table.** Nothing at the median of the current presets (still ~0, physics-bound). The round-level speedup *of the dynamic policy over naive offloading* is now a measured 1.6× at the queue-bound 50-shard arm (evidence 2's 20 % was the production preset at 160 GB workers) and ~1.14× at p99 in the transfer-bound high-dimension arms, with the oracle a further 5–17 % ahead. The fixed threshold is not a contender. All of it inherits the assumed 10× / 2 s / 200 MB/s cost model; Phase 4's calibration and Phase 5's GPU measurement rerun this sweep on measured constants.
 
-*(Next expected entries: Phase 4 — the measured CPU build curve and the object store's throughput replacing A and the bandwidth, and this sweep rerun on them; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against evidence 3's prediction.)*
+### Evidence 6 — the calibration method, rehearsed on the laptop (Phase 4 step 3)
+
+**Setup.** `python -m kgpu_builder calibrate` (Phase 4 decision 23): real hnswlib builds of prefixes of SIFT-128's 408k shard (10k–400k vectors) and the GIST subset's 122k shard (10k–120k × 960 dims) at 2 and 8 threads, two repeats, each point in its own process, the vectors fetched from the kind cluster's store through a port-forward; then `fit` (decision 24). Ten-core laptop: a rehearsal of the method, not a ledger number (decision 7). Log `test-logs/phase4/step3-calibration.log`; points and figure under `experiments/results/calibration/`.
+
+**Result.**
+
+| Quantity | Measured | Phase 1 placeholder |
+| --- | --- | --- |
+| A (s per n·ln(n)·dim), 2 threads | 7.46e-8 | 1.4e-7 (1.9× pessimistic for these cores) |
+| A, 8 threads | 3.71e-8 | — |
+| 8 threads over 2 ("speedup" with CPU workers) | **2.0×** | 10× was the GPU placeholder |
+| Shape | t ∝ n^1.27–1.30 (5 % residuals); the n·ln(n) fit is off 0.56..1.21 across the grid | n·ln(n) |
+| Estimate error of the n·ln(n) fit (sigma of the log residuals) | **0.22–0.25** | the sweeps assumed 0, 0.3, 0.6 |
+| Fetch from the object store | 170–230 MB/s | 200 MB/s |
+| Recall@10 at the gate's ef_search 100 | 0.998 → 0.984 (SIFT 10k → 400k), 0.989 → 0.939 (GIST 10k → 120k) | gate at 0.9 |
+
+**What it changes.** Nothing in the current answers' *round-level* numbers yet — those wait for the cloud calibration — but two things about how they will be produced: the sweeps' sigma axis has a measured point (0.25) instead of three guesses, and the cost model's shape is now an open question with data behind it (the power law would predict the hour-long build 1.9× faster than n·ln(n) scaled from the small shards does). Both go to the Phase 3 decisions when the cloud data arrives.
+
+*(Next expected entries: Phase 4's closing step — the same calibration on the cloud topology, whose A, speedup, bandwidth and sigma replace the placeholders and rerun the full comparison; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against evidence 3's prediction.)*

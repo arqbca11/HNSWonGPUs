@@ -120,6 +120,12 @@ One entry per action the system takes, pointing at the code that decides it, the
 - A failed build's second chance (decision 21): `store.RetryLocal` behind `POST /builds/{id}/retry-local` (guarded on `local_retries = 0`, the row back to local/running at the next attempt), asked by the shard's `retryLocal` from `apply` when the summary says failed; after that `nextReady` releases the needs-index queries (the fallback) and the round completes with the failure on record.
 - Running it: `scripts/k8s-check-p4-step2.sh` (the cluster at time scale 1 with `BUILDER=hnswlib`, the laptop's shards with `DATASET` and `BUILDER_CMD`).
 
+### Step 3: calibration — measured build times into cost-model constants
+- The grid and the point: `builder/kgpu_builder/calibrate.py` (`run_grid` spawns `calibrate-point` per (size, threads, repeat) and appends CSV rows; `run_point` builds a prefix of the largest shard, gates it on an exact top-10, reports peak RSS; decision 23).
+- The fit: `calibrate.fit_points` (A per thread count through the origin, sigma of the log residuals, a power-law fit beside it), `residual_table`, `env_overrides` (the `COST_*` block; decision 24); the CLI's `calibrate`, `calibrate-point`, `fit` in `cli.py`.
+- The figure: `experiments/analysis/plot_calibration.py` (measured vs fitted on log-log, the residual ratio below).
+- Where the numbers go: `experiments/results/calibration/<host>-<dataset>-<n>.csv` (the laptop rehearsal is committed as a rehearsal); the cloud topology's calibration will be the one the scheduler's `COST_*` are set from.
+
 ## Observability and configuration
 
 ### Metrics

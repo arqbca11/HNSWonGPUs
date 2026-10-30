@@ -11,6 +11,15 @@
                                              {"phase": "build"|"gate"|"publish"}; exit 0 built,
                                              3 gate failed, 1 any other error (still one document
                                              on stdout), 2 usage (one line on stderr).
+    calibrate <dataset> <n_shards> [--sizes 10000,...] [--threads 2,8] [--repeats 1] [--out CSV]
+                                             step 3: time real builds of prefixes of the split's largest
+                                             shard over the grid, one child process per point, one CSV
+                                             row per point (decision 23)
+    calibrate-point <dataset> <n_shards> --shard K --size N --threads T [--repeat R]
+                                             one point, in this process; the JSON row on stdout
+    fit       <csv> [--shard-threads 2] [--worker-threads 8] [--overhead 2.0]
+                                             fit A per thread count, print residuals, sigma and the
+                                             COST_* environment block (decision 24)
     download  <dataset>                      fetch the HDF5 (resumable), verify size
     split     <dataset> <n_shards> [--zipf S] [--seed P]
                                              write the split locally: vectors per shard + manifest
@@ -43,6 +52,7 @@ import h5py
 import numpy as np
 
 from . import datasets, download as dl, groundtruth, split as sp
+from . import calibrate as cal
 from .build import BuildSpec, GateFailed, run_build
 from .config import Config
 from .store import NotFound, Store
@@ -230,9 +240,66 @@ def cmd_build(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_calibrate(cfg: Config, args) -> int:
+    st = Store(cfg)
+    shard = args.shard if args.shard is not None else cal.largest_shard(st, args.dataset, args.n_shards)
+    sizes = [int(x) for x in args.sizes.split(",")]
+    threads = [int(x) for x in args.threads.split(",")]
+    out = args.out or str(cfg.data_dir / "calibration" / f"{args.dataset}-{args.n_shards}-{os.uname().nodename}.csv")
+    _log(f"calibrate {args.dataset} split {args.n_shards}, shard {shard}: sizes {sizes} x threads {threads} x {args.repeats} repeat(s) -> {out}")
+    cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log)
+    _log(f"wrote {out}")
+    return 0
+
+
+def cmd_calibrate_point(cfg: Config, args) -> int:
+    try:
+        pt = cal.run_point(Store(cfg), args.dataset, args.n_shards, args.shard, args.size, args.threads, args.m, args.ef_construction, args.repeat)
+    except (ValueError, NotFound) as e:
+        raise SystemExit(f"calibrate-point: {e}") from None
+    print(json.dumps(pt.__dict__), flush=True)
+    return 0
+
+
+def cmd_fit(args) -> int:
+    import csv as _csv
+    rows = list(_csv.DictReader(open(args.csv)))
+    if not rows:
+        raise SystemExit(f"fit: {args.csv} has no points")
+    fits = cal.fit_points(rows)
+    for f in fits:
+        _log(f"threads {f.threads}: {f.n_points} points; A = {f.a:.4g} s per n·ln(n)·dim (ratio {f.min_ratio:.2f}..{f.max_ratio:.2f}, sigma {f.sigma:.3f}); "
+             f"power law t = {f.power_c:.3g} · n^{f.power_p:.3f} · dim (sigma {f.power_sigma:.3f}); min recall {f.recall_min:.3f}; fetch {f.bandwidth_bps / 1e6:.0f} MB/s")
+    _log("\n".join(cal.residual_table(rows, fits)))
+    try:
+        env = cal.env_overrides(fits, args.shard_threads, args.worker_threads, args.overhead)
+        _log("COST_* for a cluster whose shards build with %d threads and whose workers with %d:" % (args.shard_threads, args.worker_threads))
+        for k, v in env.items():
+            _log(f"  {k}={v}")
+    except ValueError as e:
+        _log(f"(no environment block: {e})")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="python -m kgpu_builder", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("calibrate")
+    c.add_argument("dataset"); c.add_argument("n_shards", type=int)
+    c.add_argument("--shard", type=int, default=None)
+    c.add_argument("--sizes", default="10000,20000,50000,100000,200000,400000")
+    c.add_argument("--threads", default="2,8")
+    c.add_argument("--repeats", type=int, default=1)
+    c.add_argument("--out", default=None)
+    cp = sub.add_parser("calibrate-point")
+    cp.add_argument("dataset"); cp.add_argument("n_shards", type=int)
+    cp.add_argument("--shard", type=int, required=True); cp.add_argument("--size", type=int, required=True)
+    cp.add_argument("--threads", type=int, required=True); cp.add_argument("--repeat", type=int, default=0)
+    cp.add_argument("--m", type=int, default=16); cp.add_argument("--ef-construction", type=int, default=200)
+    ft = sub.add_parser("fit")
+    ft.add_argument("csv")
+    ft.add_argument("--shard-threads", type=int, default=2); ft.add_argument("--worker-threads", type=int, default=8)
+    ft.add_argument("--overhead", type=float, default=2.0)
     b = sub.add_parser("build")
     b.add_argument("--build-id", required=True)
     b.add_argument("--attempt", type=int, required=True)
@@ -258,6 +325,12 @@ def main(argv=None) -> int:
     cfg = Config.from_env()
     if args.cmd == "build":
         return cmd_build(cfg, args)
+    if args.cmd == "fit":
+        return cmd_fit(args)
+    if args.cmd == "calibrate":
+        return cmd_calibrate(cfg, args)
+    if args.cmd == "calibrate-point":
+        return cmd_calibrate_point(cfg, args)
     ds = datasets.get(args.dataset)
     steps = {"download": cmd_download, "split": cmd_split, "groundtruth": cmd_groundtruth, "upload": cmd_upload, "verify": cmd_verify}
     try:

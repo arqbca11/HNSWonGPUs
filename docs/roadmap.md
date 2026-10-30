@@ -354,9 +354,9 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 ### Calibration method (laptop, a rehearsal)
 
-- [ ] The fitting code: measure build time over a grid of sizes (10k to 500k vectors) and thread counts, fit a × n × log n per configuration, and check the residuals rather than assuming the curve
-- [ ] Record the estimate error distribution and feed it back into the simulator's σ
-- [ ] Run it once on the laptop to prove the method end to end; these numbers do not enter `docs/speedup.md`
+- [x] The fitting code: measure build time over a grid of sizes (10k to 500k vectors) and thread counts, fit a × n × log n per configuration, and check the residuals rather than assuming the curve
+- [x] Record the estimate error distribution and feed it back into the simulator's σ
+- [x] Run it once on the laptop to prove the method end to end; these numbers do not enter `docs/speedup.md` *(as a rehearsal they do, labelled: evidence 6 — A 1.9× below the placeholder, the n·ln(n) shape off by a quarter, sigma 0.25)*
 
 ### The cloud topology without GPUs (closing step)
 

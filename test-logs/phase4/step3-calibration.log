@@ -1,0 +1,117 @@
+== Phase 4 step 3: the calibration rehearsal on the laptop (arm64, 10 cores), 2026-10-30T21:19:51Z, commit 421bd0a+local changes
+== grid (two repeats per point; the store through a port-forward to the kind cluster)
+calibrate sift-128 split 6, shard 1: sizes [10000, 20000, 50000, 100000, 200000, 400000] x threads [2, 8] x 2 repeat(s) -> ../experiments/results/calibration/laptop-sift-128-6.csv
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 0: build    0.49 s, recall@10 0.998, index    6.6 MB, peak rss    859 MB, fetch   195 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 1: build    0.57 s, recall@10 0.998, index    6.6 MB, peak rss    860 MB, fetch   199 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 0: build    1.21 s, recall@10 0.998, index   13.2 MB, peak rss    873 MB, fetch   196 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 1: build    1.27 s, recall@10 0.998, index   13.2 MB, peak rss    832 MB, fetch   189 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 0: build    3.77 s, recall@10 0.996, index   33.0 MB, peak rss    916 MB, fetch   209 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 1: build    3.64 s, recall@10 0.996, index   33.0 MB, peak rss    915 MB, fetch   203 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 0: build    9.26 s, recall@10 0.995, index   66.1 MB, peak rss   1095 MB, fetch   207 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 1: build    9.25 s, recall@10 0.995, index   66.1 MB, peak rss   1094 MB, fetch   213 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 0: build   23.75 s, recall@10 0.985, index  132.1 MB, peak rss   1148 MB, fetch   211 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 1: build   24.29 s, recall@10 0.985, index  132.1 MB, peak rss   1185 MB, fetch   205 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 0: build   59.10 s, recall@10 0.984, index  264.2 MB, peak rss   1897 MB, fetch   193 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 1: build   59.85 s, recall@10 0.984, index  264.2 MB, peak rss   1943 MB, fetch   179 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 0: build    0.25 s, recall@10 0.998, index    6.6 MB, peak rss    860 MB, fetch   184 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 1: build    0.26 s, recall@10 0.998, index    6.6 MB, peak rss    861 MB, fetch   168 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 0: build    0.57 s, recall@10 0.998, index   13.2 MB, peak rss    875 MB, fetch   187 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 1: build    0.56 s, recall@10 0.998, index   13.2 MB, peak rss    874 MB, fetch   189 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 0: build    1.98 s, recall@10 0.996, index   33.0 MB, peak rss    917 MB, fetch   186 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 1: build    1.89 s, recall@10 0.996, index   33.0 MB, peak rss    916 MB, fetch   191 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 0: build    4.75 s, recall@10 0.995, index   66.1 MB, peak rss   1099 MB, fetch   194 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 1: build    4.78 s, recall@10 0.994, index   66.1 MB, peak rss   1097 MB, fetch   189 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 0: build   11.86 s, recall@10 0.983, index  132.1 MB, peak rss   1204 MB, fetch   200 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 1: build   12.38 s, recall@10 0.985, index  132.1 MB, peak rss   1206 MB, fetch   196 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 0: build   29.74 s, recall@10 0.985, index  264.2 MB, peak rss   1728 MB, fetch   185 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 1: build   28.35 s, recall@10 0.985, index  264.2 MB, peak rss   1962 MB, fetch   176 MB/s
+calibrate gist-960-300k split 6, shard 1: sizes [10000, 30000, 60000, 120000] x threads [2, 8] x 2 repeat(s) -> ../experiments/results/calibration/laptop-gist-960-300k-6.csv
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 0: build    4.25 s, recall@10 0.989, index   39.9 MB, peak rss   1737 MB, fetch   169 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 1: build    4.27 s, recall@10 0.989, index   39.9 MB, peak rss   1834 MB, fetch   178 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 0: build   17.48 s, recall@10 0.972, index  119.7 MB, peak rss   2123 MB, fetch   175 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 1: build   17.18 s, recall@10 0.972, index  119.7 MB, peak rss   2028 MB, fetch   179 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 0: build   41.20 s, recall@10 0.960, index  239.3 MB, peak rss   1779 MB, fetch   167 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 1: build   41.23 s, recall@10 0.960, index  239.3 MB, peak rss   1870 MB, fetch   179 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 0: build   98.89 s, recall@10 0.939, index  478.6 MB, peak rss   2747 MB, fetch   164 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 1: build  100.64 s, recall@10 0.939, index  478.6 MB, peak rss   2356 MB, fetch   177 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 0: build    1.83 s, recall@10 0.988, index   39.9 MB, peak rss   1768 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 1: build    1.86 s, recall@10 0.989, index   39.9 MB, peak rss   1835 MB, fetch   172 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 0: build    8.19 s, recall@10 0.972, index  119.7 MB, peak rss   1979 MB, fetch   174 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 1: build    8.64 s, recall@10 0.972, index  119.7 MB, peak rss   2143 MB, fetch   178 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 0: build   20.44 s, recall@10 0.959, index  239.3 MB, peak rss   1758 MB, fetch   169 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 1: build   20.59 s, recall@10 0.959, index  239.3 MB, peak rss   1750 MB, fetch   153 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 0: build   50.43 s, recall@10 0.940, index  478.6 MB, peak rss   2367 MB, fetch   167 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 1: build   49.26 s, recall@10 0.938, index  478.6 MB, peak rss   2341 MB, fetch   174 MB/s
+
+== fit sift-128-6
+threads 2: 12 points; A = 8.633e-08 s per n·ln(n)·dim (ratio 0.48..1.05, sigma 0.249); power law t = 2.95e-08 · n^1.282 · dim (sigma 0.054); min recall 0.984; fetch 203 MB/s
+threads 8: 12 points; A = 4.245e-08 s per n·ln(n)·dim (ratio 0.51..1.06, sigma 0.264); power law t = 1.24e-08 · n^1.296 · dim (sigma 0.039); min recall 0.983; fetch 189 MB/s
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      0.49      1.02   0.48      0.51   0.998
+      2    10000   128      0.57      1.02   0.56      0.51   0.998
+      2    20000   128      1.21      2.19   0.55      1.23   0.998
+      2    20000   128      1.27      2.19   0.58      1.23   0.998
+      2    50000   128      3.77      5.98   0.63      3.98   0.996
+      2    50000   128      3.64      5.98   0.61      3.98   0.996
+      2   100000   128      9.26     12.72   0.73      9.67   0.995
+      2   100000   128      9.25     12.72   0.73      9.67   0.995
+      2   200000   128     23.75     26.98   0.88     23.51   0.985
+      2   200000   128     24.29     26.98   0.90     23.51   0.985
+      2   400000   128     59.10     57.02   1.04     57.16   0.984
+      2   400000   128     59.85     57.02   1.05     57.16   0.984
+      8    10000   128      0.25      0.50   0.51      0.24   0.998
+      8    10000   128      0.26      0.50   0.52      0.24   0.998
+      8    20000   128      0.57      1.08   0.53      0.60   0.998
+      8    20000   128      0.56      1.08   0.52      0.60   0.998
+      8    50000   128      1.98      2.94   0.67      1.96   0.996
+      8    50000   128      1.89      2.94   0.64      1.96   0.996
+      8   100000   128      4.75      6.26   0.76      4.81   0.995
+      8   100000   128      4.78      6.26   0.76      4.81   0.994
+      8   200000   128     11.86     13.26   0.89     11.81   0.983
+      8   200000   128     12.38     13.26   0.93     11.81   0.985
+      8   400000   128     29.74     28.04   1.06     28.99   0.985
+      8   400000   128     28.35     28.04   1.01     28.99   0.985
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8:
+  COST_A=8.633e-08
+  COST_SPEEDUP=2.034
+  COST_GPU_OVERHEAD=2.00
+  COST_BANDWIDTH=1.89e+08
+  KGPU_ESTIMATE_SIGMA=0.264
+
+== fit gist-960-300k-6
+threads 2: 8 points; A = 7.18e-08 s per n·ln(n)·dim (ratio 0.67..1.04, sigma 0.158); power law t = 3.77e-08 · n^1.268 · dim (sigma 0.008); min recall 0.939; fetch 177 MB/s
+threads 8: 8 points; A = 3.581e-08 s per n·ln(n)·dim (ratio 0.58..1.05, sigma 0.213); power law t = 9.75e-09 · n^1.326 · dim (sigma 0.029); min recall 0.938; fetch 172 MB/s
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   960      4.25      6.35   0.67      4.27   0.989
+      2    10000   960      4.27      6.35   0.67      4.27   0.989
+      2    30000   960     17.48     21.32   0.82     17.20   0.972
+      2    30000   960     17.18     21.32   0.81     17.20   0.972
+      2    60000   960     41.20     45.50   0.91     41.42   0.960
+      2    60000   960     41.23     45.50   0.91     41.42   0.960
+      2   120000   960     98.89     96.73   1.02     99.75   0.939
+      2   120000   960    100.64     96.73   1.04     99.75   0.939
+      8    10000   960      1.83      3.17   0.58      1.89   0.988
+      8    10000   960      1.86      3.17   0.59      1.89   0.989
+      8    30000   960      8.19     10.63   0.77      8.11   0.972
+      8    30000   960      8.64     10.63   0.81      8.11   0.972
+      8    60000   960     20.44     22.69   0.90     20.33   0.959
+      8    60000   960     20.59     22.69   0.91     20.33   0.959
+      8   120000   960     50.43     48.25   1.05     50.99   0.940
+      8   120000   960     49.26     48.25   1.02     50.99   0.938
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8:
+  COST_A=7.18e-08
+  COST_SPEEDUP=2.005
+  COST_GPU_OVERHEAD=2.00
+  COST_BANDWIDTH=1.715e+08
+  KGPU_ESTIMATE_SIGMA=0.213
+
+== fit, both datasets together (dim term)
+threads 2: 20 points; A = 7.464e-08 s per n·ln(n)·dim (ratio 0.56..1.21, sigma 0.217); power law t = 3.53e-08 · n^1.269 · dim (sigma 0.064); min recall 0.939; fetch 193 MB/s
+threads 8: 20 points; A = 3.711e-08 s per n·ln(n)·dim (ratio 0.56..1.21, sigma 0.245); power law t = 1.28e-08 · n^1.296 · dim (sigma 0.054); min recall 0.938; fetch 184 MB/s
+threads     size   dim  measured    fitted  ratio     power  recall
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8:
+  COST_A=7.464e-08
+  COST_SPEEDUP=2.011
+  COST_GPU_OVERHEAD=2.00
+  COST_BANDWIDTH=1.841e+08
+  KGPU_ESTIMATE_SIGMA=0.245

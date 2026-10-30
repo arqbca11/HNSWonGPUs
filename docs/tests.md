@@ -873,3 +873,13 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | crosscheck/TestXcP4S2HandBuiltSplitKindWithoutAFile | Kind "split" built by hand with no committed file. | Generate panics rather than producing a workload (G9). |
 | crosscheck/TestXcP4S2ApplySplitOnAStragglerPreset | hour_build in split mode. | The split's sizes win; the straggler is dropped (G8). |
 
+## Phase 4, step 3: the calibration method (Python `builder/tests/test_calibrate.py`, pure except the grid test against a throwaway store). Log: `phase4/step3-calibration.log` (the laptop rehearsal), `latest.log` for the unit tests
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_calibrate.py::test_fit_recovers_the_constant_exactly_without_noise | Synthetic points from A = 1.4e-7 at 2 threads and A/2.5 at 8, no noise. | A recovered to 1e-12, sigma 0, ratios 1; the COST_* block says A 1.4e-07, speedup 2.500, bandwidth 150 MB/s, sigma 0 (decision 24). |
+| builder/test_calibrate.py::test_fit_sigma_is_the_std_of_the_log_residuals | 40 points with log-normal noise of sigma 0.3. | The fitted sigma is near 0.3 and the power exponent near 1. |
+| builder/test_calibrate.py::test_fit_sees_a_steeper_curve_in_the_power_exponent | Points following n^1.3. | The power fit finds p ≈ 1.3 and the n·ln(n) fit's ratios drift by more than 30 %. |
+| builder/test_calibrate.py::test_env_overrides_needs_both_thread_counts | A fit at one thread count only. | The environment block refuses with a ValueError. |
+| builder/test_calibrate.py::test_calibrate_grid_through_the_cli | A toy split (shards of 2000 and 4000 × 32) in a throwaway store; the grid 1000 and 4000 vectors × 1 and 2 threads; then fit; then a size beyond the shard. | Four rows from the largest shard with recall > 0.9, build time, index bytes, peak RSS and dim; fit prints per-thread constants and the COST_* block; the oversize point is refused in one line (decision 23). |
+
