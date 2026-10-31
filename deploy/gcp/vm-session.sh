@@ -5,7 +5,10 @@
 #   data        download both datasets here (in-cloud, fast), split 6 and 50 ways, ground truth, upload to the cluster's store, verify
 #   calibrate   the shard-side calibration: 2 threads on this VM's cores (and 8 for the ratio on the same machine), both datasets
 #   rounds      real 6-shard rounds against the cluster: sift-128 under the policy the cluster runs
-#   all         the three in order
+#   stress50    one 50-shard sift-128 round with real builds on this one VM: a stress test of the
+#               mechanics at the target scale (fifty child processes, fifty artifacts, the workers'
+#               queue), NOT a timing measurement -- fifty 2-thread builds share 16 cores (decision 26)
+#   all         data, calibrate, rounds
 # Output under /opt/kgpu/out/ (logs, CSVs); the laptop fetches them with gcloud compute scp.
 set -euo pipefail
 export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
@@ -35,5 +38,10 @@ if [ "$step" = rounds ] || [ "$step" = all ]; then
     TIMELINE_DIR="$OUT/timelines" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=6 SEED=$seed ROUNDS=1 ROUND_TIMEOUT=30m MIN_WORKERS=2 LOG_FORMAT=text \
       BUILDER_CMD="uv run --project builder python -m kgpu_builder" SHARD_THREADS=2 go run ./shard/cmd/shardsim 2>&1 | grep -vE '^time=' | sed 's/^/   /'
   done
+fi
+if [ "$step" = stress50 ]; then
+  echo "#### stress: real round sift-128 50 shards seed 1 on one VM ($(nproc) cores for 50 shards: the round time is contention, the mechanics are real)"
+  TIMELINE_DIR="$OUT/timelines-stress50" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=50 SEED=1 ROUNDS=1 ROUND_TIMEOUT=60m MIN_WORKERS=2 LOG_FORMAT=text \
+    BUILDER_CMD="uv run --project builder python -m kgpu_builder" SHARD_THREADS=2 go run ./shard/cmd/shardsim 2>&1 | grep -vE '^time=' | sed 's/^/   /'
 fi
 echo "== vm-session $step done, $(date -u +%Y-%m-%dT%H:%M:%SZ)"
