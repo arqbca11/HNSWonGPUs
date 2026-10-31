@@ -26,7 +26,9 @@ def download(ds: Dataset, data_dir: Path, *, log=print) -> Path:
         return dest
     if have > ds.size_bytes:
         raise SystemExit(f"{dest} is {have} bytes, larger than the catalogue's {ds.size_bytes}: delete it and retry")
-    req = urllib.request.Request(ds.url)
+    # ann-benchmarks.com answers 403 to Python's default user agent from cloud
+    # addresses (seen from the shard VM, Phase 4 step 4) and 200 to any other
+    req = urllib.request.Request(ds.url, headers={"User-Agent": "kgpu-builder/0.1 (+https://github.com/arqbca11/HNSWonGPUs)"})
     if have:
         req.add_header("Range", f"bytes={have}-")
         log(f"{ds.name}: resuming at {have} bytes")

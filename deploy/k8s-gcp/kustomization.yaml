@@ -22,3 +22,4 @@ patches:
   - path: services-internal-lb.yaml
   - path: config-real-builds.yaml
   - path: objectstore-fsgroup.yaml
+  - path: config-calibrated.yaml

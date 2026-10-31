@@ -83,8 +83,9 @@ func TestReconsiderDB(t *testing.T) {
 			t.Fatalf("renege of a queued GPU build must succeed")
 		}
 		a := e.rxRow(t, "after renege", id)
-		if a.Placement != "local" || a.State != "running" || !a.Moved || a.Attempt != 0 {
-			t.Errorf("want local/running moved=true attempt 0; got %+v", a)
+		// Phase 4 decision 38 (bug 19): a renege takes the next attempt (0 -> 1 here)
+		if a.Placement != "local" || a.State != "running" || !a.Moved || a.Attempt != 1 {
+			t.Errorf("want local/running moved=true attempt 1 (Phase 4 decision 38); got %+v", a)
 		}
 		if a.StartedAt == nil || a.StartedAt.Before(t0.Add(-time.Second)) || a.StartedAt.Sub(a.EnqueuedAt) < 40*time.Millisecond {
 			t.Errorf("started_at should be the renege time (now), after enqueued_at by >= 50 ms; started=%s enqueued=%s", tptr(a.StartedAt), a.EnqueuedAt.Format(time.RFC3339Nano))
@@ -573,7 +574,7 @@ func TestReconsiderDB(t *testing.T) {
 			switch {
 			case cOK && !rOK && cl.BuildID == id && b.State == "leased" && b.Placement == "gpu" && b.Attempt == 1 && !b.Moved:
 				claimWins++
-			case rOK && !cOK && b.State == "running" && b.Placement == "local" && b.Attempt == 0 && b.Moved:
+			case rOK && !cOK && b.State == "running" && b.Placement == "local" && b.Attempt == 1 && b.Moved: // the renege took attempt 1 (Phase 4 decision 38)
 				renegeWins++
 			default:
 				t.Errorf("iteration %d incoherent: claim ok=%v (%s) renege ok=%v row=%s/%s attempt=%d moved=%v", i, cOK, cl.BuildID, rOK, b.Placement, b.State, b.Attempt, b.Moved)

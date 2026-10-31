@@ -39,6 +39,11 @@ spec:
               for p in glob.glob("/tmp/*.csv"):
                   st.put_bytes("calibration/" + os.path.basename(p), open(p, "rb").read(), "text/csv"); print("uploaded calibration/" + os.path.basename(p))
               PY
+          # A small CPU request and no CPU limit: each workers node already
+          # holds a worker pod requesting 7 of its 8 CPUs, so a 7-CPU Job would
+          # never schedule; an idle worker burns nothing, and without a limit
+          # the Job's 8 threads get the node's cores. Do not run rounds while
+          # it runs (decision 33).
           resources:
-            requests: {cpu: "7", memory: "2Gi"}
+            requests: {cpu: "200m", memory: "2Gi"}
             limits: {memory: "6Gi"}

@@ -1,0 +1,61 @@
+== Phase 4 step 4: two live sift-128 rounds, 6 shards on the shard VM (2 threads each, real hnswlib child processes), 2 CPU workers in the cluster (8 threads), policy reactive, the calibrated constants (evidence 7), 2026-10-31T00:34:24Z
+== vm-session rounds on kgpu-shards (16 vCPUs), scheduler http://10.138.0.13:8080, store http://10.138.0.12:9000, 2026-10-31T00:31:25Z, commit 08a47d8
+   scheduler reachable
+   store reachable
+#### real round sift-128 6 shards seed 1 (policy: the cluster's)
+   round 1  scenario=skewed seed=1  time_scale=1
+   duration 41.5s real (41.5s modeled)   straggler lag 11.5s   builds: 3 gpu, 3 local, 0 speculative copies   queries: 3411
+   query latency (slowest piece): fan-out p50 11.9s p99 34.5s (n=532)   single-shard p50 3.9s p99 32.5s (n=1262)
+   shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+   0      81632     local  0    0.0s     0.0s     14.3s    30.0s    573     14.4s    #####################
+   1      408164    gpu    1    0.0s     0.1s     35.3s    41.5s    592     35.5s    ##############################
+   2      136055    gpu    1    0.0s     15.6s    25.1s    31.4s    561     25.1s    ######################
+   3      204082    gpu    1    0.0s     0.4s     15.6s    30.0s    551     15.5s    #####################
+   4      68027     local  0    0.0s     0.0s     11.7s    30.0s    567     11.7s    #####################
+   5      102040    local  0    0.0s     0.0s     17.6s    30.0s    567     17.8s    #####################
+   
+#### real round sift-128 6 shards seed 2 (policy: the cluster's)
+   round 2  scenario=skewed seed=2  time_scale=1
+   duration 41.5s real (41.5s modeled)   straggler lag 10.2s   builds: 3 gpu, 3 local, 0 speculative copies   queries: 3639
+   query latency (slowest piece): fan-out p50 13.2s p99 33.9s (n=571)   single-shard p50 4.9s p99 33.0s (n=1357)
+   shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+   0      81632     local  0    0.0s     0.0s     14.7s    30.1s    603     14.9s    #####################
+   1      408164    gpu    1    0.0s     0.3s     34.8s    41.5s    588     34.9s    ##############################
+   2      136055    gpu    1    0.0s     14.9s    23.8s    31.3s    598     24.1s    ######################
+   3      204082    gpu    1    0.0s     0.5s     14.9s    30.1s    617     15.2s    #####################
+   4      68027     local  0    0.0s     0.0s     11.3s    30.0s    607     11.5s    #####################
+   5      102040    local  0    0.0s     0.0s     17.7s    32.3s    626     17.8s    #######################
+   
+== vm-session rounds done, 2026-10-31T00:32:57Z
+
+== the simulator on the same constants, replaying each round (experiments/cmd/validate)
+validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+1      1     1         41.50     31.51    +9.99 |     11.45      1.54 | 3/3         2/4         | shard 1     +9.99 s         9.99 s    31.51..31.51   DISAGREE
+2      2     1         41.52     31.79    +9.73 |     10.20      1.76 | 3/3         2/4         | shard 1     +9.73 s         9.73 s    31.79..31.79   DISAGREE
+summary: 0/2 rounds agree; live - sim: mean +9.86 s, max |delta| 9.99 s
+
+round 1 seed 1, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                           0      81632      local/0         local           29.97        29.97    +0.01
+                                           1      408164     gpu  /1         gpu             41.50        31.51    +9.99
+                                           2      136055     gpu  /1         local           31.44        29.97    +1.47
+                                           3      204082     gpu  /1         gpu             29.97        29.96    +0.01
+                                           4      68027      local/0         local           29.98        29.97    +0.01
+                                           5      102040     local/0         local           30.05        29.96    +0.08
+                                           mean |delta| 1.93 s by shard, max |delta| 9.99 s with both sides' finishes sorted (order-free); sim: preempts=0 reneges=0 speculations=0
+
+round 2 seed 2, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                           0      81632      local/0         local           30.06        30.05    +0.00
+                                           1      408164     gpu  /1         gpu             41.52        31.79    +9.73
+                                           2      136055     gpu  /1         local           31.32        30.02    +1.30
+                                           3      204082     gpu  /1         gpu             30.05        30.04    +0.01
+                                           4      68027      local/0         local           30.03        30.02    +0.01
+                                           5      102040     local/0         local           32.27        30.01    +2.26
+                                           mean |delta| 2.22 s by shard, max |delta| 9.73 s with both sides' finishes sorted (order-free); sim: preempts=0 reneges=0 speculations=0
+
+== what-if: the same replay with an effective bandwidth of 1.6e7 B/s standing in for the un-modeled index upload, gate and save on the worker (NOT a calibrated value; decision 37)
+validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+1      1     1         41.50     56.40   -14.90 |     11.45     26.42 | 3/3         2/4         | shard 1    -14.90 s        14.90 s    56.40..56.40   DISAGREE
+2      2     1         41.52     56.94   -15.42 |     10.20     26.90 | 3/3         2/4         | shard 1    -15.42 s        15.42 s    56.94..56.94   DISAGREE
+summary: 0/2 rounds agree; live - sim: mean -15.16 s, max |delta| 15.42 s

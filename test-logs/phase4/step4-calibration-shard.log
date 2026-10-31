@@ -1,0 +1,100 @@
+== Phase 4 step 4: the shard-side calibration on the shard VM kgpu-shards (n2d-standard-16, AMD EPYC 7B13), deploy/gcp/vm-session.sh calibrate
+== vm-session calibrate on kgpu-shards (16 vCPUs), scheduler http://10.138.0.13:8080, store http://10.138.0.12:9000, 2026-10-31T00:07:04Z, commit 08a47d8
+   scheduler reachable
+   store reachable
+calibrate sift-128 split 6, shard 1: sizes [10000, 20000, 50000, 100000, 200000, 400000] x threads [2, 8] x 2 repeat(s) -> /opt/kgpu/out/kgpu-shards-sift-128-6.csv
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 0: build    0.61 s, recall@10 0.998, index    6.6 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 1: build    0.57 s, recall@10 0.998, index    6.6 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 0: build    1.26 s, recall@10 0.998, index   13.2 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 1: build    1.30 s, recall@10 0.998, index   13.2 MB, peak rss    502 MB, fetch   165 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 0: build    3.83 s, recall@10 0.996, index   33.0 MB, peak rss    502 MB, fetch   165 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 1: build    3.66 s, recall@10 0.996, index   33.0 MB, peak rss    502 MB, fetch   165 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 0: build   10.20 s, recall@10 0.995, index   66.0 MB, peak rss    541 MB, fetch   166 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 1: build   10.41 s, recall@10 0.995, index   66.0 MB, peak rss    538 MB, fetch   165 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 0: build   26.50 s, recall@10 0.984, index  132.1 MB, peak rss    745 MB, fetch   165 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 1: build   26.13 s, recall@10 0.984, index  132.1 MB, peak rss    746 MB, fetch   165 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 0: build   63.34 s, recall@10 0.984, index  264.2 MB, peak rss   1155 MB, fetch   166 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 1: build   63.94 s, recall@10 0.984, index  264.2 MB, peak rss   1153 MB, fetch   164 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 0: build    0.23 s, recall@10 0.998, index    6.6 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 1: build    0.23 s, recall@10 0.998, index    6.6 MB, peak rss    501 MB, fetch   166 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 0: build    0.44 s, recall@10 0.998, index   13.2 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 1: build    0.43 s, recall@10 0.998, index   13.2 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 0: build    1.12 s, recall@10 0.996, index   33.0 MB, peak rss    501 MB, fetch   166 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 1: build    1.11 s, recall@10 0.996, index   33.0 MB, peak rss    502 MB, fetch   166 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 0: build    3.08 s, recall@10 0.995, index   66.0 MB, peak rss    539 MB, fetch   166 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 1: build    3.07 s, recall@10 0.995, index   66.0 MB, peak rss    541 MB, fetch   165 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 0: build    8.28 s, recall@10 0.984, index  132.1 MB, peak rss    746 MB, fetch   166 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 1: build    8.27 s, recall@10 0.985, index  132.1 MB, peak rss    745 MB, fetch   166 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 0: build   20.71 s, recall@10 0.983, index  264.2 MB, peak rss   1154 MB, fetch   166 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 1: build   20.81 s, recall@10 0.985, index  264.2 MB, peak rss   1154 MB, fetch   166 MB/s
+wrote /opt/kgpu/out/kgpu-shards-sift-128-6.csv
+calibrate gist-960-300k split 6, shard 1: sizes [10000, 30000, 60000, 120000] x threads [2, 8] x 2 repeat(s) -> /opt/kgpu/out/kgpu-shards-gist-960-300k-6.csv
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 0: build    1.59 s, recall@10 0.989, index   39.9 MB, peak rss   1024 MB, fetch   157 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 1: build    1.67 s, recall@10 0.989, index   39.9 MB, peak rss   1024 MB, fetch   115 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 0: build    7.95 s, recall@10 0.973, index  119.7 MB, peak rss   1024 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 1: build    7.97 s, recall@10 0.973, index  119.7 MB, peak rss   1024 MB, fetch   157 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 0: build   20.71 s, recall@10 0.958, index  239.3 MB, peak rss   1481 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 1: build   20.58 s, recall@10 0.959, index  239.3 MB, peak rss   1481 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 0: build   51.67 s, recall@10 0.938, index  478.6 MB, peak rss   2403 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 1: build   51.86 s, recall@10 0.938, index  478.6 MB, peak rss   2403 MB, fetch   110 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 0: build    0.50 s, recall@10 0.988, index   39.9 MB, peak rss   1024 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 1: build    0.52 s, recall@10 0.989, index   39.9 MB, peak rss   1024 MB, fetch   150 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 0: build    2.73 s, recall@10 0.972, index  119.7 MB, peak rss   1024 MB, fetch   155 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 1: build    2.91 s, recall@10 0.972, index  119.7 MB, peak rss   1024 MB, fetch   158 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 0: build    8.58 s, recall@10 0.959, index  239.3 MB, peak rss   1481 MB, fetch   155 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 1: build    8.66 s, recall@10 0.958, index  239.3 MB, peak rss   1481 MB, fetch   155 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 0: build   23.97 s, recall@10 0.938, index  478.6 MB, peak rss   2403 MB, fetch   155 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 1: build   24.17 s, recall@10 0.939, index  478.6 MB, peak rss   2403 MB, fetch   158 MB/s
+wrote /opt/kgpu/out/kgpu-shards-gist-960-300k-6.csv
+threads 2: 20 points; A = 4.656e-08 s per n·ln(n)·dim (ratio 0.39..2.08, sigma 0.490); power law t = 8.04e-09 · n^1.380 · dim (sigma 0.354); min recall 0.938; fetch 165 MB/s
+   fitted in log space; a linear-space least squares would give A = 4.781e-08 and hide a -0.027 mean log residual; fetch+gate per point 1.31 s (the measured overhead)
+threads 8: 20 points; A = 1.622e-08 s per n·ln(n)·dim (ratio 0.35..1.94, sigma 0.467); power law t = 3.08e-09 · n^1.372 · dim (sigma 0.331); min recall 0.938; fetch 166 MB/s
+   fitted in log space; a linear-space least squares would give A = 1.935e-08 and hide a -0.176 mean log residual; fetch+gate per point 1.28 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      0.61      0.55   1.11      0.34   0.998
+      2    10000   128      0.57      0.55   1.03      0.34   0.998
+      2    10000   960      1.59      4.12   0.39      2.56   0.989
+      2    10000   960      1.67      4.12   0.41      2.56   0.989
+      2    20000   128      1.26      1.18   1.07      0.89   0.998
+      2    20000   128      1.30      1.18   1.10      0.89   0.998
+      2    30000   960      7.95     13.82   0.57     11.68   0.973
+      2    30000   960      7.97     13.82   0.58     11.68   0.973
+      2    50000   128      3.83      3.22   1.19      3.15   0.996
+      2    50000   128      3.66      3.22   1.13      3.15   0.996
+      2    60000   960     20.71     29.50   0.70     30.41   0.958
+      2    60000   960     20.58     29.50   0.70     30.41   0.959
+      2   100000   128     10.20      6.86   1.49      8.21   0.995
+      2   100000   128     10.41      6.86   1.52      8.21   0.995
+      2   120000   960     51.67     62.73   0.82     79.17   0.938
+      2   120000   960     51.86     62.73   0.83     79.17   0.938
+      2   200000   128     26.50     14.55   1.82     21.37   0.984
+      2   200000   128     26.13     14.55   1.80     21.37   0.984
+      2   400000   128     63.34     30.75   2.06     55.62   0.984
+      2   400000   128     63.94     30.75   2.08     55.62   0.984
+      8    10000   128      0.23      0.19   1.21      0.12   0.998
+      8    10000   128      0.23      0.19   1.22      0.12   0.998
+      8    10000   960      0.50      1.43   0.35      0.91   0.988
+      8    10000   960      0.52      1.43   0.36      0.91   0.989
+      8    20000   128      0.44      0.41   1.07      0.31   0.998
+      8    20000   128      0.43      0.41   1.06      0.31   0.998
+      8    30000   960      2.73      4.82   0.57      4.09   0.972
+      8    30000   960      2.91      4.82   0.61      4.09   0.972
+      8    50000   128      1.12      1.12   1.00      1.10   0.996
+      8    50000   128      1.11      1.12   0.98      1.10   0.996
+      8    60000   960      8.58     10.28   0.84     10.59   0.959
+      8    60000   960      8.66     10.28   0.84     10.59   0.958
+      8   100000   128      3.08      2.39   1.29      2.84   0.995
+      8   100000   128      3.07      2.39   1.28      2.84   0.995
+      8   120000   960     23.97     21.86   1.10     27.39   0.938
+      8   120000   960     24.17     21.86   1.11     27.39   0.939
+      8   200000   128      8.28      5.07   1.63      7.36   0.984
+      8   200000   128      8.27      5.07   1.63      7.36   0.985
+      8   400000   128     20.71     10.71   1.93     19.05   0.983
+      8   400000   128     20.81     10.71   1.94     19.05   0.985
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=4.656e-08
+  COST_SPEEDUP=2.870
+  COST_GPU_OVERHEAD=1.28
+  COST_BANDWIDTH=1.655e+08
+  KGPU_ESTIMATE_SIGMA=0.490
+== vm-session calibrate done, 2026-10-31T00:17:51Z

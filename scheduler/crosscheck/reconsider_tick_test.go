@@ -567,7 +567,7 @@ func TestReconsiderTick(t *testing.T) {
 			switch {
 			case cOK && cl.BuildID == id && b.State == "leased" && b.Placement == "gpu" && !b.Moved && b.Attempt == 1:
 				claimWins++
-			case !cOK && b.State == "running" && b.Placement == "local" && b.Moved && b.Attempt == 0:
+			case !cOK && b.State == "running" && b.Placement == "local" && b.Moved && b.Attempt == 1: // the renege took attempt 1 (Phase 4 decision 38)
 				renegeWins++
 			default:
 				t.Errorf("iteration %d incoherent: claim ok=%v %s; row %s/%s moved=%v attempt=%d", i, cOK, cl.BuildID, b.Placement, b.State, b.Moved, b.Attempt)

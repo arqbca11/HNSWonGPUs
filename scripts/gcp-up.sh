@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 export PATH="$PATH:/opt/homebrew/bin"
 PROJECT="${PROJECT:-project-3456ed25-5d5d-4b0d-aa5}"; REGION="${REGION:-us-west1}"; ZONE="${ZONE:-us-west1-b}"
 CLUSTER="${CLUSTER:-kgpu}"; WORKER_NODES="${WORKER_NODES:-2}"; WORKER_MACHINE="${WORKER_MACHINE:-n2-standard-8}"
-VM="${VM:-kgpu-shards}"; VM_MACHINE="${VM_MACHINE:-n2-standard-16}"
+VM="${VM:-kgpu-shards}"; VM_MACHINE="${VM_MACHINE:-n2d-standard-16}"   # n2d (AMD): the only 16-vCPU family us-west1-b had to give (decision 32)
 REG="$REGION-docker.pkg.dev/$PROJECT/kgpu"
 G="gcloud --project=$PROJECT --quiet"
 echo "== Phase 4 cloud topology: project $PROJECT, zone $ZONE, $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -64,7 +64,11 @@ echo "-- manifests applied (deploy/k8s-gcp); waiting for Postgres, the object st
 kubectl -n kgpu rollout status statefulset/postgres --timeout=300s >/dev/null
 kubectl -n kgpu rollout status statefulset/objectstore --timeout=300s >/dev/null
 kubectl -n kgpu rollout status deployment/scheduler --timeout=300s >/dev/null
-kubectl -n kgpu rollout status deployment/worker --timeout=300s >/dev/null
+# "wait available", not "rollout status": a Deployment whose pods sat Pending
+# for longer than its progress deadline (here, until the pool existed) keeps a
+# failed Progressing condition that rollout status reports as an error even
+# once every pod is ready
+kubectl -n kgpu wait --for=condition=available deployment/worker --timeout=600s >/dev/null
 for svc in scheduler objectstore; do
   for _ in $(seq 1 120); do ip=$(kubectl -n kgpu get svc $svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null); [ -n "$ip" ] && break; sleep 5; done
   echo "   $svc internal IP: ${ip:-NOT YET}"

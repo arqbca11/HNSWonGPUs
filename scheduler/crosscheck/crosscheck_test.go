@@ -273,8 +273,10 @@ func TestRenegeMovesQueuedGPUToLocal(t *testing.T) {
 	}
 	after := e.mustBuild(t, sub.BuildID)
 	logBuild(t, "after renege", after)
-	if after.Placement != "local" || after.State != "running" || after.Attempt != before.Attempt {
-		t.Errorf("decision 31: want placement=local state=running attempt=%d; got %+v", before.Attempt, after)
+	// Phase 4 decision 38 (bug 19): the renege takes the next attempt, so the
+	// local build's artifact prefix is its own.
+	if after.Placement != "local" || after.State != "running" || after.Attempt != before.Attempt+1 {
+		t.Errorf("decision 31 + Phase 4 decision 38: want placement=local state=running attempt=%d; got %+v", before.Attempt+1, after)
 	}
 
 	c, ok, err := e.st.Claim(e.ctx, "w1", 1<<40, 30*time.Second)

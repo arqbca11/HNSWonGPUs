@@ -1192,3 +1192,38 @@ func TestRetryLocalOnce(t *testing.T) {
 	}
 	t.Logf("[db] %s: a gpu build failed at attempt 5 retries locally at attempt 6 (its own artifact prefix)", gpu)
 }
+
+// Bug 19 / decision 38: a renege takes a new attempt, so the local build's
+// artifact prefix is its own. The scenario is step 2's cross-check G3 case: a
+// GPU claim loses its lease, the reaper queues it with the attempt it was
+// claimed at, and the reconsider timer moves it back local.
+func TestRenegeTakesNewAttempt(t *testing.T) {
+	s, _ := newStore(t)
+	ctx := context.Background()
+	r, _ := s.CreateRoundWithDataset(ctx, "skewed", 1, 2, "sift-128")
+	id := submit(t, s, r, 0, "gpu", 0, 1<<20)
+	c, ok, err := s.Claim(ctx, "stale-worker", 1<<30, 10*time.Millisecond)
+	if err != nil || !ok || c.BuildID != id || c.Attempt != 1 {
+		t.Fatalf("claim: ok=%v err=%v %+v", ok, err, c)
+	}
+	t.Logf("[worker] claimed %s at attempt %d with a 10 ms lease, then went silent", id, c.Attempt)
+	time.Sleep(30 * time.Millisecond)
+	reapMax(t, s, 5)
+	b, _, _ := s.GetBuild(ctx, id)
+	if b.State != "queued" || b.Attempt != 1 {
+		t.Fatalf("after the reaper: %+v", b)
+	}
+	t.Logf("[reaper] %s back to queued at attempt %d (the stale worker may still be building and will write under artifacts/%s/1/)", id, b.Attempt, id)
+	if ok, err := s.RenegeToLocal(ctx, id); err != nil || !ok {
+		t.Fatalf("renege: ok=%v err=%v", ok, err)
+	}
+	b, _, _ = s.GetBuild(ctx, id)
+	if b.Placement != "local" || b.State != "running" || b.Attempt != 2 || !b.Moved {
+		t.Fatalf("after the renege: %+v", b)
+	}
+	t.Logf("[db] %s after the renege: placement=%s state=%s attempt=%d moved=%v — the local build publishes under artifacts/%s/2/, a prefix the stale attempt 1 cannot touch", id, b.Placement, b.State, b.Attempt, b.Moved, id)
+	if ok, _ := s.Renew(ctx, id, 1, time.Minute); ok {
+		t.Fatal("the stale worker renewed attempt 1 after the renege")
+	}
+	t.Log("[worker] the stale worker's renew of attempt 1 -> rejected (invariant 3); its late artifacts land under attempt 1, which nothing reads")
+}

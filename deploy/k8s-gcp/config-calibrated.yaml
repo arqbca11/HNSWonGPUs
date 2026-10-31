@@ -1,0 +1,31 @@
+# The cost model's constants as measured on this topology for sift-128
+# (Phase 4 step 4, decision 35: per dataset; speedup.md evidence 7):
+#   COST_A           the shard VM's A at 2 threads (what a local build costs)
+#   COST_SPEEDUP     shard A over the worker node's A at 8 threads
+#   COST_GPU_OVERHEAD the worker's median fetch + gate per build, s
+#   COST_BANDWIDTH   the worker's median fetch from the store, bytes/s
+#   KGPU_ESTIMATE_SIGMA the larger of the two sides' log-residual RMS
+# Both ConfigMaps carry the same block: the scheduler estimates with it,
+# the worker's shutdown decision uses it (Phase 1).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler
+  namespace: kgpu
+data:
+  COST_A: "6.525e-08"
+  COST_SPEEDUP: "2.24"
+  COST_GPU_OVERHEAD: "1.35"
+  COST_BANDWIDTH: "1.57e8"
+  KGPU_ESTIMATE_SIGMA: "0.26"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker
+  namespace: kgpu
+data:
+  COST_A: "6.525e-08"
+  COST_SPEEDUP: "2.24"
+  COST_GPU_OVERHEAD: "1.35"
+  COST_BANDWIDTH: "1.57e8"

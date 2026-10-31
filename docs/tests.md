@@ -914,3 +914,27 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | builder/test_xcheck_calibrate.py::test_xc_plot_synthetic_and_one_series | The plot on a synthetic two-thread CSV and on a one-thread-count CSV. | Exit 0 and a valid PNG. |
 | builder/test_xcheck_calibrate.py::test_xc_plot_empty_csv | The plot on a header-only CSV. | Refused in one line, like `fit` (G5). |
 
+## Phase 4, step 4, cross-check of the cloud topology (Go, `scheduler/crosscheck/p4s4_topology_test.go`; the live tests skip unless the GKE context is current). Log: `phase4/step4-crosscheck.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| crosscheck/TestXcP4S4RenderImagesFromArtifactRegistry | Render deploy/k8s-gcp and read the scheduler and worker images. | Both images come from Artifact Registry `:p4`; no `:dev` kgpu image is left (decision 25). |
+| crosscheck/TestXcP4S4RenderWorkersOnPoolNoFakeCard | Read the worker pod template's node selector, tolerations, affinity and every container's resources. | Workers select only the `workers` pool label; no `kgpu.io/gpu` selector or toleration; no `kgpu.io/gpu-card` anywhere. |
+| crosscheck/TestXcP4S4RenderWorkerResources | Read the worker container's resources. | CPU request 7 and memory limit 6Gi (decision 33). |
+| crosscheck/TestXcP4S4RenderInternalLoadBalancers | Read every Service's type, annotation and ports. | Scheduler and store are internal load balancers with no fixed nodePort; nothing else is exposed. |
+| crosscheck/TestXcP4S4RenderConfigMapsRealBuilds | Read both ConfigMaps. | Time scale 1 on both; the worker uses hnswlib with 8 threads. |
+| crosscheck/TestXcP4S4RenderObjectstoreFsGroup | Read the store pod's securityContext. | fsGroup 10001 (decision 31). |
+| crosscheck/TestXcP4S4RenderEverythingInKgpu | List every rendered object's namespace. | All objects are in `kgpu`. |
+| crosscheck/TestXcP4S4RenderBaseObjectsUntouched | Compare base and overlay object sets, and Postgres, Secrets, worker and postgres Services and Namespace field by field. | Nothing is dropped; the untouched objects are identical. |
+| crosscheck/TestXcP4S4RenderOnlyDocumentedChanges | Diff every field from base to overlay against the changes decisions 25, 31 and 33 list. | Each overlay change is recorded in the design doc (F1: five were not, now decision 33). |
+| crosscheck/TestXcP4S4LiveNodePools | Read the GKE nodes' pool labels and CPU capacity. | One 4-CPU default-pool node and two 8-CPU workers nodes. |
+| crosscheck/TestXcP4S4LiveNoExternalIPs | Read every node's addresses. | No public IP; internal IPs are in the VPC subnet (decision 28). |
+| crosscheck/TestXcP4S4LivePlacement | Read pods and the nodes they run on. | One worker per workers node; control plane on the default pool. |
+| crosscheck/TestXcP4S4LiveInternalLBIPs | Read both Services' load-balancer ingress. | Each has one private IP in 10.138.0.0/20. |
+| crosscheck/TestXcP4S4LiveSchedulerPrivateFromLaptop | GET the scheduler's private IP from the laptop, then from a worker pod. | Unreachable from outside; scheduler and store answer inside the VPC. |
+| crosscheck/TestXcP4S4LiveWorkersViaPortForward | Port-forward to the scheduler, GET /workers, read the workers' startup lines. | Two live 24 GiB workers on the workers pool, both started with hnswlib. |
+| crosscheck/TestXcP4S4LiveMatchesRender | Compare live ConfigMaps, images, resources, node selector and fsGroup with the render. | The cluster runs exactly the committed overlay. |
+| crosscheck/TestXcP4S4SweepDefaultsEcho | Sweep without the cost flags. | cost_a, bandwidth, gpu_overhead and speedup echo `costmodel.Default()`. |
+| crosscheck/TestXcP4S4SweepCalibratedEcho | Sweep with the step 3 rehearsal's constants. | Each is echoed exactly. |
+| crosscheck/TestXcP4S4SweepCostAMovesRoundS | Two sweeps that differ only in -cost_a, with local builds. | round_s moves on every seed, never down for a larger A, and nothing else changes. |
+| crosscheck/TestXcP4S4SweepOutOfRangeOverrideNotSilentlyReplaced | Sweep with negative -cost_a, -bandwidth and -gpu_overhead. | A bad override is refused with a non-zero exit, never quietly replaced by the default (F2). |

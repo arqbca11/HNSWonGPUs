@@ -15,12 +15,12 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median.** Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
+| Per-round speedup, current presets | **~0 at the median, now also on the calibrated CPU-worker constants** (evidence 8: every policy within a second of every other in all nine presets). Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
-| Per-build speedup, measured | **Unknown for a GPU** (Phase 5). Measured for a CPU worker with 8 threads over a shard with 2, on the laptop: **2.0×** (evidence 6, a rehearsal) | Measured (laptop; decision 7 says the number that counts comes from the cloud topology) |
-| The cost model's CPU constant and its error, measured | **A ≈ 6.1e-8 s per n·ln(n)·dim at 2 threads on this laptop (log-space fit), 2.3× below Phase 1's 1.4e-7; the n·ln(n) shape is off by up to ±50 % across 10k–400k (time grows like n^1.3), so the estimate error for the sweeps' sigma axis is ~0.25 RMS** (evidence 6) | Measured (laptop rehearsal) |
-| Does the simulator's number survive contact with the live stack? | **Yes, within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds**: 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
+| Per-build speedup, measured | **Unknown for a GPU** (Phase 5). Measured for a CPU worker with 8 threads over a shard with 2 on the cloud topology, sift-128: **2.24×** (the worker node's Intel cores at 8 threads over the shard VM's AMD cores at 2; the same-machine 8-over-2 ratios are 3.1× on the VM and 2.4× on the worker node, so the family mix costs ~0.3 of it; evidence 7). The laptop rehearsal said 2.0× (evidence 6) | Measured (cloud; decision 7 says the number that counts comes from the cloud topology) |
+| The cost model's CPU constant and its error, measured | **A = 6.5e-8 s per n·ln(n)·dim for sift-128 at 2 threads on the shard VM, 2.2× below Phase 1's 1.4e-7, sigma 0.26 RMS; but only 2.8e-8 for gist-960 on the same machine: the model's "time ∝ dim" is wrong on x86 (a 960-dim build costs 2.8× a 128-dim one, not 7.5×), so one constant cannot serve both datasets (sigma 0.49 together) and A is per dataset until the dim term is calibrated** (evidence 7, decision 35). The laptop rehearsal (evidence 6) saw 8.0× for the same pair, so the shape itself is machine-dependent | Measured (cloud) |
+| Does the simulator's number survive contact with the live stack? | **With modeled builds, yes; with real builds, the local side yes and the offloaded side no.** Real sift-128 rounds on the cloud topology ran 41.5 s against the simulator's 31.5 on the same constants: local shards within 0.1 s, the offloaded straggler 10 s longer because the cost model lacks the index's upload and the gate (evidence 8, decision 37); the Phase 5 refit adds them. With modeled builds: within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds, 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
 ## The assumption underneath everything
 
@@ -152,4 +152,57 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **What it changes.** Nothing in the current answers' *round-level* numbers yet — those wait for the cloud calibration — but two things about how they will be produced: the sweeps' sigma axis has a measured point (0.25) instead of three guesses, and the cost model's shape is now an open question with data behind it (the power law would predict the hour-long build 1.9× faster than n·ln(n) scaled from the small shards does). Both go to the Phase 3 decisions when the cloud data arrives.
 
-*(Next expected entries: Phase 4's closing step — the same calibration on the cloud topology, whose A, speedup, bandwidth and sigma replace the placeholders and rerun the full comparison; Phase 5 — the measured hnswlib-vs-cuVS number replacing the assumed 10×, graded against evidence 3's prediction.)*
+### Evidence 7 — the calibration on the cloud topology, both sides (Phase 4 step 4)
+
+**Setup.** The same grid as evidence 6, run where it counts (Phase 4 decision 7): on the shard VM (`kgpu-shards`, n2d-standard-16, AMD EPYC 7B13, 16 vCPUs, `deploy/gcp/vm-session.sh calibrate`) and on a worker node (n2-standard-8, Intel Xeon 2.8 GHz, as a Job with the worker image, `deploy/k8s-gcp/calibrate-job.yaml`), each reading the splits from the cluster's object store over the VPC. 2 and 8 threads, two repeats, sift-128 10k–400k and gist-960 10k–120k; 40 points a side. CSVs: `experiments/results/calibration/kgpu-shards-*.csv` and `worker-*.csv`; logs `test-logs/phase4/step4-calibration-shard.log` and `-worker.log`; figure `kgpu-shards-calibration.png`.
+
+**Result.** Per dataset, because the two do not share a constant (below):
+
+| Quantity | Shard VM (AMD) | Worker node (Intel) | Laptop rehearsal (evidence 6) |
+| --- | --- | --- | --- |
+| A, sift-128, 2 threads | 6.53e-8 (sigma 0.26) | 7.00e-8 (sigma 0.26) | 6.08e-8 (both datasets) |
+| A, sift-128, 8 threads | 2.14e-8 (sigma 0.23) | 2.91e-8 (sigma 0.22) | 2.97e-8 |
+| A, gist-960, 2 threads | 2.81e-8 (sigma 0.27) | 3.85e-8 (sigma 0.31) | — |
+| A, gist-960, 8 threads | 1.07e-8 (sigma 0.42) | 1.43e-8 (sigma 0.27) | — |
+| 8 threads over 2, same machine, sift | 3.06× | 2.41× | 2.05× |
+| Shape, sift (power law) | n^1.29 / n^1.24 | n^1.29 / n^1.26 | n^1.27 / n^1.30 |
+| Shape, gist | n^1.39 / n^1.56 | n^1.42 / n^1.39 | — |
+| Fetch from the store | 165 MB/s | 151–158 MB/s | 153–213 |
+| Fetch + gate per point, sift / gist | 1.3 / 3.1 s | 1.35 / 3.2 s | 1.18 |
+| Both datasets in one fit, 2 threads | A 4.66e-8, sigma **0.49**, ratios 0.39..2.08 | A 5.51e-8, sigma **0.41** | sigma 0.22 |
+
+**The block applied to the cluster for the sift-128 rounds** (`deploy/k8s-gcp/config-calibrated.yaml`): `COST_A=6.525e-08` (the shard's), `COST_SPEEDUP=2.24` (6.525 / 2.911), `COST_GPU_OVERHEAD=1.35`, `COST_BANDWIDTH=1.57e8`, `KGPU_ESTIMATE_SIGMA=0.26`.
+
+**Three things it says.** (1) **The sift constant is stable across three machines** (6.1, 6.5, 7.0e-8 at 2 threads) and the laptop rehearsal was within 10 % of the cloud: the method transfers. (2) **The dimension term is wrong, and wrong differently per machine.** On the cloud's x86 cores a 960-dim build at equal n costs 2.8× (2 threads) to 2.2× (8 threads) a 128-dim one, against the model's 7.5×; the laptop's Apple cores gave 8.0×. hnswlib's distance kernels fill wide vector units (AVX-512: 16 floats per instruction) with 960 floats and waste them on 128, so time per dimension falls as dim grows; narrow NEON units have less to waste. One A for both datasets has sigma 0.49 (every estimate off by ×1.6 either way); per dataset, 0.26. So A is per dataset (decision 35) and the dim term joins the shape question for the Phase 5 refit. (3) **"Speedup" across a family mix is partly the family.** At 2 threads the AMD VM is 7 % faster than the Intel node, at 8 threads 36 % faster; the 2.24× the cluster runs with is what the scheduler actually sees (a shard build here against a worker build there), and the same-machine ratios bracket the thread effect at 2.4–3.1×.
+
+### Evidence 8 — live rounds on the calibrated cloud topology, and the comparison rerun on its constants (Phase 4 step 4)
+
+**Setup.** Two sift-128 rounds (`skewed`, 6 shards, seeds 1 and 2) with the shards on the VM building locally as real child processes at 2 threads and two CPU workers in the cluster at 8, policy reactive, the cluster running evidence 7's block. Log `test-logs/phase4/step4-rounds.log`; timelines `experiments/results/step4-timelines/`. Then the step 7 comparer replayed each round in the simulator on the same constants (it now takes `-dataset` and the cost flags). Then the roadmap's eight scenarios × every policy × 20 seeds in the simulator on those constants with sigma 0.26: `experiments/results/calibrated/rounds.csv` and `rounds.png`.
+
+**Result, the live rounds.**
+
+| | Round 1 | Round 2 |
+| --- | --- | --- |
+| Round time, live | 41.5 s | 41.5 s |
+| Placement | 408k, 204k, 136k offloaded; 82k, 102k, 68k local | same |
+| Straggler | the 408k build on a worker, 35.3 s (its own estimate 24.0 s) | 34.8 s |
+| Simulator on the same constants | 31.5 s | 31.8 s |
+| Local shards, live − sim | 0.0–0.1 s | 0.0–2.3 s |
+| Offloaded straggler, live − sim | +10.0 s | +9.7 s |
+
+**What it says.** (1) **The local side of the model is right**: every locally built shard finishes within a tenth of a second of the simulator's prediction (one 2.3 s case where the drain ran long). (2) **The offloaded side is short by a size-dependent 6–46 %**, because the worker's path is fetch + build + gate + save + upload + manifest and the model has only the first two and a 1.35 s constant (Phase 4 decision 37). The index that goes back (270 MB) is bigger than the vectors that came in and is not in the model at all. (3) So for a real round **the simulator's number carries a −25 % bias on an offloaded straggler** until the Phase 5 refit adds the result-transfer term; the comparison below is therefore honest about local builds and optimistic about offloaded ones, in a direction that flatters offloading.
+
+**Result, the comparison on the calibrated constants** (900 rounds; median round seconds):
+
+| Scenario | always_gpu | static_threshold | reactive | reactive_spec | clairvoyant |
+| --- | --- | --- | --- | --- | --- |
+| uniform, skewed, downstream_heavy, shrinking_pool | 30 | 30 | 30 | 30 | 30 |
+| staggered | 40 | 40 | 40 | 40 | 40 |
+| bimodal | 52 | 52 | 52 | 52 | 52 |
+| high_dim | 257 | 257 | 257 | 257 | 257 |
+| hour_build | 850 | 847 | 847 | 847 | 847 |
+| production | 16400 | 16400 | 16400 | 16400 | 16400 |
+
+**What it says.** With CPU workers the per-round speedup is **zero at the median in every preset**: a 2.24× build speedup minus a queue and a transfer cannot move a round that is bound by its query horizon (evidence 1) or by a build that fits no worker (`production`). This is evidence 2's condition restated with measured numbers — the round moves only when the largest build fits a worker *and* the worker is much faster than the shard — and it is why Phase 5's GPU measurement is the one that decides anything. The policies agree with each other to the second, which is also what evidence 5 found at the placeholder constants: the dynamic policies lose nothing to the clairvoyant one.
+
+*(Next expected entries: Phase 5's GPU measurement, whose per-build speedup replaces the CPU-worker stand-in, and the refit — the dim term, the result-transfer term, the shape — after which this comparison is rerun.)*

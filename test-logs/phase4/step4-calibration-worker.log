@@ -1,0 +1,100 @@
+== Phase 4 step 4: the worker-side calibration, a Job on a workers node (n2-standard-8, Intel), deploy/k8s-gcp/calibrate-job.yaml, 2026-10-31T00:24:07Z
+NAME              READY   STATUS      RESTARTS   AGE   IP           NODE                             NOMINATED NODE   RE
+calibrate-z8gkq   0/1     Completed   0          14m   10.120.2.5   gke-kgpu-workers-21435c34-z1h7   <none>           <n
+calibrate sift-128 split 6, shard 1: sizes [10000, 20000, 50000, 100000, 200000, 400000] x threads [8, 2] x 2 repeat(s) -> /tmp/calibrate-z8gkq-sift-128-6.csv
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 0: build    0.28 s, recall@10 0.998, index    6.6 MB, peak rss    506 MB, fetch   155 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 8 repeat 1: build    0.28 s, recall@10 0.998, index    6.6 MB, peak rss    505 MB, fetch   156 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 0: build    0.57 s, recall@10 0.998, index   13.2 MB, peak rss    505 MB, fetch   158 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 8 repeat 1: build    0.58 s, recall@10 0.998, index   13.2 MB, peak rss    506 MB, fetch   156 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 0: build    1.70 s, recall@10 0.996, index   33.0 MB, peak rss    505 MB, fetch   162 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 8 repeat 1: build    1.72 s, recall@10 0.996, index   33.0 MB, peak rss    504 MB, fetch   158 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 0: build    4.52 s, recall@10 0.994, index   66.0 MB, peak rss    511 MB, fetch   157 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 8 repeat 1: build    4.50 s, recall@10 0.994, index   66.0 MB, peak rss    511 MB, fetch   157 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 0: build   11.59 s, recall@10 0.984, index  132.1 MB, peak rss    715 MB, fetch   157 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 8 repeat 1: build   10.94 s, recall@10 0.985, index  132.1 MB, peak rss    716 MB, fetch   158 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 0: build   27.47 s, recall@10 0.985, index  264.2 MB, peak rss   1126 MB, fetch   158 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 8 repeat 1: build   27.02 s, recall@10 0.985, index  264.2 MB, peak rss   1125 MB, fetch   158 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 0: build    0.61 s, recall@10 0.998, index    6.6 MB, peak rss    505 MB, fetch   158 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 2 repeat 1: build    0.61 s, recall@10 0.998, index    6.6 MB, peak rss    504 MB, fetch   158 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 0: build    1.37 s, recall@10 0.998, index   13.2 MB, peak rss    505 MB, fetch   159 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 2 repeat 1: build    1.36 s, recall@10 0.998, index   13.2 MB, peak rss    505 MB, fetch   158 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 0: build    4.28 s, recall@10 0.996, index   33.0 MB, peak rss    505 MB, fetch   158 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 2 repeat 1: build    4.24 s, recall@10 0.996, index   33.0 MB, peak rss    505 MB, fetch   158 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 0: build   10.83 s, recall@10 0.994, index   66.0 MB, peak rss    511 MB, fetch   159 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 2 repeat 1: build   10.68 s, recall@10 0.994, index   66.0 MB, peak rss    511 MB, fetch   158 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 0: build   27.31 s, recall@10 0.983, index  132.1 MB, peak rss    716 MB, fetch    82 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 2 repeat 1: build   27.13 s, recall@10 0.984, index  132.1 MB, peak rss    715 MB, fetch   158 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 0: build   69.20 s, recall@10 0.985, index  264.2 MB, peak rss   1125 MB, fetch   158 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 2 repeat 1: build   73.50 s, recall@10 0.985, index  264.2 MB, peak rss   1126 MB, fetch    75 MB/s
+wrote /tmp/calibrate-z8gkq-sift-128-6.csv
+calibrate gist-960-300k split 6, shard 1: sizes [10000, 30000, 60000, 120000] x threads [8, 2] x 2 repeat(s) -> /tmp/calibrate-z8gkq-gist-960-300k-6.csv
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 0: build    0.86 s, recall@10 0.988, index   39.9 MB, peak rss   1027 MB, fetch   187 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 8 repeat 1: build    0.87 s, recall@10 0.988, index   39.9 MB, peak rss   1027 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 0: build    3.75 s, recall@10 0.973, index  119.7 MB, peak rss   1026 MB, fetch   149 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 8 repeat 1: build    3.80 s, recall@10 0.973, index  119.7 MB, peak rss   1027 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 0: build   10.33 s, recall@10 0.960, index  239.3 MB, peak rss   1483 MB, fetch   180 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 8 repeat 1: build   10.54 s, recall@10 0.960, index  239.3 MB, peak rss   1483 MB, fetch   150 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 0: build   27.70 s, recall@10 0.938, index  478.6 MB, peak rss   2405 MB, fetch   295 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 8 repeat 1: build   26.94 s, recall@10 0.938, index  478.6 MB, peak rss   2405 MB, fetch   148 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 0: build    2.13 s, recall@10 0.989, index   39.9 MB, peak rss   1026 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 2 repeat 1: build    2.11 s, recall@10 0.989, index   39.9 MB, peak rss   1027 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 0: build   10.40 s, recall@10 0.972, index  119.7 MB, peak rss   1026 MB, fetch   148 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 2 repeat 1: build   11.62 s, recall@10 0.973, index  119.7 MB, peak rss   1026 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 0: build   30.78 s, recall@10 0.959, index  239.3 MB, peak rss   1484 MB, fetch   150 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 2 repeat 1: build   28.74 s, recall@10 0.959, index  239.3 MB, peak rss   1483 MB, fetch   151 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 0: build   74.05 s, recall@10 0.938, index  478.6 MB, peak rss   2406 MB, fetch   148 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 2 repeat 1: build   68.42 s, recall@10 0.938, index  478.6 MB, peak rss   2405 MB, fetch   151 MB/s
+wrote /tmp/calibrate-z8gkq-gist-960-300k-6.csv
+threads 2: 20 points; A = 5.513e-08 s per n·ln(n)·dim (ratio 0.43..2.02, sigma 0.405); power law t = 1.07e-08 · n^1.370 · dim (sigma 0.240); min recall 0.938; fetch 155 MB/s
+   fitted in log space; a linear-space least squares would give A = 6.118e-08 and hide a -0.104 mean log residual; fetch+gate per point 1.99 s (the measured overhead)
+threads 8: 20 points; A = 2.19e-08 s per n·ln(n)·dim (ratio 0.44..1.90, sigma 0.426); power law t = 5.4e-09 · n^1.348 · dim (sigma 0.301); min recall 0.938; fetch 157 MB/s
+   fitted in log space; a linear-space least squares would give A = 2.329e-08 and hide a -0.062 mean log residual; fetch+gate per point 1.35 s (the measured overhead)
+threads     size   dim  measured    fitted  ratio     power  recall
+      2    10000   128      0.61      0.65   0.94      0.41   0.998
+      2    10000   128      0.61      0.65   0.94      0.41   0.998
+      2    10000   960      2.13      4.87   0.44      3.09   0.989
+      2    10000   960      2.11      4.87   0.43      3.09   0.989
+      2    20000   128      1.37      1.40   0.98      1.06   0.998
+      2    20000   128      1.36      1.40   0.98      1.06   0.998
+      2    30000   960     10.40     16.37   0.64     13.91   0.972
+      2    30000   960     11.62     16.37   0.71     13.91   0.973
+      2    50000   128      4.28      3.82   1.12      3.74   0.996
+      2    50000   128      4.24      3.82   1.11      3.74   0.996
+      2    60000   960     30.78     34.94   0.88     35.96   0.959
+      2    60000   960     28.74     34.94   0.82     35.96   0.959
+      2   100000   128     10.83      8.12   1.33      9.65   0.994
+      2   100000   128     10.68      8.12   1.32      9.65   0.994
+      2   120000   960     74.05     74.27   1.00     92.96   0.938
+      2   120000   960     68.42     74.27   0.92     92.96   0.938
+      2   200000   128     27.31     17.23   1.59     24.95   0.983
+      2   200000   128     27.13     17.23   1.57     24.95   0.984
+      2   400000   128     69.20     36.41   1.90     64.50   0.985
+      2   400000   128     73.50     36.41   2.02     64.50   0.985
+      8    10000   128      0.28      0.26   1.09      0.17   0.998
+      8    10000   128      0.28      0.26   1.10      0.17   0.998
+      8    10000   960      0.86      1.94   0.44      1.27   0.988
+      8    10000   960      0.87      1.94   0.45      1.27   0.988
+      8    20000   128      0.57      0.56   1.03      0.43   0.998
+      8    20000   128      0.58      0.56   1.04      0.43   0.998
+      8    30000   960      3.75      6.50   0.58      5.60   0.973
+      8    30000   960      3.80      6.50   0.59      5.60   0.973
+      8    50000   128      1.70      1.52   1.12      1.49   0.996
+      8    50000   128      1.72      1.52   1.13      1.49   0.996
+      8    60000   960     10.33     13.88   0.74     14.25   0.960
+      8    60000   960     10.54     13.88   0.76     14.25   0.960
+      8   100000   128      4.52      3.23   1.40      3.78   0.994
+      8   100000   128      4.50      3.23   1.40      3.78   0.994
+      8   120000   960     27.70     29.50   0.94     36.25   0.938
+      8   120000   960     26.94     29.50   0.91     36.25   0.938
+      8   200000   128     11.59      6.84   1.69      9.62   0.984
+      8   200000   128     10.94      6.84   1.60      9.62   0.985
+      8   400000   128     27.47     14.46   1.90     24.49   0.985
+      8   400000   128     27.02     14.46   1.87     24.49   0.985
+COST_* for a cluster whose shards build with 2 threads and whose workers with 8 (overhead the workers' median fetch + gate):
+  COST_A=5.513e-08
+  COST_SPEEDUP=2.517
+  COST_GPU_OVERHEAD=1.35
+  COST_BANDWIDTH=1.573e+08
+  KGPU_ESTIMATE_SIGMA=0.426
+uploaded calibration/calibrate-z8gkq-sift-128-6.csv
+uploaded calibration/calibrate-z8gkq-gist-960-300k-6.csv

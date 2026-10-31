@@ -360,12 +360,12 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 ### The cloud topology without GPUs (closing step)
 
-- [ ] A billing alert before creating anything; everything torn down after each session
-- [ ] A managed cluster (e.g. GKE) with a CPU-only node pool: scheduler, Postgres, MinIO and CPU workers from the kind manifests
-- [ ] A CPU virtual machine in the same region for the shards, reaching the scheduler and MinIO over the cloud network, the way the laptop reaches kind today
-- [ ] The calibration repeated there, separately for the shard VM's cores and the worker nodes' cores; MinIO throughput measured from the shard VM and from a worker, which is the transfer term
-- [ ] The estimate error distribution from this run becomes the simulator's σ, and the Phase 3 comparison is rerun on real builds (sweeps in the simulator, a few rounds validated live, as step 7 did)
-- [ ] The manifests, the VM recipe and the teardown script are committed, so Phase 5 starts from them
+- [x] A billing alert before creating anything (the owner's console); everything torn down after each session (`scripts/gcp-down.sh`)
+- [x] A managed cluster (GKE, zonal, private nodes) with a CPU-only node pool: scheduler, Postgres, RustFS and CPU workers from the kind manifests through the `deploy/k8s-gcp` overlay (decisions 25–31, 33, 36)
+- [x] A CPU virtual machine in the same zone for the shards (`kgpu-shards`, decisions 26, 32), reaching the scheduler and the store over internal load balancers
+- [x] The calibration repeated there, separately for the shard VM's cores and the worker nodes' cores; store throughput measured from both (speedup.md evidence 7; decision 35: A per dataset)
+- [x] The estimate error distribution from this run becomes the simulator's σ (0.26), and the Phase 3 comparison is rerun on the calibrated constants (`experiments/results/calibrated/`), two rounds validated live (decision 37: the simulator under-predicts the offloaded straggler by 25 %; the model's missing result-upload term goes to the Phase 5 refit)
+- [x] The manifests, the VM recipe and the teardown script are committed, so Phase 5 starts from them
 
 ### Optional
 

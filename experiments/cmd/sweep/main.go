@@ -78,6 +78,12 @@ func main() {
 		noiseSeed   = flag.Int64("noise_seed", 1, "sub-seed for the estimate noise draws")
 	)
 	flag.Parse()
+	// A calibrated constant pasted with a sign error must not become a
+	// placeholder sweep (step 4 cross-check F2): 0 (and -1 for the overhead)
+	// means "the default"; anything else out of range is refused.
+	if *costA < 0 || *bandwidth < 0 || (*gpuOverhead < 0 && *gpuOverhead != -1) {
+		log.Fatalf("sweep: -cost_a and -bandwidth must be positive (0 = the cost model's default) and -gpu_overhead non-negative (-1 = the default); got %g, %g, %g", *costA, *bandwidth, *gpuOverhead)
+	}
 
 	scList := splitOr(*scenarios, workload.PresetNames())
 	polList := splitOr(*policies, []string{"always_gpu", "static_threshold", "reactive", "reactive_spec", "clairvoyant"})

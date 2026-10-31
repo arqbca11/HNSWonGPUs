@@ -9,6 +9,14 @@ metadata:
   namespace: kgpu
 spec:
   replicas: 2
+  # A restart replaces workers in place, never beside them: each node's CPU
+  # is claimed by its worker (7 of 7.91), so a surge pod has nowhere to go
+  # and the default rolling update (surge 1, unavailable 0) hangs on a
+  # Pending pod forever. One worker stays up while the other restarts
+  # (decision 36). The kind base's fake card resource allowed two per node.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
   template:
     spec:
       nodeSelector:

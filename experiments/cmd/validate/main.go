@@ -31,6 +31,7 @@ import (
 
 	esim "github.com/arqbca11/HNSWonGPUs/experiments/sim"
 	"github.com/arqbca11/HNSWonGPUs/experiments/workload"
+	"github.com/arqbca11/HNSWonGPUs/scheduler/costmodel"
 	"github.com/arqbca11/HNSWonGPUs/scheduler/policy"
 	ssim "github.com/arqbca11/HNSWonGPUs/shard/sim"
 )
@@ -49,6 +50,11 @@ func main() {
 		strict      = flag.Bool("strict", false, "exit 1 if any round disagrees")
 		perShard    = flag.Bool("shards", true, "print the per-shard finish table")
 		phases      = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase")
+		dataset     = flag.String("dataset", "", "the round's DATASET (Phase 4): the shard sizes come from the committed split, as shardsim's did")
+		costA       = flag.Float64("cost_a", 0, "the live COST_A (0 = the cost model's default)")
+		bandwidth   = flag.Float64("bandwidth", 0, "the live COST_BANDWIDTH (0 = default)")
+		gpuOverhead = flag.Float64("gpu_overhead", -1, "the live COST_GPU_OVERHEAD (-1 = default)")
+		speedup     = flag.Float64("speedup", 0, "the live COST_SPEEDUP (0 = default)")
 		trustPolicy = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
 	)
 	flag.Parse()
@@ -96,6 +102,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		if *dataset != "" {
+			if err := workload.ApplySplit(&sc, *dataset); err != nil {
+				log.Fatal(err)
+			}
+		}
 		w := workload.Generate(sc, tl.Seed)
 		for i, s := range w.Shards {
 			if int(tl.Shards[i].ShardID) != i {
@@ -124,10 +135,23 @@ func main() {
 				}
 			}
 		}
+		cm := costmodel.Default()
+		if *costA > 0 {
+			cm.A = *costA
+		}
+		if *bandwidth > 0 {
+			cm.Bandwidth = *bandwidth
+		}
+		if *gpuOverhead >= 0 {
+			cm.GPUOverhead = *gpuOverhead
+		}
+		if *speedup > 0 {
+			cm.Speedup = *speedup
+		}
 		cfg := esim.Config{
 			Workers: *workers, WorkerMemBytes: int64(*workerMemGB * float64(1<<30)),
-			ShareNodeLinks: false,
-			PollS:          *pollS * ts, ReconsiderS: *reconsiderS * ts, LeaseS: *leaseS * ts,
+			ShareNodeLinks: false, CostModel: &cm,
+			PollS: *pollS * ts, ReconsiderS: *reconsiderS * ts, LeaseS: *leaseS * ts,
 		}
 		res := esim.Run(w, pol, cfg)
 		r := row{tl: tl, res: res, liveS: tl.DurationModeled.Seconds(), simS: res.RoundS}

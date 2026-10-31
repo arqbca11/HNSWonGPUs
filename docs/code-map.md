@@ -122,9 +122,18 @@ One entry per action the system takes, pointing at the code that decides it, the
 
 ### Step 3: calibration — measured build times into cost-model constants
 - The grid and the point: `builder/kgpu_builder/calibrate.py` (`run_grid` spawns `calibrate-point` per (size, threads, repeat) and appends CSV rows; `run_point` builds a prefix of the largest shard, gates it on an exact top-10, reports peak RSS; decision 23).
-- The fit: `calibrate.fit_points` (A per thread count through the origin, sigma of the log residuals, a power-law fit beside it), `residual_table`, `env_overrides` (the `COST_*` block; decision 24); the CLI's `calibrate`, `calibrate-point`, `fit` in `cli.py`.
+- The fit: `calibrate.fit_points` (A per thread count as the geometric mean of measured/x, i.e. least squares in log space after the step 3 cross-check, sigma = RMS of the log residuals, a power-law fit beside it), `residual_table`, `env_overrides` (the `COST_*` block; decision 24); the CLI's `calibrate`, `calibrate-point`, `fit` in `cli.py`.
 - The figure: `experiments/analysis/plot_calibration.py` (measured vs fitted on log-log, the residual ratio below).
 - Where the numbers go: `experiments/results/calibration/<host>-<dataset>-<n>.csv` (the laptop rehearsal is committed as a rehearsal); the cloud topology's calibration will be the one the scheduler's `COST_*` are set from.
+
+### Step 4: the cloud topology — where the calibration runs for real
+
+- Create and delete: `scripts/gcp-up.sh` (idempotent: NAT and IAP firewall, the private-node zonal cluster, the spot `workers` pool, the overlay applied, the internal IPs, the shard VM with its endpoints in instance metadata), `scripts/gcp-down.sh`. The fresh-project defaults that shaped it: decisions 28–32.
+- The cloud differences, as patches on the Phase 2 base: `deploy/k8s-gcp/` (`kustomization.yaml` names the registry images and lists the patches: `worker-cpu-pool.yaml`, `services-internal-lb.yaml`, `config-real-builds.yaml`, `objectstore-fsgroup.yaml`).
+- The shard host: `deploy/gcp/shard-vm-startup.sh` (first boot: Go, uv, the repo) and `deploy/gcp/vm-session.sh` (`data`, `calibrate`, `rounds`, `all`, reading the scheduler and store addresses from the VM's metadata; output under `/opt/kgpu/out/`).
+- The worker-side calibration: `deploy/k8s-gcp/calibrate-job.yaml` (a Job on a `workers` node, the CSVs uploaded to the store under `calibration/`).
+- The calibrated constants into the sweeps: `experiments/cmd/sweep/main.go` flags `-cost_a -bandwidth -gpu_overhead -speedup`, echoed as CSV columns `cost_a`, `bandwidth`, `gpu_overhead`; out-of-range values refused (the step 4 cross-check's F2). The same flags plus `-dataset` (applies the split, as shardsim does) on the comparer `experiments/cmd/validate/main.go`, so a real round replays on the constants it ran under.
+- The live rounds and what they found: `test-logs/phase4/step4-rounds.log`, `experiments/results/step4-timelines/`; decision 37 (the worker's result path is not in the cost model). The comparison on the calibrated constants: `experiments/results/calibrated/`.
 
 ## Observability and configuration
 
