@@ -6,6 +6,20 @@ Entries are added when a bug changes how we think about the system, is subtle en
 
 ---
 
+## 19. A reneged build shared its artifact prefix with the stale GPU attempt it came from
+
+**Symptom.** Running the whole Go suite at the close of Phase 4 step 4, the step 2 cross-check test `TestXcP4S2RenegedBuildAttemptPrefixVersusStaleGPUAttempt` failed: after a GPU claim (attempt 1) lost its lease, was reaped and reneged to local, the shard ran the builder with `--attempt 1`, the stale worker's attempt. Its committed log from step 2 shows the same scenario passing with `--attempt 0`.
+
+**Cause.** Two correct-looking changes that collided. Step 2's cross-check G3 found that a local build always published under attempt 0 and "happened to avoid" a stale GPU prefix; the fix made the local build publish under the row's attempt (right for the local retry, decision 21, which increments it). But `RenegeToLocal` moved a queued GPU build back to local without touching `attempt`, so a build that had been claimed once, lost its lease and was reneged kept attempt 1 — and so did the worker that still held attempt 1 in its hands. The worker's database writes were fenced (guarded by attempt, invariant 3); its object-store writes were not: it could finish its build after the shard had completed, and overwrite `index.bin` and `manifest.json` under the prefix the shard's completion points at. Invariant 7 ("the manifest is written last, completion recorded after it") was true of each writer and false of the pair.
+
+**Fix.** The renege increments `attempt`, like a claim and a local retry (decision 38; invariant 4 amended in CLAUDE.md). The shard's local build then writes under a prefix only it knows; a stale worker's late artifacts land under the old one, which nothing reads. A store test pins it; the cross-check test passes again. Commit: see `git log --grep "bug 19"`.
+
+**In production.** A rebuilt index silently replaced by a stale copy of itself: same data, so a recall check would pass, but the manifest's hash could belong to the other writer's file — a verify would fail on an index that was fine a second ago, and nobody would know which worker wrote what. Database analogy: a DDL that committed, then a lagging session's buffered write landing in the same block because the SCN check was done on the row and not on the file.
+
+**Lesson.** A fencing token must be taken by *every* path that starts a new attempt of the same work, not only the paths that were there when the token was designed. When a fix extends what the token protects (step 2: the local build's prefix), look for every state transition that restarts the work and check that each one bumps it. Also: a cross-check test whose saved log predates the fix it provoked is a test that has not been run since — rerun the whole suite at every step's close, which is how this was found.
+
+**Related.** Bug 5 (a stale worker's writes after a lost lease, fenced in the database); step 2's cross-check G3 (the fix that opened this); decision 21 (the local retry's increment, the model for this one).
+
 ## 18. The first real round stalled for 30 minutes: a Phase 2 memory limit killed the worker on the big build, and a failed build had nowhere to go
 
 **Found** live, in the first run of `scripts/k8s-check-p4-step2.sh` (Phase 4 step 2): five of six SIFT-128 builds finished, the 408,164-vector straggler failed with "lease expired on attempt 5 of 5: retry budget exhausted", both worker pods had restarted two and three times, and the round then waited on that shard's index queries until the 30-minute timeout. Fixed in commit `1e53ae1` (the limit, the upload, and decision 21's retry and fallback, which could not be split from it cleanly). **Related:** entry 15 (the same step's method lesson: the harness measured a system other than the intended one — here, a resource limit sized for a sleep); the Phase 1 open question "what does a failed build mean for the round", answered at last by decision 21.

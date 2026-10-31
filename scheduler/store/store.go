@@ -508,10 +508,17 @@ func (s *Store) PreemptToGPU(ctx context.Context, buildID string, priority float
 // submit, preempt, escape-renege, local forever. false if the build is not a
 // queued GPU build (leased builds are never moved) or is a speculative copy
 // (a copy is cancelled, never turned into a second local build).
+//
+// attempt increments (bug 19, Phase 4 decision 38): a reneged build may have
+// been claimed before (its lease expired and the reaper queued it), and that
+// stale worker may still be running and about to write artifacts under
+// build_id/<its attempt>/. The local build gets the next attempt, so its
+// prefix is its own and the stale writes land where nobody reads.
 func (s *Store) RenegeToLocal(ctx context.Context, buildID string) (bool, error) {
 	return s.guarded(ctx, `
 		UPDATE builds
-		SET placement = 'local', state = 'running', started_at = now(), lease_owner = NULL, lease_until = NULL, moved = true
+		SET placement = 'local', state = 'running', started_at = now(), lease_owner = NULL, lease_until = NULL, moved = true,
+		    attempt = attempt + 1
 		WHERE build_id = $1 AND placement = 'gpu' AND state = 'queued' AND NOT speculative`,
 		buildID)
 }

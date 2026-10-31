@@ -526,7 +526,7 @@ func (s *Shard) apply(b client.BuildSummary) {
 	if b.Attempt != prevAttempt && prevAttempt > 0 {
 		// A requeue and re-claim can both happen between two reports, so the
 		// attempt counter is the only sure sign of a recovery (cross-check gap).
-		s.event("build attempt %d -> %d: the previous attempt was lost and the build re-claimed", prevAttempt, b.Attempt)
+		s.event("build attempt %d -> %d: the previous attempt was lost and the build re-claimed, or it was moved back local (each gets its own artifact prefix)", prevAttempt, b.Attempt)
 	}
 	switch {
 	case b.State == "done" && !s.b.indexReady:
