@@ -1,0 +1,79 @@
+== Phase 4 step 4, stress test: one 50-shard sift-128 round with real builds, fifty shards on the one shard VM (16 cores, 2 threads each: the round time is contention, the mechanics are real), 2 CPU workers, policy reactive, the calibrated constants; deploy/gcp/vm-session.sh stress50
+== vm-session stress50 on kgpu-shards (16 vCPUs), scheduler http://10.138.0.13:8080, store http://10.138.0.12:9000, 2026-10-31T04:20:37Z, commit 730ab50
+   scheduler reachable
+   store reachable
+#### stress: real round sift-128 50 shards seed 1 on one VM (16 cores for 50 shards: the round time is contention, the mechanics are real)
+   round 3  scenario=skewed seed=1  time_scale=1
+   duration 36.3s real (36.3s modeled)   straggler lag 4.5s   builds: 5 gpu, 45 local, 0 speculative copies   queries: 29971
+   query latency (slowest piece): fan-out p50 13.7s p99 21.3s (n=1063)   single-shard p50 7.6s p99 17.1s (n=2445)
+   shard  n_vectors place  att  submit   b.start  b.done   finish   queries max wait
+   0      13892     local  0    0.1s     0.1s     13.5s    32.1s    616     14.4s    ##########################
+   1      8549      local  0    0.0s     0.0s     9.7s     31.3s    605     10.9s    #########################
+   2      5848      local  0    0.0s     0.0s     9.4s     32.3s    599     11.1s    ##########################
+   3      9261      local  0    0.2s     0.2s     11.5s    30.5s    600     12.2s    #########################
+   4      7169      local  0    0.0s     0.0s     3.9s     30.1s    610     4.2s     ########################
+   5      31752     local  0    0.0s     0.0s     18.0s    34.3s    594     18.1s    ############################
+   6      7937      local  0    0.1s     0.1s     10.6s    31.8s    582     11.8s    ##########################
+   7      4445      local  0    0.1s     0.1s     7.9s     32.2s    595     9.7s     ##########################
+   8      55566     gpu    1    0.1s     9.0s     12.8s    30.3s    605     13.2s    #########################
+   9      7664      local  0    0.1s     0.1s     9.7s     32.3s    587     11.2s    ##########################
+   10     22227     local  0    0.1s     0.1s     17.4s    33.4s    579     17.6s    ###########################
+   11     6537      local  0    0.1s     0.1s     9.6s     31.2s    576     10.3s    #########################
+   12     13075     local  0    0.1s     0.1s     13.2s    32.4s    592     13.3s    ##########################
+   13     8891      local  0    0.1s     0.1s     11.0s    32.6s    637     12.0s    ##########################
+   14     222262    gpu    1    0.0s     0.1s     17.5s    30.4s    591     17.8s    #########################
+   15     10584     local  0    0.1s     0.1s     12.2s    31.2s    588     12.3s    #########################
+   16     9664      local  0    0.1s     0.1s     11.2s    30.7s    602     11.5s    #########################
+   17     27783     local  0    0.2s     0.2s     17.8s    36.3s    596     18.1s    ##############################
+   18     4535      local  0    0.0s     0.0s     7.8s     31.2s    614     7.9s     #########################
+   19     6173      local  0    0.2s     0.2s     9.7s     30.6s    584     11.3s    #########################
+   20     12348     local  0    0.2s     0.2s     12.3s    31.7s    573     13.5s    ##########################
+   21     11114     local  0    0.1s     0.1s     11.8s    32.7s    611     13.3s    ###########################
+   22     4630      local  0    0.1s     0.1s     8.4s     30.1s    609     8.7s     ########################
+   23     7408      local  0    0.1s     0.1s     10.2s    30.2s    622     10.3s    ########################
+   24     6945      local  0    0.1s     0.1s     9.9s     30.9s    599     11.0s    #########################
+   25     10103     local  0    0.1s     0.1s     12.4s    32.5s    600     13.3s    ##########################
+   26     4939      local  0    0.2s     0.2s     8.1s     30.1s    584     8.5s     ########################
+   27     111131    gpu    1    0.1s     0.7s     9.0s     30.1s    609     9.3s     ########################
+   28     18522     local  0    0.1s     0.1s     14.4s    33.7s    599     14.6s    ###########################
+   29     5556      local  0    0.2s     0.2s     8.2s     30.7s    628     8.9s     #########################
+   30     14818     local  0    0.1s     0.1s     13.6s    32.3s    597     13.7s    ##########################
+   31     44453     gpu    1    0.1s     12.8s    17.4s    33.1s    581     17.6s    ###########################
+   32     5168      local  0    0.1s     0.1s     9.2s     30.1s    604     9.4s     ########################
+   33     5421      local  0    0.1s     0.1s     9.5s     30.1s    587     9.7s     ########################
+   34     5051      local  0    0.1s     0.1s     9.3s     30.1s    578     9.3s     ########################
+   35     8232      local  0    0.1s     0.1s     10.3s    31.8s    638     10.8s    ##########################
+   36     4831      local  0    0.1s     0.1s     8.3s     33.4s    604     10.4s    ###########################
+   37     6350      local  0    0.2s     0.2s     9.7s     32.5s    635     10.5s    ##########################
+   38     74088     gpu    1    0.1s     17.4s    22.0s    33.1s    604     22.0s    ###########################
+   39     17098     local  0    0.1s     0.1s     13.9s    32.4s    633     14.1s    ##########################
+   40     20206     local  0    0.1s     0.1s     14.9s    33.3s    596     15.3s    ###########################
+   41     6007      local  0    0.1s     0.1s     9.4s     30.4s    588     9.8s     #########################
+   42     37044     local  0    0.1s     0.1s     17.9s    36.0s    569     18.2s    #############################
+   43     24696     local  0    0.1s     0.1s     18.0s    34.2s    593     18.2s    ############################
+   44     6735      local  0    0.2s     0.2s     6.7s     30.1s    566     6.8s     ########################
+   45     5291      local  0    0.2s     0.2s     9.7s     32.6s    593     12.4s    ##########################
+   46     4728      local  0    0.1s     0.1s     9.4s     30.1s    605     9.5s     ########################
+   47     11698     local  0    0.1s     0.1s     12.4s    32.0s    593     13.2s    ##########################
+   48     15876     local  0    0.1s     0.1s     13.9s    34.8s    629     14.6s    ############################
+   49     5699      local  0    0.1s     0.1s     9.7s     31.0s    592     11.3s    #########################
+   
+== vm-session stress50 done, 2026-10-31T04:21:14Z
+
+== the workers' claims and completions for the round (kubectl logs)
+{"time": "2026-10-31T04:20:37.659Z", "level": "INFO", "msg": "claimed", "build_id": "14:3", "attempt": 1, "round_id": 3, "n_vectors": 222262, "dim": 128, "estimate_s": 13.18}
+{"time": "2026-10-31T04:20:38.263Z", "level": "INFO", "msg": "claimed", "build_id": "27:3", "attempt": 1, "round_id": 3, "n_vectors": 111131, "dim": 128, "estimate_s": 6.98}
+{"time": "2026-10-31T04:20:46.538Z", "level": "INFO", "msg": "completed", "build_id": "27:3", "attempt": 1, "round_id": 3, "kind": "hnswlib", "index_bytes": 73402444, "elapsed_s": 8.27}
+{"time": "2026-10-31T04:20:46.541Z", "level": "INFO", "msg": "claimed", "build_id": "8:3", "attempt": 1, "round_id": 3, "n_vectors": 55566, "dim": 128, "estimate_s": 4.02}
+{"time": "2026-10-31T04:20:50.305Z", "level": "INFO", "msg": "completed", "build_id": "8:3", "attempt": 1, "round_id": 3, "kind": "hnswlib", "index_bytes": 36703468, "elapsed_s": 3.76}
+{"time": "2026-10-31T04:20:50.309Z", "level": "INFO", "msg": "claimed", "build_id": "31:3", "attempt": 1, "round_id": 3, "n_vectors": 44453, "dim": 128, "estimate_s": 3.45}
+{"time": "2026-10-31T04:20:54.926Z", "level": "INFO", "msg": "completed", "build_id": "31:3", "attempt": 1, "round_id": 3, "kind": "hnswlib", "index_bytes": 29360980, "elapsed_s": 4.61}
+{"time": "2026-10-31T04:20:54.930Z", "level": "INFO", "msg": "claimed", "build_id": "38:3", "attempt": 1, "round_id": 3, "n_vectors": 74088, "dim": 128, "estimate_s": 4.99}
+{"time": "2026-10-31T04:20:55.018Z", "level": "INFO", "msg": "completed", "build_id": "14:3", "attempt": 1, "round_id": 3, "kind": "hnswlib", "index_bytes": 146806220, "elapsed_s": 17.35}
+{"time": "2026-10-31T04:20:59.545Z", "level": "INFO", "msg": "completed", "build_id": "38:3", "attempt": 1, "round_id": 3, "kind": "hnswlib", "index_bytes": 48935772, "elapsed_s": 4.61}
+
+== the round's artifacts in the store (from inside a worker pod)
+50 manifests and 50 index files under artifacts/<shard>:3/<attempt>/ for round 3
+shards with a manifest: 50 missing: []
+attempt prefixes used: ['0', '1']
+one manifest: {'status': 'done', 'kind': 'hnswlib', 'build_id': '0:3', 'attempt': 0, 'dataset': 'sift-128', 'n_shards': 50, 'shard': 0, 'threads': 2, 'm': 16, 'ef_construction': 200, 'recall_k': 10, 'ef_search': 100}
