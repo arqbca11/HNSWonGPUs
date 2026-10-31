@@ -11,6 +11,11 @@ $G compute instances delete "$VM" --zone "$ZONE" 2>&1 | tail -1 || true
 $G container clusters delete "$CLUSTER" --zone "$ZONE" 2>&1 | tail -1 || true
 $G compute routers nats delete kgpu-nat --router kgpu-router --region "${REGION:-us-west1}" 2>&1 | tail -1 || true
 $G compute routers delete kgpu-router --region "${REGION:-us-west1}" 2>&1 | tail -1 || true
+# deleting the cluster leaves its dynamically provisioned disks (Postgres's
+# 2 GB, the store's 10 GB) behind; GKE labels them with the cluster's name
+for d in $($G compute disks list --filter="labels.goog-k8s-cluster-name=$CLUSTER" --format='value(name)'); do
+  $G compute disks delete "$d" --zone "$ZONE" 2>&1 | tail -1 || true
+done
 echo "== remaining compute instances / clusters / disks:"
 $G compute instances list --format='value(name,zone,status)'; $G container clusters list --format='value(name,location,status)'; $G compute disks list --format='value(name,sizeGb)'
 echo "== done; check the billing report tomorrow"
