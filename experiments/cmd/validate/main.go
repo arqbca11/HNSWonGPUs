@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	esim "github.com/arqbca11/HNSWonGPUs/experiments/sim"
@@ -38,24 +39,32 @@ import (
 
 func main() {
 	var (
-		dir         = flag.String("timelines", "", "directory of round-<id>.json files written by shardsim (TIMELINE_DIR)")
-		polName     = flag.String("policy", "", "the policy the live scheduler ran (its POLICY setting)")
-		workers     = flag.Int("workers", 0, "live worker count (0 = the preset's)")
-		workerMemGB = flag.Float64("worker_mem_gb", 0, "live WORKER_MEM_BYTES in GiB (0 = the preset's)")
-		pollS       = flag.Float64("poll_s", 0.5, "shardsim POLL_INTERVAL, wall seconds")
-		reconsiderS = flag.Float64("reconsider_s", 2, "scheduler RECONSIDER_INTERVAL, wall seconds")
-		leaseS      = flag.Float64("lease_s", 10, "worker LEASE_SECONDS, wall seconds")
-		tolS        = flag.Float64("tol_s", 2, "agreement tolerance, modeled seconds (the larger of this and tol_frac applies)")
-		tolFrac     = flag.Float64("tol_frac", 0.05, "agreement tolerance as a fraction of the simulated round time")
-		strict      = flag.Bool("strict", false, "exit 1 if any round disagrees")
-		perShard    = flag.Bool("shards", true, "print the per-shard finish table")
-		phases      = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase")
-		dataset     = flag.String("dataset", "", "the round's DATASET (Phase 4): the shard sizes come from the committed split, as shardsim's did")
-		costA       = flag.Float64("cost_a", 0, "the live COST_A (0 = the cost model's default)")
-		bandwidth   = flag.Float64("bandwidth", 0, "the live COST_BANDWIDTH (0 = default)")
-		gpuOverhead = flag.Float64("gpu_overhead", -1, "the live COST_GPU_OVERHEAD (-1 = default)")
-		speedup     = flag.Float64("speedup", 0, "the live COST_SPEEDUP (0 = default)")
-		trustPolicy = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
+		dir          = flag.String("timelines", "", "directory of round-<id>.json files written by shardsim (TIMELINE_DIR)")
+		polName      = flag.String("policy", "", "the policy the live scheduler ran (its POLICY setting)")
+		workers      = flag.Int("workers", 0, "live worker count (0 = the preset's)")
+		workerMemGB  = flag.Float64("worker_mem_gb", 0, "live WORKER_MEM_BYTES in GiB (0 = the preset's)")
+		pollS        = flag.Float64("poll_s", 0.5, "shardsim POLL_INTERVAL, wall seconds")
+		reconsiderS  = flag.Float64("reconsider_s", 2, "scheduler RECONSIDER_INTERVAL, wall seconds")
+		leaseS       = flag.Float64("lease_s", 10, "worker LEASE_SECONDS, wall seconds")
+		tolS         = flag.Float64("tol_s", 2, "agreement tolerance, modeled seconds (the larger of this and tol_frac applies)")
+		tolFrac      = flag.Float64("tol_frac", 0.05, "agreement tolerance as a fraction of the simulated round time")
+		strict       = flag.Bool("strict", false, "exit 1 if any round disagrees")
+		perShard     = flag.Bool("shards", true, "print the per-shard finish table")
+		phases       = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase")
+		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0) or calibrated (the measured v1 block); the flags below override single terms")
+		dataset      = flag.String("dataset", "", "the round's DATASET (Phase 4): the shard sizes come from the committed split, as shardsim's did")
+		costA        = flag.Float64("cost_a", 0, "the live COST_A (0 = the cost model's default)")
+		bandwidth    = flag.Float64("bandwidth", 0, "the live COST_BANDWIDTH (0 = default)")
+		gpuOverhead  = flag.Float64("gpu_overhead", -1, "the live COST_GPU_OVERHEAD (-1 = default)")
+		speedup      = flag.Float64("speedup", 0, "the live COST_SPEEDUP (0 = default)")
+		costP        = flag.Float64("cost_p", 0, "the live COST_P (0 = keep)")
+		costD0       = flag.Float64("cost_d0", -1, "the live COST_D0 (-1 = keep)")
+		gateCost     = flag.Float64("gate", -1, "the live COST_GATE (-1 = keep)")
+		gateQueries  = flag.Float64("gate_queries", -1, "the live COST_GATE_QUERIES (-1 = keep)")
+		saveBW       = flag.Float64("save_bandwidth", -1, "the live COST_SAVE_BANDWIDTH (-1 = keep)")
+		bandwidthOut = flag.Float64("bandwidth_out", -1, "the live COST_BANDWIDTH_OUT (-1 = keep)")
+		shardStore   = flag.String("shard_uses_store", "", "the live COST_SHARD_USES_STORE, true/false (empty = keep)")
+		trustPolicy  = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
 	)
 	flag.Parse()
 	if *dir == "" || *polName == "" {
@@ -136,6 +145,11 @@ func main() {
 			}
 		}
 		cm := costmodel.Default()
+		if *costModel == "calibrated" {
+			cm = costmodel.Calibrated()
+		} else if *costModel != "default" {
+			log.Fatalf("-cost must be default or calibrated; got %q", *costModel)
+		}
 		if *costA > 0 {
 			cm.A = *costA
 		}
@@ -147,6 +161,34 @@ func main() {
 		}
 		if *speedup > 0 {
 			cm.Speedup = *speedup
+		}
+		if *costP > 0 {
+			cm.P = *costP
+		}
+		if *costD0 >= 0 {
+			cm.D0 = *costD0
+		}
+		if *gateCost >= 0 {
+			cm.GateCost = *gateCost
+		}
+		if *gateQueries >= 0 {
+			cm.GateQueries = *gateQueries
+		}
+		if *saveBW >= 0 {
+			cm.SaveBandwidth = *saveBW
+		}
+		if *bandwidthOut >= 0 {
+			cm.BandwidthOut = *bandwidthOut
+		}
+		if *shardStore != "" {
+			b, err := strconv.ParseBool(*shardStore)
+			if err != nil {
+				log.Fatalf("-shard_uses_store must be true or false; got %q", *shardStore)
+			}
+			cm.ShardUsesStore = b
+		}
+		if err := cm.Validate(); err != nil {
+			log.Fatalf("cost model: %v", err)
 		}
 		cfg := esim.Config{
 			Workers: *workers, WorkerMemBytes: int64(*workerMemGB * float64(1<<30)),

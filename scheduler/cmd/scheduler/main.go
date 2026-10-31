@@ -16,7 +16,9 @@
 //	SHUTDOWN_DELAY       default 3s; after SIGTERM keep serving this long before closing, so a
 //	                     deleted pod is out of every node's forwarding rules before its IP vanishes (bug 10)
 //	LOG_FORMAT           json (default) or text
-//	COST_A, COST_SPEEDUP, COST_GPU_OVERHEAD, COST_BANDWIDTH, COST_MEM_FACTOR
+//	COST_MODEL                default (v0, the placeholder) or calibrated (the cloud topology's measured block, Phase 5 decision 6)
+//	COST_A, COST_P, COST_D0, COST_SPEEDUP, COST_GPU_OVERHEAD, COST_GATE, COST_GATE_QUERIES,
+//	COST_SAVE_BANDWIDTH, COST_BANDWIDTH, COST_BANDWIDTH_OUT, COST_SHARD_USES_STORE, COST_MEM_FACTOR
 //	                     override cost model v0 constants (see scheduler/costmodel)
 package main
 
@@ -104,7 +106,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		log.Info("scheduler listening", "addr", addr, "policy", pol.Name(),
+		log.Info("scheduler listening", "addr", addr, "policy", pol.Name(), "cost_model", costModelName(),
 			"reap_interval", reapInterval, "reconsider_interval", reconsiderInterval,
 			"time_scale", timeScale, "max_attempts", maxAttempts, "worker_stale_after", staleAfter)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -237,8 +239,29 @@ func envDuration(log *slog.Logger, key string, def time.Duration) time.Duration 
 	return d
 }
 
+// costModelName is what the startup line reports: which block the COST_*
+// overrides were applied on (cross-check D: it was unobservable).
+func costModelName() string {
+	if v := os.Getenv("COST_MODEL"); v != "" {
+		return v
+	}
+	return "default"
+}
+
 func costModelFromEnv(log *slog.Logger) costmodel.Model {
+	// COST_MODEL=calibrated starts from the cloud topology's measured block
+	// (Phase 5 decision 6); the COST_* variables then override single terms.
 	m := costmodel.Default()
+	switch os.Getenv("COST_MODEL") {
+	case "", "default":
+	case "calibrated":
+		m = costmodel.Calibrated()
+	default:
+		// exactly these two spellings, on the worker too (cross-check D, E):
+		// one env block serves both processes and must mean the same on each
+		log.Error("COST_MODEL must be default or calibrated", "value", os.Getenv("COST_MODEL"))
+		os.Exit(2)
+	}
 	f := func(key string, dst *float64) {
 		v := os.Getenv(key)
 		if v == "" {
@@ -252,9 +275,27 @@ func costModelFromEnv(log *slog.Logger) costmodel.Model {
 		*dst = x
 	}
 	f("COST_A", &m.A)
+	f("COST_P", &m.P)
+	f("COST_D0", &m.D0)
 	f("COST_SPEEDUP", &m.Speedup)
 	f("COST_GPU_OVERHEAD", &m.GPUOverhead)
+	f("COST_GATE", &m.GateCost)
+	f("COST_GATE_QUERIES", &m.GateQueries)
+	f("COST_SAVE_BANDWIDTH", &m.SaveBandwidth)
 	f("COST_BANDWIDTH", &m.Bandwidth)
+	f("COST_BANDWIDTH_OUT", &m.BandwidthOut)
 	f("COST_MEM_FACTOR", &m.MemFactor)
+	if v := os.Getenv("COST_SHARD_USES_STORE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			log.Error("bad bool", "var", "COST_SHARD_USES_STORE", "value", v)
+			os.Exit(2)
+		}
+		m.ShardUsesStore = b
+	}
+	if err := m.Validate(); err != nil {
+		log.Error("bad cost model", "err", err)
+		os.Exit(2)
+	}
 	return m
 }

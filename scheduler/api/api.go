@@ -251,7 +251,7 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 	resp := SubmitBuildResponse{
 		BuildID:    buildID,
 		MemBytes:   mem,
-		CPUBuildMs: s.cm.CPUBuild(req.NVectors, req.Dim).Milliseconds(),
+		CPUBuildMs: s.cm.LocalTotal(req.NVectors, req.Dim).Milliseconds(), // v1: the shard's whole local path
 		GPUTotalMs: s.cm.GPUTotal(req.NVectors, req.Dim).Milliseconds(),
 	}
 
@@ -263,7 +263,7 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 	spec := policy.BuildSpec{ShardID: req.ShardID, RoundID: req.RoundID, NVectors: req.NVectors, Dim: req.Dim, MemBytes: mem}
 	// The host computes every estimate the policy sees (Phase 3 decision 9).
 	est := policy.Estimates{
-		LocalBuildS: s.cm.CPUBuild(req.NVectors, req.Dim).Seconds(),
+		LocalBuildS: s.cm.LocalTotal(req.NVectors, req.Dim).Seconds(),
 		GPUBuildS:   s.cm.GPUBuild(req.NVectors, req.Dim).Seconds(),
 		TransferS:   s.cm.Transfer(req.NVectors, req.Dim).Seconds(),
 	}
@@ -373,7 +373,7 @@ func (s *Server) writeDuplicate(w http.ResponseWriter, existing store.BuildRow) 
 		Reason:     "duplicate submit; existing decision returned",
 		MemBytes:   existing.MemBytes,
 		Created:    false,
-		CPUBuildMs: s.cm.CPUBuild(existing.NVectors, existing.Dim).Milliseconds(),
+		CPUBuildMs: s.cm.LocalTotal(existing.NVectors, existing.Dim).Milliseconds(),
 		GPUTotalMs: s.cm.GPUTotal(existing.NVectors, existing.Dim).Milliseconds(),
 	})
 }

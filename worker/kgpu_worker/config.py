@@ -36,6 +36,7 @@ claim a build it cannot handle.
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import socket
@@ -86,10 +87,17 @@ class Config:
             (len(self.builder_cmd) >= 1, "BUILDER_CMD must name a command"),
             (0 <= self.recall_min <= 1, "RECALL_MIN must be a number in [0, 1]"),
             (self.model.a > 0, "COST_A must be positive"),
+            (self.model.p > 0, "COST_P must be positive"),
+            (self.model.d0 >= 0, "COST_D0 must be non-negative"),
             (self.model.speedup > 0, "COST_SPEEDUP must be positive"),
             (self.model.gpu_overhead >= 0, "COST_GPU_OVERHEAD must be non-negative"),
+            (self.model.gate >= 0 and self.model.gate_queries >= 0, "COST_GATE and COST_GATE_QUERIES must be non-negative"),
+            (self.model.save_bandwidth >= 0 and self.model.bandwidth_out >= 0, "COST_SAVE_BANDWIDTH and COST_BANDWIDTH_OUT must be non-negative"),
             (self.model.bandwidth > 0, "COST_BANDWIDTH must be positive"),
             (self.model.mem_factor > 0, "COST_MEM_FACTOR must be positive"),
+            (all(math.isfinite(x) for x in (self.model.a, self.model.p, self.model.d0, self.model.speedup, self.model.gpu_overhead, self.model.gate,
+                                            self.model.gate_queries, self.model.save_bandwidth, self.model.bandwidth, self.model.bandwidth_out, self.model.mem_factor)),
+             "COST_* values must be finite numbers"),
         ]
         for ok, msg in checks:
             if not ok:
@@ -114,7 +122,7 @@ class Config:
         try:
             model = Model.from_env(env)
         except ValueError as e:
-            raise ConfigError(f"COST_* value is not a number ({e})") from None
+            raise ConfigError(f"COST_* value is not a number, or an unknown COST_MODEL ({e})") from None
         if env.get("BUILDER_CMD"):
             import shlex
             try:

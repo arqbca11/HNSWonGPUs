@@ -12,6 +12,7 @@
 #
 #   scripts/gcp-up.sh                 # cluster, workers, manifests, VM
 #   WORKER_NODES=2 scripts/gcp-up.sh
+#   GPU_POOLS=1 scripts/gcp-up.sh     # Phase 5: also the L4 pools (autoscaling from zero) and the GPU overlay
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$PATH:/opt/homebrew/bin"
@@ -56,11 +57,27 @@ if ! $G container node-pools describe workers --cluster "$CLUSTER" --zone "$ZONE
   $G container node-pools create workers --cluster "$CLUSTER" --zone "$ZONE" --num-nodes "$WORKER_NODES" --machine-type "$WORKER_MACHINE" --disk-size 50 --spot >/dev/null
 fi
 export USE_GKE_GCLOUD_AUTH_PLUGIN=True PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"   # kubectl's GKE auth plugin (gcloud components install gke-gcloud-auth-plugin)
+# 1b. the GPU pools (Phase 5 decision 9): spot L4 machines, one-card and
+#     two-card, autoscaling from zero so nothing bills between sessions; GKE
+#     installs the driver and advertises nvidia.com/gpu. Needs the
+#     GPUS_ALL_REGIONS and NVIDIA_L4_GPUS quotas (Phase 4 decision 27).
+if [ "${GPU_POOLS:-0}" = 1 ]; then
+  for spec in "gpu-l4x1 g2-standard-8 1 ${GPU_L4X1_MAX:-2}" "gpu-l4x2 g2-standard-24 2 ${GPU_L4X2_MAX:-1}"; do
+    set -- $spec; pool=$1; mt=$2; cards=$3; max=$4
+    if ! $G container node-pools describe "$pool" --cluster "$CLUSTER" --zone "$ZONE" >/dev/null 2>&1; then
+      echo "-- creating GPU pool $pool: $mt ($cards x L4), spot, autoscaling 0..$max"
+      $G container node-pools create "$pool" --cluster "$CLUSTER" --zone "$ZONE" --machine-type "$mt" --disk-size 100 --spot \
+        --accelerator "type=nvidia-l4,count=$cards,gpu-driver-version=latest" \
+        --enable-autoscaling --num-nodes 0 --min-nodes 0 --max-nodes "$max" >/dev/null
+    fi
+  done
+fi
 $G container clusters get-credentials "$CLUSTER" --zone "$ZONE" --dns-endpoint >/dev/null
 echo "-- nodes:"; kubectl get nodes -o custom-columns='NAME:.metadata.name,POOL:.metadata.labels.cloud\.google\.com/gke-nodepool,CPU:.status.capacity.cpu,MEM:.status.capacity.memory' | sed 's/^/   /'
 # 2. the manifests
-kubectl apply -k deploy/k8s-gcp >/dev/null
-echo "-- manifests applied (deploy/k8s-gcp); waiting for Postgres, the object store, the scheduler and the workers"
+OVERLAY=deploy/k8s-gcp; [ "${GPU_POOLS:-0}" = 1 ] && OVERLAY=deploy/k8s-gcp-gpu
+kubectl apply -k "$OVERLAY" >/dev/null
+echo "-- manifests applied ($OVERLAY); waiting for Postgres, the object store, the scheduler and the workers"
 kubectl -n kgpu rollout status statefulset/postgres --timeout=300s >/dev/null
 kubectl -n kgpu rollout status statefulset/objectstore --timeout=300s >/dev/null
 kubectl -n kgpu rollout status deployment/scheduler --timeout=300s >/dev/null

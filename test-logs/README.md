@@ -67,3 +67,5 @@ Narrated test output, kept so what was checked and what happened can be read wit
 Per-step logs are the state of the tests at the end of that step, including any fixes from the step's cross-check round, regenerated whenever the step's code changes. `history/` (local only, not committed) keeps every timestamped run.
 
 Produce a saved log with `scripts/test-db.sh --save phase1/<name> <args>`.
+| `phase5/step1-costmodel-v1.log` | Phase 5 step 1 (GPU-free): cost model v1's Go tests — v0 to the digit by default, and the calibrated block term by term against hand arithmetic on the live rounds' straggler. |
+| `phase5/step1-crosscheck.log` | The cross-check agent's 15 Go checks of cost model v1: every term by hand, Go against Python, `Default()` against the previous commit's build at every point (its A found a 1 ns transfer drift), the sweep against the committed demo, the comparer on the step 4 timelines, the scheduler binary's `COST_MODEL` parsing; the Python suites run with `uv run pytest`. |

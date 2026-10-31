@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,7 +42,7 @@ var columns = []string{
 	"scenario", "policy", "seed",
 	"n_shards", "dim", "workers", "workers_per_node", "worker_mem_bytes", "share_links",
 	"sigma", "zipf", "load", "needs_index", "speedup", "kill_at",
-	"cost_a", "bandwidth", "gpu_overhead",
+	"cost_model", "cost_a", "cost_p", "cost_d0", "gate", "gate_queries", "save_bandwidth", "bandwidth", "bandwidth_out", "shard_uses_store", "gpu_overhead",
 	"reconsider_s", "poll_s", "lease_s", "noise_seed",
 	"completed", "round_s", "straggler_s",
 	"builds_gpu", "builds_local",
@@ -52,30 +53,38 @@ var columns = []string{
 
 func main() {
 	var (
-		scenarios   = flag.String("scenarios", "skewed", "comma list of workload presets, or 'all'")
-		policies    = flag.String("policies", "all", "comma list: always_gpu, static_threshold[:N], reactive, reactive_spec, clairvoyant, or 'all'")
-		rounds      = flag.Int("rounds", 10, "seeded rounds per grid cell")
-		seed0       = flag.Int64("seed0", 1, "first seed; cell c uses seed0..seed0+rounds-1")
-		out         = flag.String("out", "-", "output CSV path, '-' for stdout")
-		shards      = flag.Int("shards", 0, "override the scenario's shard count (0 = preset)")
-		workers     = flag.String("workers", "", "comma list: override the pool's worker count")
-		workerMemGB = flag.Float64("worker_mem_gb", 0, "override the pool's per-worker memory, GiB (0 = preset)")
-		perNode     = flag.String("workers_per_node", "1", "comma list: workers sharing one node's link")
-		shareLinks  = flag.Bool("share_links", true, "transfers share a node's link (off mimics the live fake worker)")
-		sigmas      = flag.String("sigma", "0", "comma list: log-normal estimate-error sigma")
-		zipfs       = flag.String("zipf", "", "comma list: override the zipf size exponent")
-		loads       = flag.String("load", "1", "comma list: multiply the scenario's query rate")
-		needsIdx    = flag.String("needs_index", "", "comma list: override the needs_index fraction")
-		dims        = flag.String("dim", "", "comma list: override the vector dimension")
-		speedups    = flag.String("speedup", "", "comma list: override the cost model's GPU speedup")
-		costA       = flag.Float64("cost_a", 0, "override the cost model's A (s per n·ln(n)·dim): a calibrated constant (Phase 4 step 3's fit)")
-		bandwidth   = flag.Float64("bandwidth", 0, "override the cost model's transfer bandwidth, bytes/s (calibrated)")
-		gpuOverhead = flag.Float64("gpu_overhead", -1, "override the cost model's fixed GPU overhead, s (calibrated; -1 = the default)")
-		killAt      = flag.Float64("kill_at", 0, "kill the busiest worker at this modeled second (shrinking pool)")
-		reconsider  = flag.Float64("reconsider_s", 2, "reconsider tick interval, modeled seconds")
-		leaseS      = flag.Float64("lease_s", 30, "a dead worker's lease requeues after this many modeled seconds")
-		poll        = flag.Float64("poll_s", 0.5, "shard report interval, modeled seconds")
-		noiseSeed   = flag.Int64("noise_seed", 1, "sub-seed for the estimate noise draws")
+		scenarios    = flag.String("scenarios", "skewed", "comma list of workload presets, or 'all'")
+		policies     = flag.String("policies", "all", "comma list: always_gpu, static_threshold[:N], reactive, reactive_spec, clairvoyant, or 'all'")
+		rounds       = flag.Int("rounds", 10, "seeded rounds per grid cell")
+		seed0        = flag.Int64("seed0", 1, "first seed; cell c uses seed0..seed0+rounds-1")
+		out          = flag.String("out", "-", "output CSV path, '-' for stdout")
+		shards       = flag.Int("shards", 0, "override the scenario's shard count (0 = preset)")
+		workers      = flag.String("workers", "", "comma list: override the pool's worker count")
+		workerMemGB  = flag.Float64("worker_mem_gb", 0, "override the pool's per-worker memory, GiB (0 = preset)")
+		perNode      = flag.String("workers_per_node", "1", "comma list: workers sharing one node's link")
+		shareLinks   = flag.Bool("share_links", true, "transfers share a node's link (off mimics the live fake worker)")
+		sigmas       = flag.String("sigma", "0", "comma list: log-normal estimate-error sigma")
+		zipfs        = flag.String("zipf", "", "comma list: override the zipf size exponent")
+		loads        = flag.String("load", "1", "comma list: multiply the scenario's query rate")
+		needsIdx     = flag.String("needs_index", "", "comma list: override the needs_index fraction")
+		dims         = flag.String("dim", "", "comma list: override the vector dimension")
+		speedups     = flag.String("speedup", "", "comma list: override the cost model's GPU speedup")
+		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0, the placeholder) or calibrated (the cloud topology's measured v1 block, Phase 5 decision 6); the flags below override single terms")
+		costA        = flag.Float64("cost_a", 0, "override the cost model's A (s per n^P·ln(n)·(dim+D0)): a calibrated constant")
+		costP        = flag.Float64("cost_p", 0, "override the exponent P on n (v0: 1)")
+		costD0       = flag.Float64("cost_d0", -1, "override the dimension offset D0 (v0: 0; -1 = keep)")
+		gateCost     = flag.Float64("gate", -1, "override the gate constant, s per query·ln(n)·(dim+D0) (-1 = keep)")
+		gateQueries  = flag.Float64("gate_queries", -1, "override the gate's query count (-1 = keep)")
+		saveBW       = flag.Float64("save_bandwidth", -1, "override the save bandwidth, bytes/s (-1 = keep; 0 = no save term)")
+		bandwidthOut = flag.Float64("bandwidth_out", -1, "override the upload bandwidth, bytes/s (-1 = keep; 0 = same as -bandwidth)")
+		shardStore   = flag.String("shard_uses_store", "", "true/false: the shard fetches its vectors from the store and uploads its index (empty = keep)")
+		bandwidth    = flag.Float64("bandwidth", 0, "override the cost model's transfer bandwidth, bytes/s (calibrated)")
+		gpuOverhead  = flag.Float64("gpu_overhead", -1, "override the cost model's fixed GPU overhead, s (calibrated; -1 = the default)")
+		killAt       = flag.Float64("kill_at", 0, "kill the busiest worker at this modeled second (shrinking pool)")
+		reconsider   = flag.Float64("reconsider_s", 2, "reconsider tick interval, modeled seconds")
+		leaseS       = flag.Float64("lease_s", 30, "a dead worker's lease requeues after this many modeled seconds")
+		poll         = flag.Float64("poll_s", 0.5, "shard report interval, modeled seconds")
+		noiseSeed    = flag.Int64("noise_seed", 1, "sub-seed for the estimate noise draws")
 	)
 	flag.Parse()
 	// A calibrated constant pasted with a sign error must not become a
@@ -83,6 +92,37 @@ func main() {
 	// means "the default"; anything else out of range is refused.
 	if *costA < 0 || *bandwidth < 0 || (*gpuOverhead < 0 && *gpuOverhead != -1) {
 		log.Fatalf("sweep: -cost_a and -bandwidth must be positive (0 = the cost model's default) and -gpu_overhead non-negative (-1 = the default); got %g, %g, %g", *costA, *bandwidth, *gpuOverhead)
+	}
+	if *costP < 0 || (*costD0 < 0 && *costD0 != -1) || (*gateCost < 0 && *gateCost != -1) || (*gateQueries < 0 && *gateQueries != -1) ||
+		(*saveBW < 0 && *saveBW != -1) || (*bandwidthOut < 0 && *bandwidthOut != -1) {
+		log.Fatalf("sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=%g d0=%g gate=%g gate_queries=%g save_bandwidth=%g bandwidth_out=%g",
+			*costP, *costD0, *gateCost, *gateQueries, *saveBW, *bandwidthOut)
+	}
+	// a speedup of 0 or less makes the GPU time infinite or negative, and
+	// NaN passes every "< 0" above (cross-check C); -speedup 0 means "keep"
+	for _, x := range []struct {
+		name string
+		v    float64
+	}{{"-cost_a", *costA}, {"-cost_p", *costP}, {"-cost_d0", *costD0}, {"-gate", *gateCost}, {"-gate_queries", *gateQueries},
+		{"-save_bandwidth", *saveBW}, {"-bandwidth", *bandwidth}, {"-bandwidth_out", *bandwidthOut}, {"-gpu_overhead", *gpuOverhead}} {
+		if math.IsNaN(x.v) || math.IsInf(x.v, 0) {
+			log.Fatalf("sweep: %s must be a finite number; got %g", x.name, x.v)
+		}
+	}
+	if *speedups != "" { // given at all: every value positive and finite (an empty flag is "keep", not -1)
+		for _, spd := range floatsOr(*speedups, -1) {
+			if spd <= 0 || math.IsNaN(spd) || math.IsInf(spd, 0) {
+				log.Fatalf("sweep: -speedup values must be positive finite numbers; got %g", spd)
+			}
+		}
+	}
+	if *costModel != "default" && *costModel != "calibrated" {
+		log.Fatalf("sweep: -cost must be default or calibrated; got %q", *costModel)
+	}
+	if *shardStore != "" {
+		if _, err := strconv.ParseBool(*shardStore); err != nil {
+			log.Fatalf("sweep: -shard_uses_store must be true or false; got %q", *shardStore)
+		}
 	}
 
 	scList := splitOr(*scenarios, workload.PresetNames())
@@ -125,6 +165,8 @@ func main() {
 													sigma: sigma, zipf: zipf, load: load, needsIdx: ni,
 													dim: int32(dim), speedup: spd, killAt: *killAt,
 													costA: *costA, bandwidth: *bandwidth, gpuOverhead: *gpuOverhead,
+													costModel: *costModel, costP: *costP, costD0: *costD0, gateCost: *gateCost, gateQueries: *gateQueries,
+													saveBW: *saveBW, bandwidthOut: *bandwidthOut, shardStore: *shardStore,
 													reconsiderS: *reconsider, pollS: *poll, leaseS: *leaseS, noiseSeed: *noiseSeed,
 												})
 												if err != nil {
@@ -162,6 +204,12 @@ type cell struct {
 	speedup              float64
 	costA, bandwidth     float64 // 0 = the cost model's defaults
 	gpuOverhead          float64 // -1 = the default
+	costModel            string  // default or calibrated (v1)
+	costP                float64 // 0 = keep
+	costD0, gateCost     float64 // -1 = keep
+	gateQueries, saveBW  float64 // -1 = keep
+	bandwidthOut         float64 // -1 = keep
+	shardStore           string  // "" = keep
 	killAt               float64
 	reconsiderS, pollS   float64
 	leaseS               float64
@@ -190,8 +238,32 @@ func runCell(c cell) ([]string, error) {
 	w := workload.Generate(sc, c.seed)
 
 	cm := costmodel.Default()
+	if c.costModel == "calibrated" {
+		cm = costmodel.Calibrated()
+	}
 	if c.speedup > 0 {
 		cm.Speedup = c.speedup
+	}
+	if c.costP > 0 {
+		cm.P = c.costP
+	}
+	if c.costD0 >= 0 {
+		cm.D0 = c.costD0
+	}
+	if c.gateCost >= 0 {
+		cm.GateCost = c.gateCost
+	}
+	if c.gateQueries >= 0 {
+		cm.GateQueries = c.gateQueries
+	}
+	if c.saveBW >= 0 {
+		cm.SaveBandwidth = c.saveBW
+	}
+	if c.bandwidthOut >= 0 {
+		cm.BandwidthOut = c.bandwidthOut
+	}
+	if c.shardStore != "" {
+		cm.ShardUsesStore, _ = strconv.ParseBool(c.shardStore)
 	}
 	if c.costA > 0 {
 		cm.A = c.costA
@@ -239,7 +311,7 @@ func runCell(c cell) ([]string, error) {
 		strconv.Itoa(sc.NShards), strconv.Itoa(int(sc.Dim)), strconv.Itoa(nw), strconv.Itoa(c.perNode),
 		strconv.FormatInt(mem, 10), strconv.FormatBool(c.shareLinks),
 		f(c.sigma), f(sc.Sizes.ZipfExponent), f(c.load), f(sc.Stream.NeedsIndexFraction), f(cm.Speedup), f(c.killAt),
-		f(cm.A), f(cm.Bandwidth), f(cm.GPUOverhead),
+		modelName(c.costModel), f(cm.A), f(cm.P), f(cm.D0), f(cm.GateCost), f(cm.GateQueries), f(cm.SaveBandwidth), f(cm.Bandwidth), f(cm.BandwidthOut), strconv.FormatBool(cm.ShardUsesStore), f(cm.GPUOverhead),
 		f(c.reconsiderS), f(c.pollS), f(c.leaseS), strconv.FormatInt(c.noiseSeed, 10),
 		strconv.FormatBool(res.Completed), f(res.RoundS), f(res.StragglerLagS),
 		strconv.Itoa(res.BuildsGPU), strconv.Itoa(res.BuildsLocal),
@@ -247,6 +319,13 @@ func runCell(c cell) ([]string, error) {
 		strconv.Itoa(res.Speculations), strconv.Itoa(res.SpecGPUWins), strconv.Itoa(res.SpecLocalWins), f(res.WastedGPUS), f(res.WastedCPUS),
 		f(pct(res.QueueWaits, 0.5)), f(pct(res.QueueWaits, 0.99)), strconv.Itoa(res.Events),
 	}, nil
+}
+
+func modelName(s string) string {
+	if s == "" {
+		return "default"
+	}
+	return s
 }
 
 // pct is the timeline's percentile: sorted[int(p*(n-1))], 0 for no samples.

@@ -135,6 +135,21 @@ One entry per action the system takes, pointing at the code that decides it, the
 - The calibrated constants into the sweeps: `experiments/cmd/sweep/main.go` flags `-cost_a -bandwidth -gpu_overhead -speedup`, echoed as CSV columns `cost_a`, `bandwidth`, `gpu_overhead`; out-of-range values refused (the step 4 cross-check's F2). The same flags plus `-dataset` (applies the split, as shardsim does) on the comparer `experiments/cmd/validate/main.go`, so a real round replays on the constants it ran under.
 - The live rounds and what they found: `test-logs/phase4/step4-rounds.log`, `experiments/results/step4-timelines/`; decision 37 (the worker's result path is not in the cost model). The comparison on the calibrated constants: `experiments/results/calibrated/`.
 
+## The GPU side, before the GPUs (Phase 5)
+
+### Step 1: cost model v1 — the shape the calibration found
+
+- The model: `scheduler/costmodel/costmodel.go` — `Model` with the v1 terms (`CPUBuild`, `Gate`, `Save`, `Fetch`, `Upload`; the two buckets `GPUBuild` and `Transfer`; `GPUTotal` the worker's path, `LocalTotal` the shard's), `Default()` v0 to the digit, `Calibrated()` the cloud's measured block (Phase 5 decisions 6, 7). The mirror `worker/kgpu_worker/costmodel.py` (`Model.calibrated()`, `COST_MODEL` in `from_env`).
+- Where the model is chosen: `scheduler/cmd/scheduler/main.go` `costModelFromEnv` (`COST_MODEL`, the `COST_*` overrides); the sweep and the comparer's `-cost` and term flags; the cluster's `deploy/k8s-gcp/config-calibrated.yaml` (to be moved to `COST_MODEL=calibrated` on the next cloud session).
+- Where the local path is used: `experiments/sim/sim.go` (`trueLocalS`), `scheduler/api/api.go` (the submit reply's `cpu_build_ms` the fake shard sleeps for, the policies' `LocalBuildS`), `scheduler/reconsider/reconsider.go`.
+- The calibration's v1: `builder/kgpu_builder/calibrate.py` — `run_point(..., upload_prefix)` times the save and the upload (decision 8), `fit_points_v1` (A, P, D0 by a log-space search on D0; the gate per query; the bandwidths), `speedup_v1` (the geometric mean over the worker's points), `env_overrides_v1` (the v1 `COST_*` block); `cli.py` `fit --v1 --worker-csv --gate-queries`, `calibrate --no-upload`.
+- The numbers: `experiments/results/calibration/laptop-v1-sift-128-6.csv` (the extended point rehearsed), `experiments/results/calibrated/` (the comparison on v1; `calibrated-v0/` the Phase 4 rerun on v0), speedup.md evidence 9; the step's test log `test-logs/phase5/step1-costmodel-v1.log`.
+
+### Step 2: the GPU pool, written before the quota
+
+- The overlay: `deploy/k8s-gcp-gpu/` (`kustomization.yaml` on `../k8s-gcp`: the GPU image, `worker-gpu.yaml` with `nvidia.com/gpu: 1`, the accelerator selector and the GPU taint's toleration, `config-gpu.yaml` with `BUILDER=cagra` and the card's memory, `dcgm-exporter.yaml`); the cluster's cost block is `COST_MODEL=calibrated` in `deploy/k8s-gcp/config-calibrated.yaml` (decision 9).
+- The pools: `scripts/gcp-up.sh` under `GPU_POOLS=1` — `gpu-l4x1` and `gpu-l4x2`, spot, autoscaling 0..N, the driver installed by GKE; the overlay applied in place of the CPU one.
+
 ## Observability and configuration
 
 ### Metrics

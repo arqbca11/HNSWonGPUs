@@ -1,0 +1,22 @@
+# The worker builds with cuVS (CAGRA, converted to HNSW: Phase 5 decision 2)
+# and reports a real card's memory. BUILD_THREADS is the CPU side of the
+# conversion and the gate. COST_MODEL=calibrated with the Phase 4 CPU block
+# until the GPU calibration replaces Speedup and GPUOverhead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker
+  namespace: kgpu
+data:
+  BUILDER: cagra
+  BUILD_THREADS: "6"
+  WORKER_MEM_BYTES: "25769803776"
+  COST_MODEL: calibrated
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler
+  namespace: kgpu
+data:
+  COST_MODEL: calibrated

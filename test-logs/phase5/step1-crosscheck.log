@@ -1,0 +1,253 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-31 16:08:43 PDT
+commit:    1aa4bde (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-75840, port 27489)
+go:        go test -p 1 -count=1 -v -run P5S1 ./scheduler/crosscheck/
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-75840, port 29732)
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestXcP5S1DefaultIsV0ToTheDigit
+    p5s1_costmodel_test.go:129: Default() = {A:1.4e-07 P:1 D0:0 Speedup:10 GPUOverhead:2 GateCost:0 GateQueries:0 SaveBandwidth:0 Bandwidth:2e+08 BandwidthOut:0 ShardUsesStore:false M:16 MemFactor:2 BytesPerDim:4}
+    p5s1_costmodel_test.go:130: spec (decision 7): Default() stays v0: A 1.4e-7, P 1, D0 0, Speedup 10, GPUOverhead 2, Bandwidth 2e8, no gate/save/second bandwidth, ShardUsesStore false
+    p5s1_costmodel_test.go:147: 100k x 128: CPUBuild 20.631162433 s, GPUTotal 4.639116243 s, LocalTotal 20.631162433 s, Gate 0s, Save 0s, Fetch 256ms, Upload 320ms
+    p5s1_costmodel_test.go:150: spec (brief, decision 7): cpu 20.631162433 s, gpu total 4.639116243 s; by hand: 1.4e-7·1e5·ln(1e5)·128 = 20.6311624 and 20.6311624/10 + 2 + 51.2e6/2e8 + 64e6/2e8 = 4.6391162
+    p5s1_costmodel_test.go:171: => every term of Default() over 9 sizes x 5 dims matches v1's formula with v0's constants: 0 mismatches
+--- PASS: TestXcP5S1DefaultIsV0ToTheDigit (0.00s)
+=== RUN   TestXcP5S1CalibratedIsTheBlock
+    p5s1_costmodel_test.go:176: Calibrated() = {A:2.3e-09 P:1.22 D0:187 Speedup:2.12 GPUOverhead:1.5 GateCost:1.79e-08 GateQueries:10000 SaveBandwidth:6.6e+08 Bandwidth:1.57e+08 BandwidthOut:5e+07 ShardUsesStore:true M:16 MemFactor:2 BytesPerDim:4}
+    p5s1_costmodel_test.go:177: spec (decision 7, step 1 results): A 2.30e-9, P 1.220, D0 187, Speedup 2.12, GPUOverhead 1.5, Gate 1.79e-8, GateQueries 10000, SaveBandwidth 6.6e8, Bandwidth 1.57e8, BandwidthOut 5.0e7, ShardUsesStore true
+    p5s1_costmodel_test.go:193: MemFactor 2 (the spec does not state the block's MemFactor; Default's is 2)
+    p5s1_costmodel_test.go:196: 408164 x 128 on the block: cpu 65.539 gate 0.728 save 0.396 fetch 1.331 upload 5.224 | gpu_build 33.154 transfer 6.556 gpu_total 39.710 | local_total 73.219
+    p5s1_costmodel_test.go:204: => every term of Calibrated() matches the decision 6 formulas by hand: 0 mismatches
+--- PASS: TestXcP5S1CalibratedIsTheBlock (0.00s)
+=== RUN   TestXcP5S1EveryTermByHand
+    p5s1_costmodel_test.go:209: a model with every v1 term non-zero and non-default: {A:3.1e-09 P:1.17 D0:55 Speedup:3.3 GPUOverhead:0.7 GateCost:2.2e-08 GateQueries:1234 SaveBandwidth:4.4e+08 Bandwidth:1.1e+08 BandwidthOut:3.3e+07 ShardUsesStore:true M:16 MemFactor:2.5 BytesPerDim:4}
+    p5s1_costmodel_test.go:217: 100k x 128: cpu 4.623794 gate 0.057197 save 0.145455 fetch 0.465455 upload 1.939394 gpu_build 2.263937 transfer 2.404848 gpu_total 4.668785 local 7.231294
+    p5s1_costmodel_test.go:219: spec (decision 6, go doc): GPUBuild = (CPU+gate)/Speedup + GPUOverhead + save; Transfer = fetch + upload; GPUTotal = GPUBuild + Transfer; LocalTotal = CPU + gate + save [+ transfer if ShardUsesStore]
+    p5s1_costmodel_test.go:220: => 0 mismatches over 45 points
+--- PASS: TestXcP5S1EveryTermByHand (0.00s)
+=== RUN   TestXcP5S1BandwidthOutZeroFallsBackToFetch
+    p5s1_costmodel_test.go:228: BandwidthOut 0, Bandwidth 1.1e+08: Upload(250000,128) = 1.454545454 s; index bytes 160000000 / Bandwidth = 1.454545455
+    p5s1_costmodel_test.go:229: spec (decision 6, go doc field comment): BandwidthOut 0 = same as Bandwidth (v0)
+    p5s1_costmodel_test.go:234: BandwidthOut 1e7: Upload = 16.000000 s (index / 1e7 = 16.000000)
+--- PASS: TestXcP5S1BandwidthOutZeroFallsBackToFetch (0.00s)
+=== RUN   TestXcP5S1SaveBandwidthZeroMeansNoSave
+    p5s1_costmodel_test.go:247: SaveBandwidth 0: Save(400000,960) = 0s; GPUBuild 44.892363; (CPU+gate)/Speedup + overhead = 44.892363
+    p5s1_costmodel_test.go:249: spec (decision 6): save = index bytes / SaveBandwidth, 0 when SaveBandwidth is 0 (no division by zero, no +Inf)
+--- PASS: TestXcP5S1SaveBandwidthZeroMeansNoSave (0.00s)
+=== RUN   TestXcP5S1ShardUsesStoreAddsTheRoundTrip
+    p5s1_costmodel_test.go:270: 204082 x 128: LocalTotal without the store 11.670606832s, with 16.578469716s; CPU+gate+save 11.670606832s; Transfer 4.907862884s
+    p5s1_costmodel_test.go:271: spec (decision 6): local total = build + gate + save, plus fetch + upload when ShardUsesStore
+--- PASS: TestXcP5S1ShardUsesStoreAddsTheRoundTrip (0.00s)
+=== RUN   TestXcP5S1TinyBuildsCostNothing
+    p5s1_costmodel_test.go:284: spec (brief): a build of fewer than 2 vectors costs 0 (ln(1) = 0, ln(0) = -Inf). The design doc and go doc do not say which terms, so CPU build and gate are asserted; the rest is logged
+    p5s1_costmodel_test.go:291: Default n=0: cpu 0s gate 0s save 0s fetch 0s upload 0s gpu_build 2s transfer 0s gpu_total 2s local 0s
+    p5s1_costmodel_test.go:291: Default n=1: cpu 0s gate 0s save 0s fetch 2.56µs upload 3.2µs gpu_build 2s transfer 5.76µs gpu_total 2.00000576s local 0s
+    p5s1_costmodel_test.go:291: Calibrated n=0: cpu 0s gate 0s save 0s fetch 0s upload 0s gpu_build 1.5s transfer 0s gpu_total 1.5s local 0s
+    p5s1_costmodel_test.go:291: Calibrated n=1: cpu 0s gate 0s save 969ns fetch 3.261µs upload 12.8µs gpu_build 1.500000969s transfer 16.061µs gpu_total 1.50001703s local 17.03µs
+    p5s1_costmodel_test.go:291: custom n=0: cpu 0s gate 0s save 0s fetch 0s upload 0s gpu_build 700ms transfer 0s gpu_total 700ms local 0s
+    p5s1_costmodel_test.go:291: custom n=1: cpu 0s gate 0s save 1.454µs fetch 4.654µs upload 19.393µs gpu_build 700.001453ms transfer 24.047µs gpu_total 700.0255ms local 25.501µs
+--- PASS: TestXcP5S1TinyBuildsCostNothing (0.00s)
+=== RUN   TestXcP5S1PythonMirrorAgrees
+    p5s1_costmodel_test.go:418: spec (decision 6, the mirror's docstring): the Python mirror's formulas and defaults stay identical to Go; from_env reads the same COST_* names as the scheduler
+    p5s1_costmodel_test.go:438: Default() vs Model(): 55 points x 12 terms, 0 disagreements (sample n=1000 dim=128: python cpu 0.123787 gpu_total 2.018139 local 0.123787)
+    p5s1_costmodel_test.go:438: Calibrated() vs Model.calibrated(): 55 points x 12 terms, 0 disagreements (sample n=1000 dim=128: python cpu 0.022876 gpu_total 1.711545 local 0.429400)
+    p5s1_costmodel_test.go:438: custom (all terms): 55 points x 12 terms, 0 disagreements (sample n=1000 dim=128: python cpu 0.012681 gpu_total 0.739745 local 0.072502)
+    p5s1_costmodel_test.go:438: custom (BandwidthOut 0, no save, no store): 55 points x 12 terms, 0 disagreements (sample n=1000 dim=128: python cpu 0.012681 gpu_total 0.724715 local 0.046999)
+    p5s1_costmodel_test.go:438: from_env(COST_MODEL=calibrated + every COST_* override) vs the same Go model: 55 points x 12 terms, 0 disagreements (sample n=1000 dim=128: python cpu 0.012515 gpu_total 2.527763 local 0.021066)
+--- PASS: TestXcP5S1PythonMirrorAgrees (0.14s)
+=== RUN   TestXcP5S1SweepDefaultMatchesDemo
+    p5s1_costmodel_test.go:453: sweep -scenarios uniform,skewed,bimodal,downstream_heavy,staggered,high_dim,production -policies all -rounds 20 -cost default → exit err=<nil>; stderr: sweep: 700 rows
+    p5s1_costmodel_test.go:458: demo CSV: 700 rows, 46 columns; new sweep (-cost default, no overrides): 700 rows, 46 columns
+    p5s1_costmodel_test.go:469: columns the new sweep adds: []
+    p5s1_costmodel_test.go:491: spec (decision 7, brief): with -cost default and no overrides every round equals the committed demo row: 0 demo rows missing from the new sweep, 0 differing cells
+    p5s1_costmodel_test.go:504: first row's v1 echo: cost_model=default cost_a=1.4e-07 cost_p=1 cost_d0=0 gate=0 gate_queries=0 save_bandwidth=0 bandwidth=200000000 bandwidth_out=0 shard_uses_store=false gpu_overhead=2
+--- PASS: TestXcP5S1SweepDefaultMatchesDemo (67.88s)
+=== RUN   TestXcP5S1SweepEchoesCalibratedAndOverrides
+    p5s1_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 2 -cost calibrated → exit err=<nil>; stderr: sweep: 2 rows
+    p5s1_costmodel_test.go:518: -cost calibrated row: cost_model=calibrated cost_a=2.3e-09 cost_p=1.22 cost_d0=187 gate=1.79e-08 gate_queries=10000 save_bandwidth=660000000 bandwidth=157000000 bandwidth_out=50000000 shard_uses_store=true gpu_overhead=1.5 speedup=2.12 round_s=29.99764248
+    p5s1_costmodel_test.go:519: spec (decision 7, brief): the CSV echoes the model it ran: cost_model and every v1 term
+    p5s1_costmodel_test.go:537: sweep -scenarios skewed -policies reactive -rounds 2 -cost calibrated -cost_a 3e-9 -cost_p 1.1 -cost_d0 50 -gate 2e-8 -gate_queries 500 -save_bandwidth 1e9 -bandwidth 1e8 -bandwidth_out 2e7 -shard_uses_store false -gpu_overhead 3 -speedup 4 → exit err=<nil>; stderr: sweep: 2 rows
+    p5s1_costmodel_test.go:543: every override on top of calibrated: cost_a=3e-09 cost_p=1.1 cost_d0=50 gate=2e-08 gate_queries=500 save_bandwidth=1000000000 bandwidth=100000000 bandwidth_out=20000000 shard_uses_store=false gpu_overhead=3 speedup=4 round_s=29.99764248
+    p5s1_costmodel_test.go:556: sweep -scenarios skewed -policies reactive -rounds 2 -cost calibrated -cost_a 2.3e-7 → exit err=<nil>; stderr: sweep: 2 rows
+    p5s1_costmodel_test.go:561: -cost calibrated round_s 29.998; with -cost_a 2.3e-7 (100x) round_s 1274.765861
+    p5s1_costmodel_test.go:567: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated -bandwidth_out 0 → exit err=<nil>; stderr: sweep: 1 rows
+    p5s1_costmodel_test.go:570: -bandwidth_out 0 echoes bandwidth_out=0, bandwidth=157000000 (spec silent on whether the echo is 0 or the effective rate)
+--- PASS: TestXcP5S1SweepEchoesCalibratedAndOverrides (0.04s)
+=== RUN   TestXcP5S1SweepRefusesOutOfRange
+    p5s1_costmodel_test.go:584: spec (brief): the sweep refuses out-of-range cost values with a non-zero exit. The docs do not list the ranges; these are the unambiguous ones (negative rates, constants, counts; a zero speedup; an unknown model)
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -cost bogus → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost must be default or calibrated; got "bogus"
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -cost Calibrated → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost must be default or calibrated; got "Calibrated"
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -cost_a -1e-9 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost_a and -bandwidth must be positive (0 = the cost model's default) and -gpu_overhead non-negative (-1 = the default); got -1e-09, 0, -1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -cost_p -0.5 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=-0.5 d0=-1 gate=-1 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -gate -2 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-1 gate=-2 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -gate_queries -2 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-1 gate=-1 gate_queries=-2 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -save_bandwidth -5 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-1 gate=-1 gate_queries=-1 save_bandwidth=-5 bandwidth_out=-1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -bandwidth -1 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost_a and -bandwidth must be positive (0 = the cost model's default) and -gpu_overhead non-negative (-1 = the default); got 0, -1, -1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -bandwidth_out -5 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-1 gate=-1 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-5
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -gpu_overhead -2 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost_a and -bandwidth must be positive (0 = the cost model's default) and -gpu_overhead non-negative (-1 = the default); got 0, 0, -2
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -speedup 0 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -speedup values must be positive finite numbers; got 0
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -speedup -1 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -speedup values must be positive finite numbers; got -1
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -shard_uses_store maybe → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -shard_uses_store must be true or false; got "maybe"
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -cost_p NaN → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -cost_p must be a finite number; got NaN
+    p5s1_costmodel_test.go:591: sweep -scenarios skewed -policies reactive -rounds 1 -bandwidth Inf → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: -bandwidth must be a finite number; got +Inf
+    p5s1_costmodel_test.go:596: ambiguous values (logged, not asserted): 
+    p5s1_costmodel_test.go:598: sweep -scenarios skewed -policies reactive -rounds 1 -cost_p 0 → exit err=<nil>; stderr: sweep: 1 rows
+    p5s1_costmodel_test.go:599:   [-cost_p 0] -> refused=false
+    p5s1_costmodel_test.go:598: sweep -scenarios skewed -policies reactive -rounds 1 -cost_d0 -5 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-5 gate=-1 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:599:   [-cost_d0 -5] -> refused=true
+    p5s1_costmodel_test.go:598: sweep -scenarios skewed -policies reactive -rounds 1 -cost_d0 -200 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-200 gate=-1 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:599:   [-cost_d0 -200] -> refused=true
+    p5s1_costmodel_test.go:598: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated -cost_d0 -200 → exit err=exit status 1; stderr: 2026/10/31 16:09:53 sweep: the v1 term overrides must be non-negative (0 = keep for -cost_p; -1 = keep for the others); got p=0 d0=-200 gate=-1 gate_queries=-1 save_bandwidth=-1 bandwidth_out=-1
+    p5s1_costmodel_test.go:599:   [-cost calibrated -cost_d0 -200] -> refused=true
+--- PASS: TestXcP5S1SweepRefusesOutOfRange (0.05s)
+=== RUN   TestXcP5S1ComparerCalibratedOnStep4
+    p5s1_costmodel_test.go:608: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:615: spec (step 1 results, evidence 9): the live rounds replayed on the block: 45.9 and 46.4 s against 41.5 live
+    p5s1_costmodel_test.go:623: round 1: live 41.50, sim 45.90
+    p5s1_costmodel_test.go:623: round 2: live 41.52, sim 46.44
+    p5s1_costmodel_test.go:631: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -dataset sift-128 -cost bogus -shards=false
+        (exit 1)
+        2026/10/31 16:09:55 -cost must be default or calibrated; got "bogus"
+    p5s1_costmodel_test.go:632: -cost bogus -> exit 1
+--- PASS: TestXcP5S1ComparerCalibratedOnStep4 (1.94s)
+=== RUN   TestXcP5S1ComparerTakesTheV1TermFlags
+    p5s1_costmodel_test.go:643: spec: decision 7 ('-cost calibrated on the sweep and the comparer, with the COST_* / flag overrides applied on top') and the step 1 table ('experiments/cmd/sweep/main.go, experiments/cmd/validate/main.go: -cost default|calibrated and the v1 term flags'); the brief: 'the comparer takes -cost and the same term flags' as the sweep
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -cost_a 2.3e-9
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -cost_p 1.22
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -cost_d0 187
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -gate 1.79e-8
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -gate_queries 10000
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -save_bandwidth 6.6e8
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -bandwidth 1.57e8
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -bandwidth_out 5e7
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -shard_uses_store true
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -gpu_overhead 1.5
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:649: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/step4-timelines -policy reactive -workers 2 -worker_mem_gb 24 -dataset sift-128 -lease_s 30 -cost calibrated -shards=false -phases 1 -speedup 2.12
+        (exit 0)
+        validate: skewed policy=reactive workers=2 worker_mem=24GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 1 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         41.50     45.90    -4.40 |     11.45     15.92 | 3/3         2/4         | shard 1     -4.40 s         4.40 s    45.90..45.90   DISAGREE
+        2      2     1         41.52     46.44    -4.92 |     10.20     16.40 | 3/3         2/4         | shard 1     -4.92 s         4.92 s    46.44..46.44   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean -4.66 s, max |delta| 4.92 s
+    p5s1_costmodel_test.go:656: => v1 term flags the comparer does not define: []
+--- PASS: TestXcP5S1ComparerTakesTheV1TermFlags (0.21s)
+=== RUN   TestXcP5S1SchedulerCostModelEnv
+    p5s1_costmodel_test.go:716: database for the valid runs: 127.0.0.1:27489/kgpu?sslmode=disable (set: true)
+    p5s1_costmodel_test.go:717: spec (brief; go doc ./scheduler/cmd/scheduler: 'COST_MODEL default (v0, the placeholder) or calibrated'): anything else exits 2
+    p5s1_costmodel_test.go:724: COST_MODEL="bogus" -> exit 2; startup: time=2026-10-31T16:09:57.480-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=bogus time=2026-10-31T16:09:57.480-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=bogus
+    p5s1_costmodel_test.go:724: COST_MODEL="Calibrated" -> exit 2; startup: time=2026-10-31T16:09:57.492-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=Calibrated time=2026-10-31T16:09:57.492-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=Calibrated
+    p5s1_costmodel_test.go:724: COST_MODEL="CALIBRATED" -> exit 2; startup: time=2026-10-31T16:09:57.500-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=CALIBRATED time=2026-10-31T16:09:57.500-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=CALIBRATED
+    p5s1_costmodel_test.go:724: COST_MODEL="v1" -> exit 2; startup: time=2026-10-31T16:09:57.507-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=v1 time=2026-10-31T16:09:57.507-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=v1
+    p5s1_costmodel_test.go:724: COST_MODEL="v0" -> exit 2; startup: time=2026-10-31T16:09:57.514-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=v0 time=2026-10-31T16:09:57.514-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=v0
+    p5s1_costmodel_test.go:724: COST_MODEL=" calibrated" -> exit 2; startup: time=2026-10-31T16:09:57.520-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=" calibrated" time=2026-10-31T16:09:57.520-07:00 level=ERROR msg="COST_MODEL must be default or calibrated" value=" calibrated"
+    p5s1_costmodel_test.go:731: COST_MODEL="default" (valid) -> exit -1 (-1 = still running); startup: time=2026-10-31T16:09:57.567-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:0 policy=always_gpu cost_model=default reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s
+    p5s1_costmodel_test.go:731: COST_MODEL="calibrated" (valid) -> exit -1 (-1 = still running); startup: time=2026-10-31T16:10:01.546-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:0 policy=always_gpu cost_model=calibrated reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s
+    p5s1_costmodel_test.go:731: COST_MODEL="" (valid) -> exit -1 (-1 = still running); startup: time=2026-10-31T16:10:05.556-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:0 policy=always_gpu cost_model=default reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s
+    p5s1_costmodel_test.go:738: COST_P=abc -> exit 2 (-1 = accepted; spec silent on malformed COST_* values); time=2026-10-31T16:10:09.554-07:00 level=ERROR msg="bad float" var=COST_P value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5s1_costmodel_test.go:738: COST_SHARD_USES_STORE=maybe -> exit 2 (-1 = accepted; spec silent on malformed COST_* values); time=2026-10-31T16:10:09.567-07:00 level=ERROR msg="bad bool" var=COST_SHARD_USES_STORE value=maybe
+    p5s1_costmodel_test.go:738: COST_BANDWIDTH=-1 -> exit 2 (-1 = accepted; spec silent on malformed COST_* values); time=2026-10-31T16:10:09.577-07:00 level=ERROR msg="bad cost model" err="COST_BANDWIDTH must be positive, got -1"
+    p5s1_costmodel_test.go:738: COST_SPEEDUP=0 -> exit 2 (-1 = accepted; spec silent on malformed COST_* values); time=2026-10-31T16:10:09.585-07:00 level=ERROR msg="bad cost model" err="COST_SPEEDUP must be positive, got 0"
+    p5s1_costmodel_test.go:738: COST_P=NaN -> exit 2 (-1 = accepted; spec silent on malformed COST_* values); time=2026-10-31T16:10:09.593-07:00 level=ERROR msg="bad cost model" err="COST_P must be a finite number, got NaN"
+--- PASS: TestXcP5S1SchedulerCostModelEnv (13.67s)
+=== RUN   TestXcP5S1DefaultIsV0AtEveryPoint
+    p5s1_costmodel_test.go:780: spec (decision 7): Default() stays v0 to the digit, so every Phase 1-3 test, sweep and saved log keeps its numbers
+    p5s1_costmodel_test.go:785: n=2 dim=96: Transfer v0 8960 ns, now 8960 (+0); GPUTotal v0 2000010823 ns, now 2000010823 (+0) 
+    p5s1_costmodel_test.go:785: n=2 dim=384: Transfer v0 32000 ns, now 32000 (+0); GPUTotal v0 2000039452 ns, now 2000039452 (+0) 
+    p5s1_costmodel_test.go:785: n=2 dim=1536: Transfer v0 124160 ns, now 124160 (+0); GPUTotal v0 2000153970 ns, now 2000153970 (+0) 
+    p5s1_costmodel_test.go:785: n=3 dim=1: Transfer v0 2040 ns, now 2040 (+0); GPUTotal v0 2000002086 ns, now 2000002086 (+0) 
+    p5s1_costmodel_test.go:785: n=3 dim=96: Transfer v0 13440 ns, now 13440 (+0); GPUTotal v0 2000017869 ns, now 2000017869 (+0) 
+    p5s1_costmodel_test.go:785: n=3 dim=128: Transfer v0 17280 ns, now 17280 (+0); GPUTotal v0 2000023186 ns, now 2000023186 (+0) 
+    p5s1_costmodel_test.go:785: n=7 dim=96: Transfer v0 31359 ns, now 31359 (+0); GPUTotal v0 2000049666 ns, now 2000049666 (+0) 
+    p5s1_costmodel_test.go:785: n=999 dim=768: Transfer v0 31328639 ns, now 31328639 (+0); GPUTotal v0 2105515804 ns, now 2105515804 (+0) 
+    p5s1_costmodel_test.go:785: n=999 dim=1536: Transfer v0 62017920 ns, now 62017920 (+0); GPUTotal v0 2210392251 ns, now 2210392251 (+0) 
+    p5s1_costmodel_test.go:785: n=1000 dim=384: Transfer v0 16000000 ns, now 16000000 (+0); GPUTotal v0 2053136092 ns, now 2053136092 (+0) 
+    p5s1_costmodel_test.go:785: n=12345 dim=1: Transfer v0 8394600 ns, now 8394600 (+0); GPUTotal v0 2010022832 ns, now 2010022832 (+0) 
+    p5s1_costmodel_test.go:785: n=12345 dim=96: Transfer v0 55305600 ns, now 55305600 (+0); GPUTotal v0 2211615923 ns, now 2211615923 (+0) 
+    p5s1_costmodel_test.go:785: n=12345 dim=128: Transfer v0 71107200 ns, now 71107200 (+0); GPUTotal v0 2279520964 ns, now 2279520964 (+0) 
+    p5s1_costmodel_test.go:785: n=102040 dim=960: Transfer v0 3983641600 ns, now 3983641600 (+0); GPUTotal v0 21800365587 ns, now 21800365587 (+0) 
+    p5s1_costmodel_test.go:785: n=136055 dim=1536: Transfer v0 8446294399 ns, now 8446294399 (+0); GPUTotal v0 45030767218 ns, now 45030767218 (+0) 
+    p5s1_costmodel_test.go:785: n=999999 dim=384: Transfer v0 15999984000 ns, now 15999984000 (+0); GPUTotal v0 92272089111 ns, now 92272089111 (+0) 
+--- PASS: TestXcP5S1DefaultIsV0AtEveryPoint (0.00s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	84.208s
+
+== Docker events for container kgpu-test-pg-75840
+  16:08:42  create
+  16:08:42  start
+  16:10:09  kill
+  16:10:09  die
+  16:10:09  destroy
+
+== Result: PASS

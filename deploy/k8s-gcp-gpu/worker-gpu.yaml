@@ -1,0 +1,31 @@
+# The worker on a GPU node: one L4 card per worker. GKE labels every GPU node
+# with its accelerator type and taints it nvidia.com/gpu=present:NoSchedule
+# so that only pods asking for a card land there (Phase 2's kgpu.io/gpu
+# taint, done by the provider). The pool-name selector of the CPU overlay is
+# removed; the card request is what places the pod, and a worker beyond the
+# card total stays Pending with "Insufficient nvidia.com/gpu" — or, with the
+# autoscaler on, waits for a node (the cold start, decision 5). CPU and
+# memory are the g2-standard-8's minus the node's agents; the GPU image
+# needs more memory for CUDA's runtime.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: kgpu
+spec:
+  replicas: 2
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: null
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: present
+          effect: NoSchedule
+      containers:
+        - name: worker
+          resources:
+            requests: {cpu: "6", memory: "12Gi"}
+            limits: {memory: "24Gi", nvidia.com/gpu: 1}

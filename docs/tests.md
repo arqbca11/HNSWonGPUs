@@ -938,3 +938,47 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | crosscheck/TestXcP4S4SweepCalibratedEcho | Sweep with the step 3 rehearsal's constants. | Each is echoed exactly. |
 | crosscheck/TestXcP4S4SweepCostAMovesRoundS | Two sweeps that differ only in -cost_a, with local builds. | round_s moves on every seed, never down for a larger A, and nothing else changes. |
 | crosscheck/TestXcP4S4SweepOutOfRangeOverrideNotSilentlyReplaced | Sweep with negative -cost_a, -bandwidth and -gpu_overhead. | A bad override is refused with a non-zero exit, never quietly replaced by the default (F2). |
+
+## Phase 5, step 1, cost model v1 (Go `scheduler/costmodel`, Python `worker/tests/test_costmodel.py`, the calibration suites). Log: `phase5/step1-costmodel-v1.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| costmodel/TestDefaultIsV0ToTheDigit | The v1 formulas with v0's constants (P 1, D0 0, no gate, save or second bandwidth). | 100k × 128: cpu 20.631162433 s and gpu total 4.639116243 s as before; the local path is the build alone; the v1 terms are zero (decision 7). |
+| costmodel/TestCalibratedTermsByHand | `Calibrated()` on the live rounds' 408164 × 128 straggler and a 10k × 960 build, each term recomputed by hand. | Build, gate, save, fetch, upload, the two buckets and both totals match to 1e-6; the worker path lands in 30–42 s (live 35.2; v0 said 24.0); 960 over 128 dims costs 2.5–4.5× (v0: 7.5); `ShardUsesStore=false` drops the round trip. |
+| worker/test_costmodel.py::test_v1_default_is_v0_and_calibrated_matches_go | The Python mirror on the same inputs. | v0 identity; every calibrated term equals the Go test's number to 2e-3. |
+| worker/test_costmodel.py::test_v1_env_block | `COST_MODEL=calibrated` with overrides. | P and D0 from the block, the override applied, `COST_BANDWIDTH_OUT=0` falls back to the fetch bandwidth, `COST_SHARD_USES_STORE=false` drops the round trip; an empty environment is v0. |
+| builder/test_xcheck_calibrate.py (schema rows, amended) | The grid's header and the point's JSON. | The v1 point schema: the v0 columns plus `gate_queries, save_s, upload_s, upload_bytes` (decision 8). |
+
+## Phase 5, step 1, cross-check of cost model v1 (Go `scheduler/crosscheck/p5s1_costmodel_test.go`, Python `builder/tests/test_xcheck_costmodel_v1.py` and `worker/tests/test_xcheck_costmodel_v1.py`; the grid tests need `TEST_S3_ENDPOINT`). Log: `phase5/step1-crosscheck.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| crosscheck/TestXcP5S1DefaultIsV0ToTheDigit | Default()'s fields and every term at 9 sizes × 5 dims against v1's formulas with v0's constants. | The v1 formulas reduce to v0; 100k×128 gives cpu 20.631162433 s and gpu total 4.639116243 s; the local path is the build alone (decision 7). |
+| crosscheck/TestXcP5S1DefaultIsV0AtEveryPoint | Default()'s Transfer and GPUTotal at 16 points against values recorded from the previous commit's build. | v0 is kept to the nanosecond everywhere (finding A). |
+| crosscheck/TestXcP5S1CalibratedIsTheBlock | Calibrated() field by field, and every term by hand. | The block is the documented constants through the decision 6 formulas. |
+| crosscheck/TestXcP5S1EveryTermByHand | A model with every term non-zero, 45 points. | Build, gate, save, fetch, upload, the two buckets and both totals match decision 6. |
+| crosscheck/TestXcP5S1BandwidthOutZeroFallsBackToFetch | BandwidthOut 0, then 1e7. | The upload falls back to the fetch bandwidth; the fetch stays on it. |
+| crosscheck/TestXcP5S1SaveBandwidthZeroMeansNoSave | SaveBandwidth 0 and GateCost 0. | No save or gate term, no division by zero. |
+| crosscheck/TestXcP5S1ShardUsesStoreAddsTheRoundTrip | LocalTotal with the flag off and on. | The local path adds fetch + upload only when the shard uses the store. |
+| crosscheck/TestXcP5S1TinyBuildsCostNothing | n = 0 and 1 on three models. | The build and the gate are 0; nothing is NaN, infinite or negative (G1). |
+| crosscheck/TestXcP5S1PythonMirrorAgrees | The worker's Python model through uv on 55 points × 12 terms for five models, including `from_env` with every COST_* name. | Go and Python agree within nanosecond rounding (G2). |
+| crosscheck/TestXcP5S1SweepDefaultMatchesDemo | The demo script's sweep with `-cost default`, cell by cell against the committed demo CSV. | v1 changed nothing for v0 runs (finding A). |
+| crosscheck/TestXcP5S1SweepEchoesCalibratedAndOverrides | `-cost calibrated`, then every term flag overridden, then a 100× A. | The CSV echoes the model and its overrides, and the overrides reach the simulation. |
+| crosscheck/TestXcP5S1SweepRefusesOutOfRange | An unknown model, negative terms, zero speedup, NaN or Inf. | Every one exits non-zero (finding C). |
+| crosscheck/TestXcP5S1ComparerCalibratedOnStep4 | The step 4 timelines replayed with `-cost calibrated`; `-cost bogus`. | Sim 45.90 and 46.44 s against 41.50 and 41.52 live; the unknown model is refused. |
+| crosscheck/TestXcP5S1ComparerTakesTheV1TermFlags | Each of the sweep's eleven term flags passed to the comparer. | A live round with v1 overrides can be replayed (finding B). |
+| crosscheck/TestXcP5S1SchedulerCostModelEnv | The scheduler binary with COST_MODEL variants and malformed COST_* values, against a real database. | Only `default` and `calibrated` start; everything else, and non-positive or non-finite constants, exit 2 (finding D). |
+| builder/test_xcheck_costmodel_v1.py::test_xc_v1_fit_reproduces_the_cloud_block | `fit --v1` on the committed shard VM and worker CSVs. | A 2.3e-09, P 1.220, D0 187, speedup 2.126, gate 1.787e-08, bandwidth 1.573e+08, sigma 0.113, and both per-side fits. |
+| builder/...::test_xc_v1_fit_recovers_known_constants | Exact synthetic v1 data, shard and worker in separate files. | A, P, D0, the gate and the three bandwidths come back; COST_SPEEDUP is the geometric mean, not the ratio of A's; COST_BANDWIDTH is the worker's. |
+| builder/...::test_xc_v1_fit_gate_queries_default | `fit --v1` without `--gate-queries`. | Runs with the documented default (G10). |
+| builder/...::test_xc_v1_fit_single_size_does_not_crash, ::test_xc_v1_fit_single_point | One size, two thread counts; one point. | No traceback; the shape is reported as v0's with a note (G6). |
+| builder/...::test_xc_v1_fit_reads_v0_and_mixed_schemas | A v0 CSV, a v0 shard with a v1 worker, both schemas in one file. | Both schemas read; upload and save are n/a where unmeasured. |
+| builder/...::test_xc_v1_fit_laptop_dimension_offset_is_zero | The laptop's two datasets. | D0 = 0 on the laptop (Phase 4 decision 35). |
+| builder/...::test_xc_v1_fit_on_points_without_upload | Points recorded with upload 0 s and 0 bytes. | The upload is n/a; no 0, infinite or NaN rate in the block (G11). |
+| builder/...::test_xc_point_times_save_and_upload_and_deletes | `calibrate-point --upload-prefix` on a toy split in a throwaway store. | The save and the upload are timed, upload_bytes equals index_bytes, gate_queries is recorded, nothing is left in the bucket (decision 8). |
+| builder/...::test_xc_point_without_upload_prefix | `calibrate-point` without a prefix. | The save is still timed. |
+| builder/...::test_xc_grid_uploads_under_scratch_by_default_and_cleans_up | `calibrate` with and without `--no-upload`. | The upload is on by default, `calibration/` is clean afterwards, `--no-upload` records 0. |
+| builder/...::test_xc_grid_v1_csv_feeds_fit_v1 | A measured toy grid fed to `fit --v1`. | The extended point's upload and save rates reach the fit. |
+| worker/test_xcheck_costmodel_v1.py::test_xc_v0_default_to_the_digit, ::test_xc_calibrated_is_the_block, ::test_xc_every_term_by_hand_custom_model, ::test_xc_tiny_builds_cost_nothing | The Python mirror's default, block, formulas and tiny builds. | The mirror matches Go and decision 6. |
+| worker/...::test_xc_from_env_empty_is_v0_and_calibrated_selects_the_block, ::test_xc_from_env_each_override_name (24 cases), ::test_xc_from_env_bandwidth_out_zero_and_bool_spellings, ::test_xc_from_env_unknown_model_name | `from_env` with every name, spelling and an unknown model. | Each name sets exactly its own field; `COST_BANDWIDTH_OUT=0` falls back to the fetch rate; the boolean takes Go's spellings; an unknown model is refused as on the scheduler (finding E). |
+

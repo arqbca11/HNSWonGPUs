@@ -50,7 +50,11 @@ S3 = os.environ.get("TEST_S3_ENDPOINT")
 needs_s3 = pytest.mark.skipif(not S3, reason="TEST_S3_ENDPOINT unset")
 
 with open(SIFT_CSV) as _f:
-    HEADER = _f.readline().strip().split(",")  # the committed point schema
+    HEADER_V0 = _f.readline().strip().split(",")  # the committed rehearsal CSVs' (v0) point schema
+# Phase 5 step 1 (cost model v1): a point also times the save and the upload
+# and records the gate's query count; the grid writes this schema, and `fit`
+# reads both.
+HEADER = HEADER_V0 + ["gate_queries", "save_s", "upload_s", "upload_bytes"]
 
 
 # ------------------------------------------------------------------ helpers
@@ -545,7 +549,7 @@ def test_xc_grid_schema_and_row_order(toy, tmp_path):
     assert p.returncode == 0
     lines = out.read_text().splitlines()
     print(f"header: {lines[0]}")
-    assert lines[0].split(",") == HEADER, "same schema as the committed rehearsal CSVs"
+    assert lines[0].split(",") == HEADER, "the v1 point schema: the committed rehearsal CSVs' columns plus the save, upload and gate-query fields"
     rows = read_rows(out)
     order = [(int(r["threads"]), int(r["size"]), int(r["repeat"])) for r in rows]
     print(f"row order (threads, size, repeat): {order}")

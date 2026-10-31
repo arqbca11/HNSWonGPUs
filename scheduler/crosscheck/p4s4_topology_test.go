@@ -570,7 +570,7 @@ func TestXcP4S4RenderOnlyDocumentedChanges(t *testing.T) {
 		// decision 36: the in-place rolling update for a one-per-node pool
 		regexp.MustCompile(`^Deployment/worker\.spec\.strategy\.`),
 		// decision 35 / evidence 7: the calibrated cost constants on both ConfigMaps
-		regexp.MustCompile(`^ConfigMap/(scheduler|worker)\.data\.(COST_A|COST_SPEEDUP|COST_GPU_OVERHEAD|COST_BANDWIDTH|KGPU_ESTIMATE_SIGMA)$`),
+		regexp.MustCompile(`^ConfigMap/(scheduler|worker)\.data\.(COST_MODEL|COST_A|COST_SPEEDUP|COST_GPU_OVERHEAD|COST_BANDWIDTH|KGPU_ESTIMATE_SIGMA)$`),
 	}
 	var undocumented, doc []string
 	for k := range ov {

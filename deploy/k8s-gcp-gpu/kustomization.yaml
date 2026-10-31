@@ -1,0 +1,21 @@
+# Phase 5: the GPU pool on top of the Phase 4 cloud overlay (Phase 5 decision 9).
+#   kubectl apply -k deploy/k8s-gcp-gpu
+# Everything in deploy/k8s-gcp stays (the control plane on the default pool,
+# internal load balancers, real builds, the calibrated cost model); this
+# overlay moves the workers from the CPU `workers` pool to the GPU pools:
+# the cuVS image, nvidia.com/gpu: 1 per worker (the only resource-name change
+# from Phase 2's fake card, roadmap Phase 5), GKE's accelerator label as the
+# node selector and its GPU taint tolerated, BUILDER=cagra. Written and
+# rendered before the GPU quota exists; applied once it does.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../k8s-gcp
+  - dcgm-exporter.yaml
+images:
+  - name: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker
+    newName: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu
+    newTag: p5
+patches:
+  - path: worker-gpu.yaml
+  - path: config-gpu.yaml

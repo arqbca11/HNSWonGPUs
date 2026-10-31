@@ -1,0 +1,65 @@
+# NVIDIA's DCGM exporter (roadmap, Phase 5): GPU utilisation, memory and
+# temperature per card as Prometheus metrics, one pod per GPU node (a
+# DaemonSet: Kubernetes runs exactly one copy on every node that matches).
+# Scraped by the Phase 2 monitoring stack's ServiceMonitor when it is
+# installed on this cluster (scripts/k8s-monitoring-up.sh); the Grafana
+# dashboard gains the card panels then. GKE's own managed DCGM metrics are
+# an alternative that bills per sample; this exporter is free.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  namespace: kgpu
+  labels: {app: dcgm-exporter}
+spec:
+  selector:
+    matchLabels: {app: dcgm-exporter}
+  template:
+    metadata:
+      labels: {app: dcgm-exporter}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: present
+          effect: NoSchedule
+      containers:
+        - name: dcgm-exporter
+          image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.9-3.6.1-ubuntu22.04
+          ports:
+            - name: metrics
+              containerPort: 9400
+          env:
+            - name: DCGM_EXPORTER_LISTEN
+              value: ":9400"
+            - name: DCGM_EXPORTER_KUBERNETES
+              value: "true"
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          volumeMounts:
+            - name: pod-resources
+              mountPath: /var/lib/kubelet/pod-resources
+              readOnly: true
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 512Mi}
+      volumes:
+        - name: pod-resources
+          hostPath:
+            path: /var/lib/kubelet/pod-resources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcgm-exporter
+  namespace: kgpu
+  labels: {app: dcgm-exporter}
+spec:
+  selector: {app: dcgm-exporter}
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: 9400

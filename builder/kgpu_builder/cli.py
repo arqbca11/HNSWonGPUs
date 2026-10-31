@@ -255,7 +255,8 @@ def cmd_calibrate(cfg: Config, args) -> int:
     if bad:
         raise SystemExit(f"calibrate: sizes {bad} are outside 2..{shard_rows} (shard {shard} has {shard_rows} vectors)")
     try:
-        cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log)
+        cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log,
+                     upload_prefix=None if args.no_upload else f"calibration/scratch/{os.uname().nodename}")
     except (ValueError, RuntimeError) as e:
         raise SystemExit(f"calibrate: {e}") from None
     _log(f"wrote {out}")
@@ -264,24 +265,33 @@ def cmd_calibrate(cfg: Config, args) -> int:
 
 def cmd_calibrate_point(cfg: Config, args) -> int:
     try:
-        pt = cal.run_point(Store(cfg), args.dataset, args.n_shards, args.shard, args.size, args.threads, args.m, args.ef_construction, args.repeat)
+        pt = cal.run_point(Store(cfg), args.dataset, args.n_shards, args.shard, args.size, args.threads, args.m, args.ef_construction, args.repeat,
+                           upload_prefix=args.upload_prefix)
     except (ValueError, NotFound) as e:
         raise SystemExit(f"calibrate-point: {e}") from None
     print(json.dumps(pt.__dict__), flush=True)
     return 0
 
 
-def cmd_fit(args) -> int:
+def _read_points(paths: list[str]) -> list[dict]:
     import csv as _csv
     rows = []
-    for path in args.csv:
+    for path in paths:
         with open(path, newline="") as f:
             rd = _csv.DictReader(f)
-            if rd.fieldnames != cal.POINT_FIELDS:
+            if rd.fieldnames not in (cal.POINT_FIELDS, cal.POINT_FIELDS_V0):
                 raise SystemExit(f"fit: {path} is not a calibration CSV (header {rd.fieldnames[:3] if rd.fieldnames else None}...)")
             rows += list(rd)
     if not rows:
-        raise SystemExit(f"fit: {' '.join(args.csv)}: no points")
+        raise SystemExit(f"fit: {' '.join(paths)}: no points")
+    return rows
+
+
+def cmd_fit(args) -> int:
+    rows = _read_points(args.csv)
+    # v1: the worker side may be another machine's CSVs (the cloud topology:
+    # the shard VM and a worker node); default, the same points at worker_threads
+    wrows = _read_points(args.worker_csv) if args.worker_csv else rows
     try:
         for r in rows:
             for k in ("size", "dim", "threads", "build_s", "fetch_s", "fetch_bytes", "gate_s", "recall"):
@@ -298,6 +308,33 @@ def cmd_fit(args) -> int:
         _log(f"   fitted in log space; a linear-space least squares would give A = {f.a_linear:.4g} and hide a {f.bias_linear:+.3f} mean log residual; "
              f"fetch+gate per point {f.overhead_s:.2f} s (the measured overhead)")
     _log("\n".join(cal.residual_table(rows, fits)))
+    if args.v1:
+        # cost model v1 (Phase 5 decision 6): the shape the Phase 4 calibration found
+        fits1 = cal.fit_points_v1(rows)
+        wfits1 = cal.fit_points_v1(wrows) if args.worker_csv else fits1
+        labelled = [(f, "") for f in fits1] if not args.worker_csv else \
+            [(f, " (shard side)") for f in fits1] + [(f, " (worker side)") for f in wfits1 if f.threads == args.worker_threads]
+        for f, side in labelled:
+            bo = f"{f.bandwidth_out / 1e6:.0f} MB/s" if f.bandwidth_out is not None else "n/a"
+            sb = f"{f.save_bandwidth / 1e6:.0f} MB/s" if f.save_bandwidth is not None else "n/a"
+            if f.distinct_sizes < 2:
+                _log(f"   note: threads {f.threads}{side} has {f.n_points} point(s) at one size: P and D0 cannot be fitted and are reported as v0's (1, 0)")
+            # the line keeps its shape (scripts and the cross-check parse it); the side goes at the end
+            _log(f"v1 threads {f.threads}: {f.n_points} points; build = {f.a:.4g} · n^{f.p:.3f} · ln(n) · (dim + {f.d0:.0f}) "
+                 f"(ratio {f.min_ratio:.2f}..{f.max_ratio:.2f}, sigma {f.sigma:.3f}); gate {f.gate_per_query:.3g} s per query·ln(n)·(dim+D0) "
+                 f"on {f.gate_queries or 500} queries; fetch {f.bandwidth_in / 1e6:.0f} MB/s, upload {bo}, save {sb}; min recall {f.recall_min:.3f}{side}")
+        _log("\n".join(cal.residual_table_v1(rows, fits1)))
+        try:
+            block = cal.env_overrides_v1(rows, fits1, args.shard_threads, args.worker_threads, args.overhead,
+                                         worker_points=wrows, worker_fits=wfits1, gate_queries=args.gate_queries)
+            sp, spread = cal.speedup_v1(wrows, {f.threads: f for f in fits1}[args.shard_threads], args.worker_threads)
+            _log(f"v1 COST_* for shards at {args.shard_threads} threads{' (' + ', '.join(args.csv) + ')' if args.worker_csv else ''} and workers at {args.worker_threads}"
+                 f"{' (' + ', '.join(args.worker_csv) + ')' if args.worker_csv else ''} "
+                 f"(speedup = geometric mean of shard model / worker measured over the worker's points, spread {spread:.3f}):")
+            for k, v in block.items():
+                _log(f"  {k}={v}")
+        except ValueError as e:
+            _log(f"v1 COST_* block not emitted: {e}")
     try:
         env = cal.env_overrides(fits, args.shard_threads, args.worker_threads, args.overhead)
     except ValueError as e:
@@ -320,15 +357,20 @@ def main(argv=None) -> int:
     c.add_argument("--threads", default="2,8")
     c.add_argument("--repeats", type=int, default=1)
     c.add_argument("--out", default=None)
+    c.add_argument("--no-upload", action="store_true", help="skip timing the index upload to the store (v1 measures it under calibration/scratch/<host>/ and deletes it)")
     cp = sub.add_parser("calibrate-point")
     cp.add_argument("dataset"); cp.add_argument("n_shards", type=int)
     cp.add_argument("--shard", type=int, required=True); cp.add_argument("--size", type=int, required=True)
     cp.add_argument("--threads", type=int, required=True); cp.add_argument("--repeat", type=int, default=0)
     cp.add_argument("--m", type=int, default=16); cp.add_argument("--ef-construction", type=int, default=200)
+    cp.add_argument("--upload-prefix", default=None, help="store prefix to upload the saved index under (timed, then deleted)")
     ft = sub.add_parser("fit")
     ft.add_argument("csv", nargs="+")
     ft.add_argument("--shard-threads", type=int, default=2); ft.add_argument("--worker-threads", type=int, default=8)
     ft.add_argument("--overhead", type=float, default=None)
+    ft.add_argument("--v1", action="store_true", help="also fit cost model v1 (A·n^P·ln(n)·(dim+D0), the gate, the bandwidths) and print its COST_* block")
+    ft.add_argument("--worker-csv", nargs="*", default=None, help="v1: the worker side's calibration CSVs when it is another machine (default: the same CSVs at --worker-threads)")
+    ft.add_argument("--gate-queries", type=int, default=10000, help="v1: how many held-out queries a real build's gate runs (the split's query file: 10000 for sift-128, 1000 for gist); the block's COST_GATE_QUERIES")
     b = sub.add_parser("build")
     b.add_argument("--build-id", required=True)
     b.add_argument("--attempt", type=int, required=True)

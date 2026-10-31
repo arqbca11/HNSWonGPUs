@@ -289,7 +289,7 @@ func Run(w workload.Workload, pol policy.Policy, cfg Config) Result {
 			id: fmt.Sprintf("%d:sim", sw.ShardID), shard: sw.ShardID,
 			n: n, dim: dim,
 			mem:        e.cm.GPUMemBytes(n, dim),
-			trueLocalS: e.cm.CPUBuild(n, dim).Seconds(),
+			trueLocalS: e.cm.LocalTotal(n, dim).Seconds(), // v1: build + gate + save (+ the store round trip on this rig)
 			trueGPUS:   e.cm.GPUBuild(n, dim).Seconds(),
 			trueXferS:  e.cm.Transfer(n, dim).Seconds(),
 			firstClaim: -1,

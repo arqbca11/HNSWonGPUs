@@ -375,6 +375,13 @@ Workers are still CPU-only here, so give them more cores than a shard gets (e.g.
 
 Add a real GPU build path to the Phase 4 cloud topology, run it on a small GPU node pool for a few hours, and rerun the comparison with a measured GPU cost model. **Done when** the policy comparison includes real GPU numbers and a spot preemption has been observed and recovered from. Scheduler, Postgres, the shard VM and the shard simulator do not change; the worker gets a second builder image behind the same `build(job)` interface.
 
+### Before the GPUs (no quota needed; done on the laptop and kind)
+
+- [x] **Cost model v1** (Phase 5 decisions 6–8): the shape the Phase 4 calibration found — A·n^P·ln(n)·(dim + D0), a gate, a save, separate fetch and upload bandwidths, the shard's store round trip as a rig flag — with `Default()` kept as v0 and `Calibrated()` the measured block; the calibration point times the whole worker path; the comparison rerun on the block (speedup.md evidence 9).
+- [x] The GPU node pool's manifests and the bring-up flag (Phase 5 decision 9: `deploy/k8s-gcp-gpu/`, `GPU_POOLS=1 scripts/gcp-up.sh`, the DCGM exporter), rendered and cross-checked now, applied when the quota lands
+- [ ] The cold-start term in the GPU finish estimate (decision 5), testable in the simulator
+- [ ] The cuVS builder behind the build interface, its tests skipping without CUDA
+
 ### GPU builder
 
 - [ ] A separate builder image based on a RAPIDS or cuVS container. Keep the CPU image as it is.

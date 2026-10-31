@@ -16,6 +16,7 @@ worker lost ownership and must stop touching the build (invariant 3).
 
 from __future__ import annotations
 
+import os
 import logging
 import signal
 import threading
@@ -96,7 +97,7 @@ class Worker:
         if self.cfg.health_addr:
             self.health.serve(self.cfg.health_addr)   # before connecting: liveness answers from the start
         self.store.connect()
-        log.info("worker starting", extra={"worker_id": self.cfg.worker_id, "node": self.cfg.node, "mem_bytes": self.cfg.mem_bytes,
+        log.info("worker starting", extra={"worker_id": self.cfg.worker_id, "node": self.cfg.node, "mem_bytes": self.cfg.mem_bytes, "cost_model": os.environ.get("COST_MODEL") or "default",
                                           "builder": self.builder.name, "lease_s": self.cfg.lease_s,
                                           "renew_interval_s": self.cfg.renew_interval_s})
         self._register()

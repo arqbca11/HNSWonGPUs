@@ -231,7 +231,7 @@ func buildInput(snap store.ReconsiderSnapshot, cm costmodel.Model, timeScale flo
 			Spec: policy.BuildSpec{ShardID: b.ShardID, RoundID: b.RoundID,
 				NVectors: b.NVectors, Dim: b.Dim, MemBytes: b.MemBytes},
 			Est: policy.Estimates{
-				LocalBuildS: cm.CPUBuild(b.NVectors, b.Dim).Seconds(),
+				LocalBuildS: cm.LocalTotal(b.NVectors, b.Dim).Seconds(),
 				GPUBuildS:   cm.GPUBuild(b.NVectors, b.Dim).Seconds(),
 				TransferS:   cm.Transfer(b.NVectors, b.Dim).Seconds(),
 			},
