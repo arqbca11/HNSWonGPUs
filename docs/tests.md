@@ -982,3 +982,10 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 | worker/test_xcheck_costmodel_v1.py::test_xc_v0_default_to_the_digit, ::test_xc_calibrated_is_the_block, ::test_xc_every_term_by_hand_custom_model, ::test_xc_tiny_builds_cost_nothing | The Python mirror's default, block, formulas and tiny builds. | The mirror matches Go and decision 6. |
 | worker/...::test_xc_from_env_empty_is_v0_and_calibrated_selects_the_block, ::test_xc_from_env_each_override_name (24 cases), ::test_xc_from_env_bandwidth_out_zero_and_bool_spellings, ::test_xc_from_env_unknown_model_name | `from_env` with every name, spelling and an unknown model. | Each name sets exactly its own field; `COST_BANDWIDTH_OUT=0` falls back to the fetch rate; the boolean takes Go's spellings; an unknown model is refused as on the scheduler (finding E). |
 
+## Phase 5, step 3, the cold-start term (Go `experiments/sim`, `scheduler/api`). Log: `phase5/step3-cold-start.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| sim/TestColdStartByHand | One shard, one worker, a 10 s cold start under always-GPU; then the reactive policy at 10 s and at 30 s; then no cold start. | The build is claimed when the pool is provisioned at 10 s and done at 10 + the GPU total (14.639), heard at the 15.0 report, round 16.0; the submit saw a 10 s wait; reactive offloads at 10 s (14.6 < 20.6 local) and keeps local at 30 s (34.6 > 20.6); without a cold start the round is the Phase 3 one (6.0). |
+| api/TestSubmitColdStartWait | The server with `ColdStartS` 150 and no worker; then a worker heartbeats. | The submit reply's `gpu_queue_wait_ms` is 150000 while the pool is empty and the replay's wait once a worker is live. |
+

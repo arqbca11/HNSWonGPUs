@@ -35,6 +35,7 @@ type Config struct {
 	Interval   time.Duration
 	StaleAfter time.Duration // workers unseen for longer are not in the pool
 	TimeScale  float64       // wall seconds x this = modeled seconds; <= 0 means 1
+	ColdStartS float64       // a cold pool's provisioning time: the wait an empty pool reports (Phase 5 decision 11); 0 = Phase 3's rule
 }
 
 // Run ticks until ctx is cancelled. A failed tick is logged and the next one
@@ -87,7 +88,7 @@ func Tick(ctx context.Context, st *store.Store, pol policy.Policy, cm costmodel.
 	if len(snap.Builds) == 0 {
 		return
 	}
-	in := buildInput(snap, cm, cfg.TimeScale)
+	in := buildInput(snap, cm, cfg.TimeScale, cfg.ColdStartS)
 	acts := pol.Reconsider(in)
 	if len(acts) == 0 {
 		return
@@ -151,7 +152,7 @@ func execute(ctx context.Context, st *store.Store, a policy.Action, b store.Reco
 // buildInput turns the store snapshot into the policy's pure view. The host
 // computes every number a policy sees (decision 9): cost-model estimates per
 // build, the queue replay's waits, and the per-shard aggregates.
-func buildInput(snap store.ReconsiderSnapshot, cm costmodel.Model, timeScale float64) policy.ReconsiderInput {
+func buildInput(snap store.ReconsiderSnapshot, cm costmodel.Model, timeScale float64, coldStartS float64) policy.ReconsiderInput {
 	scale := timeScale
 	if scale <= 0 {
 		scale = 1
@@ -251,11 +252,15 @@ func buildInput(snap store.ReconsiderSnapshot, cm costmodel.Model, timeScale flo
 					BuildID: b.BuildID, MemBytes: b.MemBytes,
 					GPUBuildS: v.Est.GPUBuildS, TransferS: v.Est.TransferS,
 				})
+			} else {
+				v.QueueWaitS = coldStartS // a cold pool's provisioning time (Phase 5 decision 11); 0 keeps Phase 3's rule
 			}
 		case b.State == "queued":
 			v.Phase = "gpu_queued"
 			if !emptyPool {
 				v.QueueWaitS = est[b.BuildID].StartS
+			} else {
+				v.QueueWaitS = coldStartS
 			}
 		case b.State == "leased":
 			v.Phase = "gpu_leased"

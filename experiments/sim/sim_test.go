@@ -363,3 +363,39 @@ func TestAllFivePoliciesComplete(t *testing.T) {
 			p.Name(), r.RoundS, r.StragglerLagS, r.BuildsGPU, r.BuildsLocal, r.Preempts, r.Reneges, r.Speculations)
 	}
 }
+
+// Phase 5 decision 11: a pool that autoscales from zero. With ColdStartS the
+// workers are not alive until that long after the first GPU build is queued,
+// and the host's queue-wait estimate while the pool is cold is the
+// provisioning time still to come. By hand on the one-shard case: the build
+// is queued at 0, the pool is provisioned at 10, the GPU total is total100k,
+// so the build is done at 10 + total100k = 14.639; the shard hears at the
+// 15.0 report; its index query runs 15 -> 16. The free query ran at 1 -> 2.
+func TestColdStartByHand(t *testing.T) {
+	w := oneShard(100_000, []workload.Query{
+		q(1*time.Second, 1*time.Second, false),
+		q(1*time.Second, 1*time.Second, true),
+	})
+	r := Run(w, policy.AlwaysGPU{}, Config{ColdStartS: 10})
+	t.Logf("cold start 10 s: build done at %.3f by hand, round %.3f", 10+total100k, r.RoundS)
+	if !r.Completed || r.BuildsGPU != 1 {
+		t.Fatalf("completed=%v gpu=%d", r.Completed, r.BuildsGPU)
+	}
+	near(t, "round", r.RoundS, 16.0, 1e-3)
+	near(t, "queue wait seen at submit (the cold-start term)", r.QueueWaits[0], 10, 1e-9)
+
+	// The same build under the reactive policy: with a 10 s cold start the
+	// GPU path (10 + 4.64) still beats the local 20.63, so it is offloaded;
+	// with 30 s (34.64 > 20.63) the policy keeps it local — the cold start
+	// visibly prefers the CPU while the pool is cold (decision 5).
+	warm := Run(w, policy.Reactive{}, Config{ColdStartS: 10})
+	cold := Run(w, policy.Reactive{}, Config{ColdStartS: 30})
+	t.Logf("reactive: cold start 10 s -> gpu=%d local=%d; 30 s -> gpu=%d local=%d (local build by hand %.3f)",
+		warm.BuildsGPU, warm.BuildsLocal, cold.BuildsGPU, cold.BuildsLocal, local100k)
+	if warm.BuildsGPU != 1 || cold.BuildsLocal != 1 {
+		t.Fatalf("placements: 10 s -> gpu=%d, 30 s -> local=%d; want 1 and 1", warm.BuildsGPU, cold.BuildsLocal)
+	}
+	// Without a cold start nothing changes: the default is the Phase 3 rule.
+	plain := Run(w, policy.AlwaysGPU{}, Config{})
+	near(t, "round without a cold start", plain.RoundS, 6.0, 1e-3)
+}

@@ -37,6 +37,11 @@ import (
 
 type Config struct {
 	WorkerStaleAfter time.Duration // a worker not seen for this long is not in the pool
+	// ColdStartS > 0 is the provisioning time of a pool that autoscales from
+	// zero (Phase 5 decisions 5, 11): with no live worker the queue-wait
+	// estimate a policy sees is this instead of 0 (Phase 3's rule for a pool
+	// that is only transiently empty).
+	ColdStartS float64
 	// TimeScale converts wall-clock facts to modeled seconds (wall x scale)
 	// before they meet cost-model durations: under FAKE_TIME_SCALE=s a worker
 	// finishes a modeled 60 s build in 6 wall seconds, so a lease's elapsed
@@ -271,7 +276,7 @@ func (s *Server) submitBuild(w http.ResponseWriter, r *http.Request) {
 	// (the cold-start rule, phase 3 doc G1 — "no workers yet" must not scare
 	// a policy off the queue), otherwise it is the wait this build would join
 	// at (+Inf when its memory fits no live worker, the estimator's truth).
-	queueWaitS := 0.0
+	queueWaitS := s.cfg.ColdStartS // the cold-pool term (decision 11); 0 when the model has none
 	if pool.LiveWorkers > 0 {
 		snap, err := s.st.GetQueueSnapshot(ctx, s.cfg.WorkerStaleAfter)
 		if err != nil {

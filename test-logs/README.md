@@ -69,3 +69,4 @@ Per-step logs are the state of the tests at the end of that step, including any 
 Produce a saved log with `scripts/test-db.sh --save phase1/<name> <args>`.
 | `phase5/step1-costmodel-v1.log` | Phase 5 step 1 (GPU-free): cost model v1's Go tests — v0 to the digit by default, and the calibrated block term by term against hand arithmetic on the live rounds' straggler. |
 | `phase5/step1-crosscheck.log` | The cross-check agent's 15 Go checks of cost model v1: every term by hand, Go against Python, `Default()` against the previous commit's build at every point (its A found a 1 ns transfer drift), the sweep against the committed demo, the comparer on the step 4 timelines, the scheduler binary's `COST_MODEL` parsing; the Python suites run with `uv run pytest`. |
+| `phase5/step3-cold-start.log` | Phase 5 step 3 (GPU-free): the cold-start term by hand in the simulator and on the API, with the queue-wait and reconsider suites it touches. |

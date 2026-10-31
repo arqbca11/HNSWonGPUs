@@ -258,7 +258,7 @@ func TestBuildInputTimeScale(t *testing.T) {
 			{RoundID: 1, ShardID: 3, QueueDepth: 4, Arrivals: 6, MeanQueryMs: 1500, OldestWaitMs: 500, RoundElapsedS: 3},
 		},
 	}
-	in := buildInput(snap, cm, 10)
+	in := buildInput(snap, cm, 10, 0)
 
 	var w1 policy.WorkerView
 	for _, w := range in.Workers {
@@ -296,7 +296,7 @@ func TestBuildInputTimeScale(t *testing.T) {
 
 	t.Log("--- empty pool: the cold-start rule holds on every tick, nothing reads +Inf")
 	snap.Workers = nil
-	in = buildInput(snap, cm, 10)
+	in = buildInput(snap, cm, 10, 0)
 	for _, v := range in.Builds {
 		if v.QueueWaitS != 0 {
 			t.Fatalf("empty pool: %s wait %v, want 0 (G1: an empty pool may be about to fill)", v.BuildID, v.QueueWaitS)

@@ -64,6 +64,7 @@ func main() {
 		saveBW       = flag.Float64("save_bandwidth", -1, "the live COST_SAVE_BANDWIDTH (-1 = keep)")
 		bandwidthOut = flag.Float64("bandwidth_out", -1, "the live COST_BANDWIDTH_OUT (-1 = keep)")
 		shardStore   = flag.String("shard_uses_store", "", "the live COST_SHARD_USES_STORE, true/false (empty = keep)")
+		coldStartS   = flag.Float64("cold_start_s", 0, "the live COLD_START in seconds (Phase 5 decision 11)")
 		trustPolicy  = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
 	)
 	flag.Parse()
@@ -192,7 +193,7 @@ func main() {
 		}
 		cfg := esim.Config{
 			Workers: *workers, WorkerMemBytes: int64(*workerMemGB * float64(1<<30)),
-			ShareNodeLinks: false, CostModel: &cm,
+			ShareNodeLinks: false, CostModel: &cm, ColdStartS: *coldStartS,
 			PollS: *pollS * ts, ReconsiderS: *reconsiderS * ts, LeaseS: *leaseS * ts,
 		}
 		res := esim.Run(w, pol, cfg)

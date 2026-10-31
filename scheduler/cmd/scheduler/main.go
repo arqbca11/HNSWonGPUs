@@ -13,6 +13,9 @@
 //	MAX_ATTEMPTS         default 5; a build whose lease expires on this attempt is marked failed
 //	                     instead of requeued (decision 42). 0 disables.
 //	WORKER_STALE_AFTER   default 30s; a worker unseen for longer is not in the pool
+//	COLD_START           default 0; a duration (e.g. 150s): the provisioning time of a pool that
+//	                     autoscales from zero — with no live worker, the queue-wait estimate the
+//	                     policies see is this instead of 0 (Phase 5 decision 11)
 //	SHUTDOWN_DELAY       default 3s; after SIGTERM keep serving this long before closing, so a
 //	                     deleted pod is out of every node's forwarding rules before its IP vanishes (bug 10)
 //	LOG_FORMAT           json (default) or text
@@ -69,6 +72,7 @@ func main() {
 	timeScale := envFloat(log, "FAKE_TIME_SCALE", 1)
 	maxAttempts := envInt(log, "MAX_ATTEMPTS", 5)
 	staleAfter := envDuration(log, "WORKER_STALE_AFTER", 30*time.Second)
+	coldStartS := envDuration(log, "COLD_START", 0).Seconds() // Phase 5 decision 11: a pool that autoscales from zero
 	addr := env("LISTEN_ADDR", ":8080")
 	shutdownDelay := envDuration(log, "SHUTDOWN_DELAY", 3*time.Second)
 
@@ -96,13 +100,13 @@ func main() {
 		// and settles speculation races. Runs on the signal context like the
 		// reaper, so a draining pod takes no new initiative (decision 40).
 		go reconsider.Run(ctx, st, pol, cm,
-			reconsider.Config{Interval: reconsiderInterval, StaleAfter: staleAfter, TimeScale: timeScale}, log)
+			reconsider.Config{Interval: reconsiderInterval, StaleAfter: staleAfter, TimeScale: timeScale, ColdStartS: coldStartS}, log)
 	}
 
 	draining := new(atomic.Bool)
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter, TimeScale: timeScale, Draining: draining}, log),
+		Handler:           api.New(st, pol, cm, api.Config{WorkerStaleAfter: staleAfter, TimeScale: timeScale, Draining: draining, ColdStartS: coldStartS}, log),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

@@ -74,7 +74,12 @@ type Config struct {
 	EstimateSigma  float64 // log-normal σ on every estimate policies see (decision 23)
 	NoiseSeed      int64   // sub-seed for the noise draws; the workload seed is mixed in
 	KillWorkerAtS  float64 // >0: at this time the busiest worker dies (shrinking_pool)
-	MaxModeledS    float64 // safety cap; default 24 h modeled (the production preset's local builds run ~9.6 h)
+	// ColdStartS > 0 models a pool that autoscales from zero (Phase 5 decisions
+	// 5, 11): the workers are not alive until ColdStartS after the first GPU
+	// build is queued, and while none is alive the host's queue-wait estimate
+	// is the provisioning time still to come instead of 0.
+	ColdStartS  float64
+	MaxModeledS float64 // safety cap; default 24 h modeled (the production preset's local builds run ~9.6 h)
 	// TickPhaseS, if in (0, ReconsiderS], is when the FIRST reconsider tick
 	// fires (modeled seconds after the round starts); later ticks follow
 	// every ReconsiderS. Zero, negative, or above ReconsiderS all mean the
@@ -240,6 +245,8 @@ type engine struct {
 	}
 	killPending bool
 	nextTick    float64
+	provisionAt float64 // >0: the cold pool's workers come alive at this time (ColdStartS)
+	provisioned bool    // they have
 	res         Result
 }
 
@@ -274,7 +281,7 @@ func Run(w workload.Workload, pol policy.Policy, cfg Config) Result {
 		e.workers = append(e.workers, &worker{
 			id:   fmt.Sprintf("w%02d", i),
 			node: fmt.Sprintf("node%02d", i/cfg.WorkersPerNode),
-			mem:  cfg.WorkerMemBytes, alive: true,
+			mem:  cfg.WorkerMemBytes, alive: cfg.ColdStartS <= 0, // a cold pool has no worker until it is provisioned
 		})
 	}
 	for i, sw := range w.Shards {
@@ -373,6 +380,9 @@ func (e *engine) step(w workload.Workload) bool {
 	if e.killPending {
 		add(e.cfg.KillWorkerAtS)
 	}
+	if e.provisionAt > 0 && !e.provisioned {
+		add(e.provisionAt) // once: an event at the current time re-added forever would freeze the clock
+	}
 	add(e.nextTick)
 	if math.IsInf(next, 1) || next > e.cfg.MaxModeledS {
 		return false // nothing scheduled, or the safety cap: report incomplete
@@ -421,6 +431,17 @@ func (e *engine) step(w workload.Workload) bool {
 			b := wk.cur
 			b.state, b.finishAt = "done", e.t
 			wk.cur = nil
+		}
+	}
+	// 1b. The cold pool: the first queued GPU build starts the provisioning
+	// clock (the autoscaler sees a pending worker pod and adds a node);
+	// ColdStartS later every worker is alive and claims.
+	if e.cfg.ColdStartS > 0 {
+		if e.provisionAt > 0 && e.provisionAt <= e.t+eps && !e.provisioned {
+			for _, wk := range e.workers {
+				wk.alive = true
+			}
+			e.provisioned = true
 		}
 	}
 	// 2. Expired leases of dead workers go back to the queue (the reaper).
@@ -506,6 +527,13 @@ func (e *engine) step(w workload.Workload) bool {
 	}
 	// 9. Claims: idle workers in ascending ID take the highest-priority
 	// queued build that fits (the claim statement's ORDER BY and filter).
+	// The cold pool's trigger sits after the submits and reports of this
+	// step (phases 4 and 7 are where a build becomes queued), so the
+	// provisioning clock starts at the event that queued the build, not one
+	// event later.
+	if e.cfg.ColdStartS > 0 && e.provisionAt == 0 && e.anyQueued() && !e.anyAlive() {
+		e.provisionAt = e.t + e.cfg.ColdStartS
+	}
 	e.claims()
 	// 10. CPUs pick their next work.
 	for _, s := range e.shards {
@@ -552,7 +580,7 @@ func (e *engine) submit(s *shard) {
 			}
 		}
 	}
-	wait := 0.0
+	wait := e.coldWait() // 0 unless the pool is cold (decision 11)
 	if live > 0 {
 		wait = policy.NewJobWait(e.workerViews(), e.queuedJobs(), policy.QueuedJob{
 			BuildID: b.id, MemBytes: b.mem, GPUBuildS: b.est.GPUBuildS, TransferS: b.est.TransferS,
@@ -680,11 +708,15 @@ func (e *engine) tick() {
 				v.QueueWaitS = policy.NewJobWait(in.Workers, queue, policy.QueuedJob{
 					BuildID: b.id, MemBytes: b.mem, GPUBuildS: b.est.GPUBuildS, TransferS: b.est.TransferS,
 				})
+			} else {
+				v.QueueWaitS = e.coldWait()
 			}
 		case b.state == "queued":
 			v.Phase = "gpu_queued"
 			if !emptyPool {
 				v.QueueWaitS = est[b.id].StartS
+			} else {
+				v.QueueWaitS = e.coldWait()
 			}
 		case b.state == "leased":
 			v.Phase = "gpu_leased"
@@ -816,6 +848,37 @@ func (e *engine) dispatchCPU(s *shard) {
 		s.taskDone = e.t + q.Duration.Seconds()
 		return
 	}
+}
+
+// coldWait is the host's queue-wait estimate while no worker is alive: the
+// provisioning time still to come (ColdStartS, less what has elapsed since
+// the pool was asked to grow), 0 when the model has no cold start.
+func (e *engine) coldWait() float64 {
+	if e.cfg.ColdStartS <= 0 || e.anyAlive() {
+		return 0
+	}
+	if e.provisionAt > 0 {
+		return math.Max(0, e.provisionAt-e.t)
+	}
+	return e.cfg.ColdStartS
+}
+
+func (e *engine) anyAlive() bool {
+	for _, wk := range e.workers {
+		if wk.alive {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *engine) anyQueued() bool {
+	for _, b := range e.builds {
+		if b.state == "queued" {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *engine) workerViews() []policy.WorkerView {

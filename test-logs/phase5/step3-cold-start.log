@@ -1,0 +1,70 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-31 16:22:39 PDT
+commit:    d0759ba (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-79351, port 39895)
+go:        go test -p 1 -count=1 -v -run TestSubmitColdStartWait|TestColdStartByHand|TestSubmitQueueWaitEstimate|TestReconsider ./scheduler/api/ ./experiments/sim/ ./scheduler/reconsider/
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-79351, port 29496)
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestSubmitQueueWaitEstimate
+    api_test.go:540: POST /rounds {"scenario":"test","seed":1,"n_shards":4}
+              -> 201 {"round_id":1}
+    api_test.go:543: --- idle worker, empty queue: the first build should see a 0 wait
+    api_test.go:545: POST /builds {"round_id":1,"shard_id":1,"n_vectors":100000,"dim":128}
+              -> 201 {"build_id":"1:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_...
+    api_test.go:549:     build 1 placed gpu, gpu_queue_wait_ms 0
+    api_test.go:551: --- a second identical build joins behind the first: its wait is the first's whole gpu total
+    api_test.go:553: POST /builds {"round_id":1,"shard_id":2,"n_vectors":100000,"dim":128}
+              -> 201 {"build_id":"2:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_...
+    api_test.go:557:     build 2 waits 4639 ms behind build 1 (gpu total 4639 ms): the replay queues them on the one worker
+    api_test.go:559: --- a duplicate submit answers the original decision, with no fresh estimate (no gpu_queue_wait_ms at all)
+    api_test.go:561: POST /builds {"round_id":1,"shard_id":2,"n_vectors":100000,"dim":128}
+              -> 200 {"build_id":"2:1","placement":"gpu","priority":0,"reason":"duplicate submit; existing decision returned","mem_bytes":102400000,"created":false,"cpu_build_ms":20...
+    api_test.go:565:     created=false, gpu_queue_wait_ms omitted (cross-check F1: a plain int64 served 0 for both)
+    api_test.go:567: --- the worker claims build 1; a third build sees: leased remaining + build 2's total
+    api_test.go:572: POST /builds {"round_id":1,"shard_id":3,"n_vectors":100000,"dim":128}
+              -> 201 {"build_id":"3:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_...
+    api_test.go:577:     build 3 waits 9276 ms: the lease's elapsed time already counts toward build 1
+    api_test.go:579: --- a build too big for every live worker reports -1: no wait would ever end (bug 11's truth)
+    api_test.go:581: POST /builds {"round_id":1,"shard_id":4,"n_vectors":20000000,"dim":128}
+              -> 201 {"build_id":"4:1","placement":"local","priority":0,"reason":"needs 20480000000 bytes, largest live worker has 8589934592","mem_bytes":20480000000,"created":true...
+    api_test.go:585:     placed local, gpu_queue_wait_ms -1
+--- PASS: TestSubmitQueueWaitEstimate (0.05s)
+=== RUN   TestSubmitColdStartWait
+    api_test.go:698: POST /rounds {"scenario":"test","seed":1,"n_shards":4}
+              -> 201 {"round_id":2}
+    api_test.go:700: POST /builds {"round_id":2,"shard_id":1,"n_vectors":100000,"dim":128}
+              -> 201 {"build_id":"1:2","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_...
+    api_test.go:701: empty pool, COLD_START 150s: build placed gpu, gpu_queue_wait_ms 150000 (the provisioning time)
+    api_test.go:709: POST /builds {"round_id":2,"shard_id":2,"n_vectors":100000,"dim":128}
+              -> 201 {"build_id":"2:2","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_...
+    api_test.go:710: a worker heartbeats: the next build sees the replay's wait 4639 ms, not the cold start
+--- PASS: TestSubmitColdStartWait (0.02s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/api	0.601s
+=== RUN   TestColdStartByHand
+    sim_test.go:380: cold start 10 s: build done at 14.639 by hand, round 16.000
+    sim_test.go:384:     round = 16.0000 (hand: 16.0000)
+    sim_test.go:385:     queue wait seen at submit (the cold-start term) = 10.0000 (hand: 10.0000)
+    sim_test.go:393: reactive: cold start 10 s -> gpu=1 local=0; 30 s -> gpu=0 local=1 (local build by hand 20.631)
+    sim_test.go:400:     round without a cold start = 6.0000 (hand: 6.0000)
+--- PASS: TestColdStartByHand (0.00s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/experiments/sim	0.177s
+testing: warning: no tests to run
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/reconsider	0.383s [no tests to run]
+
+== Docker events for container kgpu-test-pg-79351
+  16:22:38  create
+  16:22:38  start
+  16:22:43  kill
+  16:22:43  die
+  16:22:43  destroy
+
+== Result: PASS

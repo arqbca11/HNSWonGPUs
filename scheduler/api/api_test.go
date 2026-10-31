@@ -36,6 +36,12 @@ type harness struct {
 }
 
 func newHarness(t *testing.T) *harness {
+	return newHarnessWith(t, Config{WorkerStaleAfter: 30 * time.Second})
+}
+
+// newHarnessWith is newHarness with the server's Config chosen by the test
+// (the Draining flag is filled in here).
+func newHarnessWith(t *testing.T, cfg Config) *harness {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -56,7 +62,8 @@ func newHarness(t *testing.T) *harness {
 	st := store.New(pool)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	draining := new(atomic.Bool)
-	srv := httptest.NewServer(New(st, policy.AlwaysGPU{}, costmodel.Default(), Config{WorkerStaleAfter: 30 * time.Second, Draining: draining}, log))
+	cfg.Draining = draining
+	srv := httptest.NewServer(New(st, policy.AlwaysGPU{}, costmodel.Default(), cfg, log))
 	t.Cleanup(srv.Close)
 	return &harness{t: t, st: st, srv: srv, log: log, draining: draining}
 }
@@ -680,4 +687,28 @@ func TestRetryLocalAPI(t *testing.T) {
 	var rs RoundStatus
 	h.call("GET", fmt.Sprintf("/rounds/%d", cr.RoundID), nil, &rs)
 	t.Logf("second retry 409, unknown 404; the build is %s for good; local_retries in the report summary: %d", rs.Builds[0].State, rs.Builds[0].LocalRetries)
+}
+
+// Phase 5 decision 11: with no live worker and a configured cold start, the
+// submit reply's queue-wait estimate is the provisioning time, not 0 (Phase
+// 3's rule for a transiently empty pool, kept when COLD_START is unset).
+func TestSubmitColdStartWait(t *testing.T) {
+	h := newHarnessWith(t, Config{WorkerStaleAfter: 30 * time.Second, ColdStartS: 150})
+	var cr CreateRoundResponse
+	h.call("POST", "/rounds", CreateRoundRequest{Scenario: "test", Seed: 1, NShards: 4}, &cr)
+	var a SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 1, NVectors: 100_000, Dim: 128}, &a)
+	t.Logf("empty pool, COLD_START 150s: build placed %s, gpu_queue_wait_ms %d (the provisioning time)", a.Placement, waitMs(t, a))
+	if waitMs(t, a) != 150_000 {
+		t.Fatalf("want 150000 ms, got %d", waitMs(t, a))
+	}
+	if err := h.st.Heartbeat(context.Background(), "gpu-1", 8<<30, "node-1"); err != nil {
+		t.Fatal(err)
+	}
+	var b SubmitBuildResponse
+	h.call("POST", "/builds", SubmitBuildRequest{RoundID: cr.RoundID, ShardID: 2, NVectors: 100_000, Dim: 128}, &b)
+	t.Logf("a worker heartbeats: the next build sees the replay's wait %d ms, not the cold start", waitMs(t, b))
+	if waitMs(t, b) >= 150_000 {
+		t.Fatalf("with a live worker the cold start must not apply; got %d ms", waitMs(t, b))
+	}
 }

@@ -150,6 +150,12 @@ One entry per action the system takes, pointing at the code that decides it, the
 - The overlay: `deploy/k8s-gcp-gpu/` (`kustomization.yaml` on `../k8s-gcp`: the GPU image, `worker-gpu.yaml` with `nvidia.com/gpu: 1`, the accelerator selector and the GPU taint's toleration, `config-gpu.yaml` with `BUILDER=cagra` and the card's memory, `dcgm-exporter.yaml`); the cluster's cost block is `COST_MODEL=calibrated` in `deploy/k8s-gcp/config-calibrated.yaml` (decision 9).
 - The pools: `scripts/gcp-up.sh` under `GPU_POOLS=1` — `gpu-l4x1` and `gpu-l4x2`, spot, autoscaling 0..N, the driver installed by GKE; the overlay applied in place of the CPU one.
 
+### Step 3: the cold-start term (decision 11)
+
+- Decided where: the policies see it as `PoolState.QueueWaitS` — `scheduler/api/api.go` (the submit path: `queueWaitS` starts at `Config.ColdStartS` and the replay overrides it when a worker is live) and `scheduler/reconsider/reconsider.go` (`buildInput`'s `coldStartS` for the local-running and queued views of an empty pool); `COLD_START` parsed in `scheduler/cmd/scheduler/main.go`.
+- Modeled where: `experiments/sim/sim.go` — `Config.ColdStartS`; the workers start not alive; the provisioning clock starts at the event that queues the first GPU build (after the step's submits and reports, before its claims) and `provisionAt` wakes them once; `coldWait()` is the host's estimate while none is alive. The sweep's `-cold_start_s` axis and column, the comparer's `-cold_start_s`.
+- Tests: `experiments/sim/sim_test.go` `TestColdStartByHand`, `scheduler/api/api_test.go` `TestSubmitColdStartWait`; log `test-logs/phase5/step3-cold-start.log`.
+
 ## Observability and configuration
 
 ### Metrics

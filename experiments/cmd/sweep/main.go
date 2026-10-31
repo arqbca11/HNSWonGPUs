@@ -42,7 +42,7 @@ var columns = []string{
 	"scenario", "policy", "seed",
 	"n_shards", "dim", "workers", "workers_per_node", "worker_mem_bytes", "share_links",
 	"sigma", "zipf", "load", "needs_index", "speedup", "kill_at",
-	"cost_model", "cost_a", "cost_p", "cost_d0", "gate", "gate_queries", "save_bandwidth", "bandwidth", "bandwidth_out", "shard_uses_store", "gpu_overhead",
+	"cost_model", "cost_a", "cost_p", "cost_d0", "gate", "gate_queries", "save_bandwidth", "bandwidth", "bandwidth_out", "shard_uses_store", "gpu_overhead", "cold_start_s",
 	"reconsider_s", "poll_s", "lease_s", "noise_seed",
 	"completed", "round_s", "straggler_s",
 	"builds_gpu", "builds_local",
@@ -78,6 +78,7 @@ func main() {
 		saveBW       = flag.Float64("save_bandwidth", -1, "override the save bandwidth, bytes/s (-1 = keep; 0 = no save term)")
 		bandwidthOut = flag.Float64("bandwidth_out", -1, "override the upload bandwidth, bytes/s (-1 = keep; 0 = same as -bandwidth)")
 		shardStore   = flag.String("shard_uses_store", "", "true/false: the shard fetches its vectors from the store and uploads its index (empty = keep)")
+		coldStarts   = flag.String("cold_start_s", "", "comma list: a pool that autoscales from zero — the workers are provisioned this long after the first GPU build is queued, and an empty pool reports this wait (Phase 5 decision 11); default 0")
 		bandwidth    = flag.Float64("bandwidth", 0, "override the cost model's transfer bandwidth, bytes/s (calibrated)")
 		gpuOverhead  = flag.Float64("gpu_overhead", -1, "override the cost model's fixed GPU overhead, s (calibrated; -1 = the default)")
 		killAt       = flag.Float64("kill_at", 0, "kill the busiest worker at this modeled second (shrinking pool)")
@@ -107,6 +108,11 @@ func main() {
 		{"-save_bandwidth", *saveBW}, {"-bandwidth", *bandwidth}, {"-bandwidth_out", *bandwidthOut}, {"-gpu_overhead", *gpuOverhead}} {
 		if math.IsNaN(x.v) || math.IsInf(x.v, 0) {
 			log.Fatalf("sweep: %s must be a finite number; got %g", x.name, x.v)
+		}
+	}
+	for _, cold := range floatsOr(*coldStarts, 0) {
+		if cold < 0 || math.IsNaN(cold) || math.IsInf(cold, 0) {
+			log.Fatalf("sweep: -cold_start_s values must be non-negative finite numbers; got %g", cold)
 		}
 	}
 	if *speedups != "" { // given at all: every value positive and finite (an empty flag is "keep", not -1)
@@ -152,30 +158,32 @@ func main() {
 				for _, load := range floats(*loads) {
 					for _, ni := range floatsOr(*needsIdx, -1) {
 						for _, dim := range intsOr(*dims, 0) {
-							for _, spd := range floatsOr(*speedups, -1) {
-								for _, nw := range intsOr(*workers, 0) {
-									for _, wpn := range intsOr(*perNode, 1) {
-										for _, polName := range polList {
-											for r := 0; r < *rounds; r++ {
-												seed := *seed0 + int64(r)
-												row, err := runCell(cell{
-													scenario: scName, policyName: polName, seed: seed,
-													shards: *shards, workers: nw, workerMemGB: *workerMemGB,
-													perNode: wpn, shareLinks: *shareLinks,
-													sigma: sigma, zipf: zipf, load: load, needsIdx: ni,
-													dim: int32(dim), speedup: spd, killAt: *killAt,
-													costA: *costA, bandwidth: *bandwidth, gpuOverhead: *gpuOverhead,
-													costModel: *costModel, costP: *costP, costD0: *costD0, gateCost: *gateCost, gateQueries: *gateQueries,
-													saveBW: *saveBW, bandwidthOut: *bandwidthOut, shardStore: *shardStore,
-													reconsiderS: *reconsider, pollS: *poll, leaseS: *leaseS, noiseSeed: *noiseSeed,
-												})
-												if err != nil {
-													log.Fatal(err)
+							for _, cold := range floatsOr(*coldStarts, 0) {
+								for _, spd := range floatsOr(*speedups, -1) {
+									for _, nw := range intsOr(*workers, 0) {
+										for _, wpn := range intsOr(*perNode, 1) {
+											for _, polName := range polList {
+												for r := 0; r < *rounds; r++ {
+													seed := *seed0 + int64(r)
+													row, err := runCell(cell{
+														scenario: scName, policyName: polName, seed: seed,
+														shards: *shards, workers: nw, workerMemGB: *workerMemGB,
+														perNode: wpn, shareLinks: *shareLinks,
+														sigma: sigma, zipf: zipf, load: load, needsIdx: ni,
+														dim: int32(dim), speedup: spd, killAt: *killAt,
+														costA: *costA, bandwidth: *bandwidth, gpuOverhead: *gpuOverhead,
+														costModel: *costModel, costP: *costP, costD0: *costD0, gateCost: *gateCost, gateQueries: *gateQueries,
+														saveBW: *saveBW, bandwidthOut: *bandwidthOut, shardStore: *shardStore, coldStartS: cold,
+														reconsiderS: *reconsider, pollS: *poll, leaseS: *leaseS, noiseSeed: *noiseSeed,
+													})
+													if err != nil {
+														log.Fatal(err)
+													}
+													if err := w.Write(row); err != nil {
+														log.Fatal(err)
+													}
+													rowsWritten++
 												}
-												if err := w.Write(row); err != nil {
-													log.Fatal(err)
-												}
-												rowsWritten++
 											}
 										}
 									}
@@ -210,6 +218,7 @@ type cell struct {
 	gateQueries, saveBW  float64 // -1 = keep
 	bandwidthOut         float64 // -1 = keep
 	shardStore           string  // "" = keep
+	coldStartS           float64 // the simulator's ColdStartS (decision 11)
 	killAt               float64
 	reconsiderS, pollS   float64
 	leaseS               float64
@@ -277,7 +286,7 @@ func runCell(c cell) ([]string, error) {
 	cfg := sim.Config{
 		CostModel: &cm, WorkersPerNode: c.perNode, ShareNodeLinks: c.shareLinks,
 		ReconsiderS: c.reconsiderS, PollS: c.pollS, LeaseS: c.leaseS,
-		EstimateSigma: c.sigma, NoiseSeed: c.noiseSeed, KillWorkerAtS: c.killAt,
+		EstimateSigma: c.sigma, NoiseSeed: c.noiseSeed, KillWorkerAtS: c.killAt, ColdStartS: c.coldStartS,
 	}
 	if c.workers > 0 {
 		cfg.Workers = c.workers
@@ -311,7 +320,7 @@ func runCell(c cell) ([]string, error) {
 		strconv.Itoa(sc.NShards), strconv.Itoa(int(sc.Dim)), strconv.Itoa(nw), strconv.Itoa(c.perNode),
 		strconv.FormatInt(mem, 10), strconv.FormatBool(c.shareLinks),
 		f(c.sigma), f(sc.Sizes.ZipfExponent), f(c.load), f(sc.Stream.NeedsIndexFraction), f(cm.Speedup), f(c.killAt),
-		modelName(c.costModel), f(cm.A), f(cm.P), f(cm.D0), f(cm.GateCost), f(cm.GateQueries), f(cm.SaveBandwidth), f(cm.Bandwidth), f(cm.BandwidthOut), strconv.FormatBool(cm.ShardUsesStore), f(cm.GPUOverhead),
+		modelName(c.costModel), f(cm.A), f(cm.P), f(cm.D0), f(cm.GateCost), f(cm.GateQueries), f(cm.SaveBandwidth), f(cm.Bandwidth), f(cm.BandwidthOut), strconv.FormatBool(cm.ShardUsesStore), f(cm.GPUOverhead), f(c.coldStartS),
 		f(c.reconsiderS), f(c.pollS), f(c.leaseS), strconv.FormatInt(c.noiseSeed, 10),
 		strconv.FormatBool(res.Completed), f(res.RoundS), f(res.StragglerLagS),
 		strconv.Itoa(res.BuildsGPU), strconv.Itoa(res.BuildsLocal),
