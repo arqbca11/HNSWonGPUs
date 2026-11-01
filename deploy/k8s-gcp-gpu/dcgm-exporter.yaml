@@ -31,17 +31,29 @@ spec:
           ports:
             - name: metrics
               containerPort: 9400
+          # The exporter talks to the driver, which GKE installs on the host
+          # under /home/kubernetes/bin/nvidia; NVIDIA's own manifest runs it
+          # privileged with that path mounted and every card visible. Not yet
+          # exercised (no GPU): the first session checks it starts.
           env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/nvidia/lib64
             - name: DCGM_EXPORTER_LISTEN
               value: ":9400"
             - name: DCGM_EXPORTER_KUBERNETES
               value: "true"
           securityContext:
+            privileged: true
             runAsNonRoot: false
             runAsUser: 0
           volumeMounts:
             - name: pod-resources
               mountPath: /var/lib/kubelet/pod-resources
+              readOnly: true
+            - name: nvidia
+              mountPath: /usr/local/nvidia
               readOnly: true
           resources:
             requests: {cpu: 100m, memory: 128Mi}
@@ -50,6 +62,9 @@ spec:
         - name: pod-resources
           hostPath:
             path: /var/lib/kubelet/pod-resources
+        - name: nvidia
+          hostPath:
+            path: /home/kubernetes/bin/nvidia
 ---
 apiVersion: v1
 kind: Service

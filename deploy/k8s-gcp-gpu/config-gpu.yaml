@@ -10,7 +10,7 @@ metadata:
 data:
   BUILDER: cagra
   BUILD_THREADS: "6"
-  WORKER_MEM_BYTES: "25769803776"
+  WORKER_MEM_BYTES: "24159191040"   # 22.5 GiB: what an L4's 24 GB card reports usable (decision 9; measured in the first session)
   COST_MODEL: calibrated
 ---
 apiVersion: v1

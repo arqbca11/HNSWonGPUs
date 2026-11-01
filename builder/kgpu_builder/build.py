@@ -50,6 +50,7 @@ class BuildSpec:
     recall_k: int = 10
     ef_search: int = 100
     recall_min: float = 0.9
+    builder: str = "hnswlib"   # or "cagra": cuVS on the GPU, converted to HNSW (Phase 5 decision 10)
 
 
 class GateFailed(Exception):
@@ -105,7 +106,11 @@ def run_build(store: Store, spec: BuildSpec, progress: Callable[[float], None] |
     if phase:
         phase("build")
     t1 = time.time()
-    idx = build_index(vectors, spec.m, spec.ef_construction, spec.threads, progress)
+    if spec.builder == "cagra":
+        from .cagra import build_index_cagra
+        idx = build_index_cagra(vectors, spec.m, spec.ef_construction, spec.threads, progress)
+    else:
+        idx = build_index(vectors, spec.m, spec.ef_construction, spec.threads, progress)
     build_s = time.time() - t1
     if phase:
         phase("gate")
@@ -130,7 +135,7 @@ def run_build(store: Store, spec: BuildSpec, progress: Callable[[float], None] |
         store.put_file(f"{prefix}/index.bin", path)
     manifest = {
         "status": "done",
-        "kind": "hnswlib",
+        "kind": "cagra-hnsw" if spec.builder == "cagra" else "hnswlib",
         **asdict(spec),
         "n_vectors": int(vectors.shape[0]),
         "dim": int(vectors.shape[1]),
@@ -144,6 +149,7 @@ def run_build(store: Store, spec: BuildSpec, progress: Callable[[float], None] |
         "gate_s": gate_s,
         "upload_s": time.time() - t3,
         "hnswlib_version": _hnswlib_version(),
+        "cuvs_version": __import__("kgpu_builder.cagra", fromlist=["cuvs_version"]).cuvs_version() if spec.builder == "cagra" else None,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     store.put_json(f"{prefix}/manifest.json", manifest)  # last (invariant 7)

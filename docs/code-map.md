@@ -156,6 +156,12 @@ One entry per action the system takes, pointing at the code that decides it, the
 - Modeled where: `experiments/sim/sim.go` — `Config.ColdStartS`; the workers start not alive; the provisioning clock starts at the event that queues the first GPU build (after the step's submits and reports, before its claims) and `provisionAt` wakes them once; `coldWait()` is the host's estimate while none is alive. The sweep's `-cold_start_s` axis and column, the comparer's `-cold_start_s`.
 - Tests: `experiments/sim/sim_test.go` `TestColdStartByHand`, `scheduler/api/api_test.go` `TestSubmitColdStartWait`; log `test-logs/phase5/step3-cold-start.log`.
 
+### Step 4: the cuVS builder scaffold (decision 10)
+
+- The GPU path: `builder/kgpu_builder/cagra.py` — `build_index_cagra` (CAGRA → `from_cagra(hierarchy="cpu")` → `hnsw.save` → stock hnswlib `load_index`, the proof), `cuvs_available`, `CuvsUnavailable`.
+- Behind the one interface: `builder/kgpu_builder/build.py` (`BuildSpec.builder`, `run_build` picks the path, the manifest's `kind`), `cli.py` (`build --builder cagra`, failing fast with a reason where cuVS is absent); `worker/kgpu_worker/builder.py` (`by_name("cagra")` → the same child with `--builder cagra`, the Artifact's kind from the manifest), `config.py` (`BUILDER=cagra`).
+- The image: `worker/Dockerfile.gpu` on `rapidsai/base`; tests `builder/tests/test_cagra.py` (the GPU one skipped without cuVS), `worker/tests/test_hnswlib_builder.py`; log `test-logs/phase5/step4-cuvs-scaffold.log`.
+
 ## Observability and configuration
 
 ### Metrics

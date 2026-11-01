@@ -1,0 +1,282 @@
+== Go tests against a throwaway Postgres
+date:      2026-10-31 16:53:09 PDT
+commit:    eab8bab (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-86417, port 30940)
+go:        go test -p 1 -count=1 -v -run P5S2|P5S3 ./scheduler/crosscheck/
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-86417, port 21454)
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestXcP5S2RenderWorkerDeployment
+    p5s234_test.go:115: [render] deploy/k8s-gcp-gpu objects: [ConfigMap/scheduler ConfigMap/worker DaemonSet/dcgm-exporter Deployment/scheduler Deployment/worker Namespace/kgpu Secret/objectstore Secret/postgres Service/dcgm-exporter Service/objectstore Service/postgres Service/scheduler Service/worker StatefulSet/objectstore StatefulSet/postgres]
+    p5s234_test.go:124: [render] worker: image=us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p5 limits[nvidia.com/gpu]="1" requests[nvidia.com/gpu]="" nodeSelector=map[cloud.google.com/gke-accelerator:nvidia-l4] tolerations=[map[effect:NoSchedule key:nvidia.com/gpu operator:Equal value:present]] replicas=0
+    p5s234_test.go:126: [render] worker resources (all): map[limits:map[memory:24Gi nvidia.com/gpu:1] requests:map[cpu:6 memory:12Gi]]
+    p5s234_test.go:127: spec: decision 9 ('the cuVS image (kgpu-worker-gpu:p5), nvidia.com/gpu: 1 in place of the CPU pool's selector ... GKE's accelerator label selects the pool family and its nvidia.com/gpu=present taint is tolerated'); the brief: replicas 2
+    p5s234_test.go:156: note: decision 11 says 'the GPU overlay is applied with the workers scaled to zero and scaled up at a session's start', but the rendered Deployment says replicas 0: `kubectl apply` of this overlay sets 2 replicas, i.e. it asks the autoscaler for GPU nodes immediately. Whatever scales it to zero is outside the manifest (spec tension, reported)
+--- PASS: TestXcP5S2RenderWorkerDeployment (0.21s)
+=== RUN   TestXcP5S2RenderConfigMaps
+    p5s234_test.go:163: [render] k8s-gcp-gpu ConfigMap/worker data: map[BUILDER:cagra BUILD_THREADS:6 COST_MODEL:calibrated FAKE_TIME_SCALE:1 HEALTH_ADDR::8081 HEARTBEAT_INTERVAL_SECONDS:3 LEASE_SECONDS:30 LOG_FORMAT:json POLL_INTERVAL_SECONDS:0.5 RECALL_MIN:0.9 RENEW_INTERVAL_SECONDS:10 SHUTDOWN_FINISH_BUDGET_SECONDS:5 WORKER_MEM_BYTES:24159191040]
+    p5s234_test.go:164: [render] k8s-gcp-gpu ConfigMap/scheduler data: map[COST_MODEL:calibrated FAKE_TIME_SCALE:1 KGPU_ESTIMATE_SIGMA:0.11 LISTEN_ADDR::8080 LOG_FORMAT:json MAX_ATTEMPTS:5 POLICY:reactive REAP_INTERVAL:2s RECONSIDER_INTERVAL:2s WORKER_STALE_AFTER:15s]
+    p5s234_test.go:165: spec: decision 9 (BUILDER=cagra, a real card's memory, 'the cluster's cost configuration becomes COST_MODEL=calibrated (v1's block) in both overlays'); brief: BUILD_THREADS "6", WORKER_MEM_BYTES "25769803776"
+    p5s234_test.go:186: [render] k8s-gcp ConfigMap/scheduler: COST_* keys [COST_MODEL], COST_MODEL="calibrated", COLD_START=""
+    p5s234_test.go:186: [render] k8s-gcp ConfigMap/worker: COST_* keys [COST_MODEL], COST_MODEL="calibrated", COLD_START=""
+    p5s234_test.go:186: [render] k8s-gcp-gpu ConfigMap/scheduler: COST_* keys [COST_MODEL], COST_MODEL="calibrated", COLD_START=""
+    p5s234_test.go:186: [render] k8s-gcp-gpu ConfigMap/worker: COST_* keys [COST_MODEL], COST_MODEL="calibrated", COLD_START=""
+    p5s234_test.go:195: note: WORKER_MEM_BYTES 24159191040 is exactly 24 GiB and is the same value the CPU overlay already carries; decision 9 says the GPU overlay sets 'a real card's memory', but an L4's usable memory is 24 GB as marketed (about 22.5 GiB as the driver reports it). The modeled capacity is therefore about 1.5 GiB above the card: a build modeled between ~22.5 and 24 GiB would be claimed by a worker whose card cannot hold it (spec gap until the session measures it, reported)
+--- PASS: TestXcP5S2RenderConfigMaps (0.00s)
+=== RUN   TestXcP5S2RenderDCGMExporter
+    p5s234_test.go:202: spec: decision 9 ('adds NVIDIA's DCGM exporter as a DaemonSet on the GPU nodes for the Phase 2 dashboard'); brief: namespace kgpu, the accelerator selector and toleration, container port 9400, Service port 9400
+    p5s234_test.go:206: [render] DaemonSet/dcgm-exporter: namespace=kgpu nodeSelector=map[cloud.google.com/gke-accelerator:nvidia-l4] tolerations=[map[effect:NoSchedule key:nvidia.com/gpu operator:Equal value:present]]
+    p5s234_test.go:235: [render] dcgm container dcgm-exporter: image=nvcr.io/nvidia/k8s/dcgm-exporter:3.3.9-3.6.1-ubuntu22.04 ports=[map[containerPort:9400 name:metrics]] securityContext=map[privileged:true runAsNonRoot:false runAsUser:0] volumeMounts=[map[mountPath:/var/lib/kubelet/pod-resources name:pod-resources readOnly:true] map[mountPath:/usr/local/nvidia name:nvidia readOnly:true]] env=[map[name:NVIDIA_VISIBLE_DEVICES value:all] map[name:LD_LIBRARY_PATH value:/usr/local/nvidia/lib64] map[name:DCGM_EXPORTER_LISTEN value::9400] map[name:DCGM_EXPORTER_KUBERNETES value:true]]
+    p5s234_test.go:248: [render] Service/dcgm-exporter: namespace=kgpu ports=[map[name:metrics port:9400 targetPort:9400]] selector=map[app:dcgm-exporter]; DaemonSet pod labels=map[app:dcgm-exporter]
+    p5s234_test.go:280: note: the overlay renders monitors []; decision 9 says the exporter feeds 'the Phase 2 dashboard', but no ServiceMonitor/PodMonitor for dcgm-exporter is in the overlay, so Prometheus scraping it depends on something outside deploy/k8s-gcp-gpu (spec gap: where is it wired?)
+    p5s234_test.go:281: note (not asserted, outside the written spec): the exporter does not request nvidia.com/gpu, so the device plugin will not inject the driver's libraries or /dev/nvidia* into it; it is not privileged and mounts only pod-resources. On GKE the driver lives on the host under /home/kubernetes/bin/nvidia; an exporter without access to it usually fails to load NVML. Worth checking in the first GPU session
+--- PASS: TestXcP5S2RenderDCGMExporter (0.00s)
+=== RUN   TestXcP5S2RenderOnlyDocumentedObjectsDiffer
+    p5s234_test.go:288: spec: decision 9 ('The overlay keeps everything of deploy/k8s-gcp and changes the worker only ... and it adds NVIDIA's DCGM exporter'); brief: only the worker Deployment, the two ConfigMaps and the two dcgm objects may differ
+    p5s234_test.go:301: [render] ConfigMap/scheduler identical
+    p5s234_test.go:303: [render] ConfigMap/worker differs (3 paths):
+            ConfigMap/worker.data.BUILDER: "hnswlib" -> "cagra"
+            ConfigMap/worker.data.BUILD_THREADS: "8" -> "6"
+            ConfigMap/worker.data.WORKER_MEM_BYTES: "25769803776" -> "24159191040"
+    p5s234_test.go:301: [render] Deployment/scheduler identical
+    p5s234_test.go:303: [render] Deployment/worker differs (13 paths):
+            Deployment/worker.spec.replicas: "2" -> "0"
+            Deployment/worker.spec.template.spec.containers[0].image: "us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker:p4" -> "us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p5"
+            Deployment/worker.spec.template.spec.containers[0].resources.limits.memory: "6Gi" -> "24Gi"
+            Deployment/worker.spec.template.spec.containers[0].resources.limits.nvidia.com/gpu: (absent) -> "1"
+            Deployment/worker.spec.template.spec.containers[0].resources.requests.cpu: "7" -> "6"
+            Deployment/worker.spec.template.spec.containers[0].resources.requests.memory: "2Gi" -> "12Gi"
+            Deployment/worker.spec.template.spec.nodeSelector.cloud.google.com/gke-accelerator: (absent) -> "nvidia-l4"
+            Deployment/worker.spec.template.spec.nodeSelector.cloud.google.com/gke-nodepool: "workers" -> (absent)
+            Deployment/worker.spec.template.spec.tolerations: "[]" -> (absent)
+            Deployment/worker.spec.template.spec.tolerations[0].effect: (absent) -> "NoSchedule"
+            Deployment/worker.spec.template.spec.tolerations[0].key: (absent) -> "nvidia.com/gpu"
+            Deployment/worker.spec.template.spec.tolerations[0].operator: (absent) -> "Equal"
+            Deployment/worker.spec.template.spec.tolerations[0].value: (absent) -> "present"
+    p5s234_test.go:301: [render] Namespace/kgpu identical
+    p5s234_test.go:301: [render] Secret/objectstore identical
+    p5s234_test.go:301: [render] Secret/postgres identical
+    p5s234_test.go:301: [render] Service/objectstore identical
+    p5s234_test.go:301: [render] Service/postgres identical
+    p5s234_test.go:301: [render] Service/scheduler identical
+    p5s234_test.go:301: [render] Service/worker identical
+    p5s234_test.go:301: [render] StatefulSet/objectstore identical
+    p5s234_test.go:301: [render] StatefulSet/postgres identical
+    p5s234_test.go:313: [render] the GPU overlay adds DaemonSet/dcgm-exporter
+    p5s234_test.go:313: [render] the GPU overlay adds Service/dcgm-exporter
+--- PASS: TestXcP5S2RenderOnlyDocumentedObjectsDiffer (0.00s)
+=== RUN   TestXcP5S2RenderNoFakeCardAnywhere
+    p5s234_test.go:327: spec: the roadmap ('the only change from the kind manifests is the resource name (kgpu.io/gpu-card → nvidia.com/gpu)'); brief: no kgpu.io/gpu-card in either render
+    p5s234_test.go:330: [render] k8s-gcp-gpu: 0 occurrence(s) of kgpu.io/gpu-card, 3 of nvidia.com/gpu
+    p5s234_test.go:330: [render] k8s-gcp: 0 occurrence(s) of kgpu.io/gpu-card, 0 of nvidia.com/gpu
+    p5s234_test.go:345: [render] Deployment/worker container worker requests nvidia.com/gpu: 1
+--- PASS: TestXcP5S2RenderNoFakeCardAnywhere (0.00s)
+=== RUN   TestXcP5S3SimAlwaysGPUColdStartByHand
+    p5s234_test.go:365: hand: CPU build 20.6312 s, GPU path 4.6391 s (v0: CPU/10 + 2 + transfer 0.5760)
+    p5s234_test.go:371: spec: decision 11 / sim.Config.ColdStartS: 'the workers are not alive until ColdStartS after the first GPU build is queued'; brief: always_gpu with ColdStartS 10 -> round 16.0 s, queue wait 10
+    p5s234_test.go:372: always_gpu cold 10: policy=always_gpu completed=true round=16.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[10.0000] shardFinish=[16.0000] events=34
+    p5s234_test.go:375: hand: claimed at 10.0 (pool alive), finishes 14.6391, the shard learns at the next report 15.0, the index query runs 15.0 -> 16.0
+    p5s234_test.go:376: ok: round_s = 16.000000 as computed by hand (decision 11, brief: 16.0)
+    p5s234_test.go:377: ok: round_s (brief's number) = 16.000000 as computed by hand (brief)
+    p5s234_test.go:378: ok: queue waits = [10.0000] as computed by hand (first claim minus submit = the provisioning time)
+    p5s234_test.go:385: scripted gpu cold 10: policy=xcheck_script completed=true round=16.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[10.0000] shardFinish=[16.0000] events=34
+    p5s234_test.go:390: submit input: Pool{LiveWorkers 0, LargestMem 0, QueueWaitS 10.0000}, Est{Local 20.6312 GPU 4.0631 Transfer 0.5760}
+    p5s234_test.go:391: ok: submit-time Pool.QueueWaitS = 10.000000 as computed by hand (decision 11: an empty pool reports the provisioning time still to come)
+    p5s234_test.go:392: ok: scripted round_s = 16.000000 as computed by hand (same round as always_gpu)
+    p5s234_test.go:393: note: at submit the cold pool reports LiveWorkers=0 LargestMem=0; a policy that filters on LargestMem (the memory rule 'a build whose need exceeds every live worker's capacity must build locally') would see 0 here and keep every build local while the pool is cold. The docs do not say what LargestMem is while the pool is cold (spec gap if 0)
+--- PASS: TestXcP5S3SimAlwaysGPUColdStartByHand (0.00s)
+=== RUN   TestXcP5S3SimZeroChangesNothing
+    p5s234_test.go:400: scripted gpu cold 0: policy=xcheck_script completed=true round=6.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[6.0000] events=14
+    p5s234_test.go:402: spec: decision 11 'until then it is 0 everywhere, so nothing changes'; Phase 3's rule: an empty pool reports wait 0 at submit. hand: GPU done 4.6391, learnt 5.0, index query done 6.0
+    p5s234_test.go:403: ok: round_s = 6.000000 as computed by hand (ColdStartS 0: the worker is alive from t=0)
+    p5s234_test.go:404: ok: queue waits = [0.0000] as computed by hand (no provisioning)
+    p5s234_test.go:406: ok: submit-time Pool.QueueWaitS = 0.000000 as computed by hand (Phase 3's rule kept at 0)
+    p5s234_test.go:409: always_gpu cold 0 (zero value): policy=always_gpu completed=true round=6.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[6.0000] events=14
+    p5s234_test.go:410: always_gpu cold 0 (explicit): policy=always_gpu completed=true round=6.0000s lag=0.0000s gpu=1 local=0 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[0.0000] shardFinish=[6.0000] events=14
+--- PASS: TestXcP5S3SimZeroChangesNothing (0.00s)
+=== RUN   TestXcP5S3SimReactiveColdStart10vs30
+    p5s234_test.go:422: spec: decision 11 'The reactive policy then keeps a build local while the pool is cold whenever local time beats cold start + GPU path ... (10 s: offloaded; 30 s: kept local)'. hand: local 20.631 s; cold 10 + GPU 4.639 = 14.639 (GPU wins); cold 30 + GPU = 34.639 (local wins)
+    p5s234_test.go:428: reactive cold 0: policy=reactive completed=true round=8.0000s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[2.0000] shardFinish=[8.0000] events=18
+    p5s234_test.go:433: cold 0: final placement "gpu" (gpu=1 local=0 preempts=1 reneges=0), round 8.0000
+    p5s234_test.go:428: reactive cold 10: policy=reactive completed=true round=18.0000s lag=0.0000s gpu=1 local=0 preempts=1 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[12.0000] shardFinish=[18.0000] events=38
+    p5s234_test.go:433: cold 10: final placement "gpu" (gpu=1 local=0 preempts=1 reneges=0), round 18.0000
+    p5s234_test.go:445: ok: round_s (offloaded at the first tick, cold 10) = 18.000000 as computed by hand (hand: learnt at the next report after 16.64, then the index query)
+    p5s234_test.go:428: reactive cold 60: policy=reactive completed=true round=22.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[22.6312] events=49
+    p5s234_test.go:433: cold 60: final placement "local" (gpu=0 local=1 preempts=0 reneges=0), round 22.6312
+    p5s234_test.go:439: ok: round_s (kept local) = 22.631162 as computed by hand (local build then the two queued 1 s queries)
+    p5s234_test.go:454: diagnosis: Reactive.Reconsider on the same local_running view (queue wait 8 s, 2 s into a 20.6 s build, one query needing the index): with no live worker -> [{Kind:preempt BuildID:0:1 Priority:2 Reason:stay local 20.6s, migrate 13.6s, margin 2.0s}]; with one idle live worker -> [{Kind:preempt BuildID:0:1 Priority:2 Reason:stay local 20.6s, migrate 13.6s, margin 2.0s}]
+--- PASS: TestXcP5S3SimReactiveColdStart10vs30 (0.00s)
+=== RUN   TestXcP5S3SimLocalViewBeforeAnyQueue
+    p5s234_test.go:463: local only, cold 10: policy=xcheck_script completed=true round=22.6312s lag=0.0000s gpu=0 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[] shardFinish=[22.6312] events=49
+    p5s234_test.go:464: spec: sim.Config.ColdStartS (provisioning starts when the first GPU build is queued) + BuildView.QueueWaitS (for local_running: the wait it would join at if preempted now). Nothing is ever queued here, so at every tick a preemption would wait the whole 10 s
+    p5s234_test.go:468: ok: t=2 local_running QueueWaitS = 10.000000 as computed by hand (nothing queued yet: the full provisioning time is still to come)
+    p5s234_test.go:468: ok: t=4 local_running QueueWaitS = 10.000000 as computed by hand (nothing queued yet: the full provisioning time is still to come)
+    p5s234_test.go:468: ok: t=6 local_running QueueWaitS = 10.000000 as computed by hand (nothing queued yet: the full provisioning time is still to come)
+--- PASS: TestXcP5S3SimLocalViewBeforeAnyQueue (0.00s)
+=== RUN   TestXcP5S3SweepReactiveColdDiscontinuity
+    p5s234_test.go:474: sweep -scenarios uniform -policies reactive -rounds 1 -cold_start_s 0,0.5,10 → exit err=<nil>; stderr: sweep: 3 rows
+    p5s234_test.go:479: spec: decision 11 'The reactive policy then keeps a build local while the pool is cold whenever local time beats cold start + GPU path'. In `uniform` every build is below the reactive's 200k submit threshold, so every offload is a reconsider preemption; at cold start 0 the policy preempts all six. A 0.5 s cold start barely changes cold start + GPU path, so the offloads should survive it
+    p5s234_test.go:483: uniform reactive cold_start_s=0: builds_gpu=6 builds_local=0 preempts=6 round_s=29.99644298
+    p5s234_test.go:483: uniform reactive cold_start_s=0.5: builds_gpu=6 builds_local=0 preempts=6 round_s=29.99644298
+    p5s234_test.go:483: uniform reactive cold_start_s=10: builds_gpu=6 builds_local=0 preempts=6 round_s=29.99644298
+--- PASS: TestXcP5S3SweepReactiveColdDiscontinuity (0.32s)
+=== RUN   TestXcP5S3SimColdClockStartsAtFirstGPUQueue
+    p5s234_test.go:496: local@0 + gpu@5, cold 10: policy=xcheck_script completed=true round=21.6312s lag=0.3156s gpu=1 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[10.0000] shardFinish=[21.6312 21.0000] events=47
+    p5s234_test.go:497: spec: sim.Config.ColdStartS 'the workers are not alive until ColdStartS after the first GPU build is queued' (not after the round starts)
+    p5s234_test.go:499: submit shard 0: Pool{LiveWorkers 0 QueueWaitS 10.0000}
+    p5s234_test.go:500: ok: shard 0 submit-time QueueWaitS = 10.000000 as computed by hand (no GPU build queued yet: the whole provisioning time is still to come)
+    p5s234_test.go:499: submit shard 1: Pool{LiveWorkers 0 QueueWaitS 10.0000}
+    p5s234_test.go:500: ok: shard 1 submit-time QueueWaitS = 10.000000 as computed by hand (no GPU build queued yet: the whole provisioning time is still to come)
+    p5s234_test.go:502: ok: queue waits = [10.0000] as computed by hand (queued at 5, workers alive at 15)
+    p5s234_test.go:504: hand: shard 1's GPU build runs 15.0 -> 19.6391
+    p5s234_test.go:506: ok: shard 1 finish = 21.000000 as computed by hand (learnt at the next report, then the 1 s index query)
+--- PASS: TestXcP5S3SimColdClockStartsAtFirstGPUQueue (0.00s)
+=== RUN   TestXcP5S3SimColdWaitCountsDown
+    p5s234_test.go:517: gpu@0, gpu@3, local@0, 2 workers, cold 10: policy=xcheck_script completed=true round=93.4616s lag=77.4616s gpu=2 local=1 preempts=0 reneges=0 reprio=0 spec=0 (gpu-wins 0, local-wins 0) wasted=0.0000s queueWaits=[10.0000 7.0000] shardFinish=[16.0000 16.0000 93.4616] events=190
+    p5s234_test.go:518: spec: decision 11: 'the queue-wait estimate every policy sees at submit and at every reconsider tick is the provisioning time still to come'; policy.BuildView.QueueWaitS: for gpu_queued its current wait, for local_running the wait it would join at if preempted now
+    p5s234_test.go:524: submit shard 0: QueueWaitS 10.0000
+    p5s234_test.go:525: ok: shard 0 submit-time QueueWaitS = 10.000000 as computed by hand (provisioning still to come at its submit)
+    p5s234_test.go:524: submit shard 2: QueueWaitS 10.0000
+    p5s234_test.go:525: ok: shard 2 submit-time QueueWaitS = 10.000000 as computed by hand (provisioning still to come at its submit)
+    p5s234_test.go:524: submit shard 1: QueueWaitS 7.0000
+    p5s234_test.go:525: ok: shard 1 submit-time QueueWaitS = 7.000000 as computed by hand (provisioning still to come at its submit)
+    p5s234_test.go:527: ok: queue waits = [7.0000 10.0000] as computed by hand (both claimed when the pool comes alive at 10)
+    p5s234_test.go:536: tick at t=2: 0 live workers; shard 0 gpu_queued wait 8.0000; shard 2 local_running wait 8.0000
+    p5s234_test.go:543: ok: t=2 shard 0 gpu_queued QueueWaitS = 8.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:546: ok: t=2 local_running QueueWaitS = 8.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:536: tick at t=4: 0 live workers; shard 0 gpu_queued wait 6.0000; shard 2 local_running wait 6.0000; shard 1 gpu_queued wait 6.0000
+    p5s234_test.go:543: ok: t=4 shard 0 gpu_queued QueueWaitS = 6.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:548:   (t=4 local_running: two builds already wait for two workers; decision 11's rule says 6, a replay after the pool comes alive would add one GPU path; logged, not asserted)
+    p5s234_test.go:543: ok: t=4 shard 1 gpu_queued QueueWaitS = 6.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:536: tick at t=6: 0 live workers; shard 0 gpu_queued wait 4.0000; shard 2 local_running wait 4.0000; shard 1 gpu_queued wait 4.0000
+    p5s234_test.go:543: ok: t=6 shard 0 gpu_queued QueueWaitS = 4.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:548:   (t=6 local_running: two builds already wait for two workers; decision 11's rule says 4, a replay after the pool comes alive would add one GPU path; logged, not asserted)
+    p5s234_test.go:543: ok: t=6 shard 1 gpu_queued QueueWaitS = 4.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:536: tick at t=8: 0 live workers; shard 0 gpu_queued wait 2.0000; shard 2 local_running wait 2.0000; shard 1 gpu_queued wait 2.0000
+    p5s234_test.go:543: ok: t=8 shard 0 gpu_queued QueueWaitS = 2.000000 as computed by hand (decision 11: provisioning still to come)
+    p5s234_test.go:548:   (t=8 local_running: two builds already wait for two workers; decision 11's rule says 2, a replay after the pool comes alive would add one GPU path; logged, not asserted)
+    p5s234_test.go:543: ok: t=8 shard 1 gpu_queued QueueWaitS = 2.000000 as computed by hand (decision 11: provisioning still to come)
+--- PASS: TestXcP5S3SimColdWaitCountsDown (0.00s)
+=== RUN   TestXcP5S3SweepColdStartAxis
+    p5s234_test.go:561: sweep -scenarios skewed -policies reactive,always_gpu -rounds 2 -cold_start_s 0,120 → exit err=<nil>; stderr: sweep: 8 rows
+    p5s234_test.go:570: spec: decision 11 ('-cold_start_s, a sweep axis, echoed as a column'); the step 2–4 notes: 'at 0 both offload all six builds (30.0 s); at 120 reactive keeps all six local (56.7 s) while always-GPU waits for the pool (140.6 s)'
+    p5s234_test.go:579: row: policy=reactive seed=1 cold_start_s=0 builds_gpu=6 builds_local=0 round_s=29.99764248 queue_wait_p50_s=5.710980416 completed=true
+    p5s234_test.go:579: row: policy=reactive seed=2 cold_start_s=0 builds_gpu=6 builds_local=0 round_s=29.99243469 queue_wait_p50_s=4.989966777 completed=true
+    p5s234_test.go:579: row: policy=always_gpu seed=1 cold_start_s=0 builds_gpu=6 builds_local=0 round_s=29.99764248 queue_wait_p50_s=3.710980416 completed=true
+    p5s234_test.go:579: row: policy=always_gpu seed=2 cold_start_s=0 builds_gpu=6 builds_local=0 round_s=29.99243469 queue_wait_p50_s=3.257452134 completed=true
+    p5s234_test.go:579: row: policy=reactive seed=1 cold_start_s=120 builds_gpu=0 builds_local=6 round_s=56.68284782 queue_wait_p50_s=0 completed=true
+    p5s234_test.go:579: row: policy=reactive seed=2 cold_start_s=120 builds_gpu=0 builds_local=6 round_s=57.77157885 queue_wait_p50_s=0 completed=true
+    p5s234_test.go:579: row: policy=always_gpu seed=1 cold_start_s=120 builds_gpu=6 builds_local=0 round_s=140.6422716 queue_wait_p50_s=123.7109804 completed=true
+    p5s234_test.go:579: row: policy=always_gpu seed=2 cold_start_s=120 builds_gpu=6 builds_local=0 round_s=139.3252263 queue_wait_p50_s=123.2574521 completed=true
+    p5s234_test.go:608: seed 1: always_gpu 30.00 -> 140.64 at 120; reactive at 120 56.68
+    p5s234_test.go:608: seed 2: always_gpu 29.99 -> 139.33 at 120; reactive at 120 57.77
+    p5s234_test.go:613: doc numbers vs seed 1 (the doc names no seed or round count; logged): reactive@0 30.0 always_gpu@0 30.0 (doc 30.0), reactive@120 56.7 (doc 56.7), always_gpu@120 140.6 (doc 140.6)
+--- PASS: TestXcP5S3SweepColdStartAxis (0.03s)
+=== RUN   TestXcP5S3SweepRefusesBadColdStart
+    p5s234_test.go:619: spec (brief; same rule as the step 1 triage C): -cold_start_s refuses negative, NaN and Inf with a non-zero exit
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s -1 → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got -1
+    p5s234_test.go:622: -cold_start_s "-1" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s -0.5 → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got -0.5
+    p5s234_test.go:622: -cold_start_s "-0.5" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s NaN → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got NaN
+    p5s234_test.go:622: -cold_start_s "NaN" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s nan → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got NaN
+    p5s234_test.go:622: -cold_start_s "nan" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s Inf → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got +Inf
+    p5s234_test.go:622: -cold_start_s "Inf" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s +Inf → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got +Inf
+    p5s234_test.go:622: -cold_start_s "+Inf" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s -Inf → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got -Inf
+    p5s234_test.go:622: -cold_start_s "-Inf" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s abc → exit err=exit status 1; stderr: 2026/10/31 16:53:13 bad float "abc"
+    p5s234_test.go:622: -cold_start_s "abc" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s 0,-5 → exit err=exit status 1; stderr: 2026/10/31 16:53:13 sweep: -cold_start_s values must be non-negative finite numbers; got -5
+    p5s234_test.go:622: -cold_start_s "0,-5" -> refused=true
+    p5s234_test.go:621: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s 0,,120 → exit err=exit status 1; stderr: 2026/10/31 16:53:13 bad float ""
+    p5s234_test.go:622: -cold_start_s "0,,120" -> refused=true
+    p5s234_test.go:627: sweep -scenarios skewed -policies reactive -rounds 1 -cold_start_s 0 → exit err=<nil>; stderr: sweep: 1 rows
+    p5s234_test.go:632: -cold_start_s 0 echoes "0"
+    p5s234_test.go:633: sweep -scenarios skewed -policies reactive -rounds 1 → exit err=<nil>; stderr: sweep: 1 rows
+--- PASS: TestXcP5S3SweepRefusesBadColdStart (0.04s)
+=== RUN   TestXcP5S3DemoCSVCarriesColdStartZero
+    p5s234_test.go:642: spec: decision 11 (0 everywhere until measured, so nothing changes) and the brief: the committed demo CSVs carry cold_start_s = 0 and `-cost default` without -cold_start_s reproduces every cell
+    p5s234_test.go:662: demo/rounds.csv: 700 rows, cold_start_s at column 26, rows with cold_start_s != "0": 0
+    p5s234_test.go:662: demo/sigma.csv: 600 rows, cold_start_s at column 26, rows with cold_start_s != "0": 0
+    p5s234_test.go:662: demo/shrinking.csv: 100 rows, cold_start_s at column 26, rows with cold_start_s != "0": 0
+    p5s234_test.go:669: sweep -scenarios uniform,skewed,bimodal,downstream_heavy,staggered,high_dim,production -policies all -rounds 20 -cost default → exit err=<nil>; stderr: sweep: 700 rows
+    p5s234_test.go:695: demo rows 700, rerun rows 700, missing 0, differing cells 0 (every column of the demo, cold_start_s included)
+--- PASS: TestXcP5S3DemoCSVCarriesColdStartZero (71.47s)
+=== RUN   TestXcP5S3APIColdStartEmptyPool
+    p5s234_test.go:737: spec: decision 11 + api.Config.ColdStartS: 'with no live worker the queue-wait estimate a policy sees is this instead of 0'; brief: POST /builds replies gpu_queue_wait_ms = 150000
+    p5s234_test.go:738: POST /builds shard 0 (n=10000 dim=64) -> 201 {"build_id":"0:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":150000}
+    p5s234_test.go:742: [db] after submit (no workers): build_id=0:1 placement=gpu state=queued attempt=0 priority=0 lease_owner=<nil> started_at=<nil> finished_at=<nil>
+    p5s234_test.go:745: worker w-1 heartbeats, mem 17179869184
+    p5s234_test.go:746: POST /builds shard 1 (n=10000 dim=64) -> 201 {"build_id":"1:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":2114}
+    p5s234_test.go:749: hand: one idle worker, shard 0's GPU build queued ahead (GPUTotal 2.114524649s): the newcomer waits ~2114 ms behind it (PoolState doc: 'joined at priority 0 behind every queued job')
+    p5s234_test.go:765: POST /builds shard 2 (n=10000 dim=64) -> 201 {"build_id":"2:1","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":150000}
+    p5s234_test.go:766: worker aged past WorkerStaleAfter: gpu_queue_wait_ms 150000
+--- PASS: TestXcP5S3APIColdStartEmptyPool (0.07s)
+=== RUN   TestXcP5S3APIColdStartUnsetKeepsZero
+    p5s234_test.go:775: spec: decision 11 'COLD_START ... default 0 ... with the Phase 3 rule kept as the default': an empty pool reports 0
+    p5s234_test.go:776: POST /builds shard 0 (n=10000 dim=64) -> 201 {"build_id":"0:2","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":0}
+    p5s234_test.go:783: worker w-1 heartbeats, mem 17179869184
+    p5s234_test.go:784: POST /builds shard 0 (n=10000 dim=64) -> 201 {"build_id":"0:3","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":0}
+    p5s234_test.go:790: duplicate POST /builds -> 200 {"build_id":"0:3","placement":"gpu","priority":0,"reason":"duplicate submit; existing decision returned","mem_bytes":5120000,"created":false,"cpu_build_ms":825,"gpu_total_ms":2114} (the existing contract omits gpu_queue_wait_ms on a duplicate)
+--- PASS: TestXcP5S3APIColdStartUnsetKeepsZero (0.04s)
+=== RUN   TestXcP5S3APIColdStartReachesThePolicy
+    p5s234_test.go:806: POST /builds shard 0 (n=100000 dim=128) -> 201 {"build_id":"0:4","placement":"local","priority":0,"reason":"100000 vectors \u003c threshold 200000; reconsider watches the backlog","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_wait_ms":0}
+    p5s234_test.go:807: reactive, ColdStartS 0, empty pool: placement local, reason "100000 vectors < threshold 200000; reconsider watches the backlog", gpu_queue_wait_ms 0, cpu_build_ms 20631, gpu_total_ms 4639
+    p5s234_test.go:806: POST /builds shard 0 (n=100000 dim=128) -> 201 {"build_id":"0:5","placement":"local","priority":0,"reason":"100000 vectors \u003c threshold 200000; reconsider watches the backlog","mem_bytes":102400000,"created":true,"cpu_build_ms":20631,"gpu_total_ms":4639,"gpu_queue_wait_ms":150000}
+    p5s234_test.go:807: reactive, ColdStartS 150, empty pool: placement local, reason "100000 vectors < threshold 200000; reconsider watches the backlog", gpu_queue_wait_ms 150000, cpu_build_ms 20631, gpu_total_ms 4639
+--- PASS: TestXcP5S3APIColdStartReachesThePolicy (0.03s)
+=== RUN   TestXcP5S3ReconsiderColdStartEmptyPool
+    p5s234_test.go:864: fixture: round 6 started_at backdated by 1 h, so the derived arrival rate is ~1/3600 q/s
+    p5s234_test.go:865: submitted 0:6 n=100000 dim=128 mem=102400000 placement=local priority=0
+    p5s234_test.go:866: submitted 1:6 n=100000 dim=128 mem=102400000 placement=gpu priority=0
+    p5s234_test.go:867: spec: decision 11 'at submit and at every reconsider tick'; reconsider.Config.ColdStartS 'a cold pool's provisioning time: the wait an empty pool reports'; brief: the timer reports 150 for an empty pool's local-running and queued views
+    p5s234_test.go:868: tick (ColdStartS 150): 0 workers
+    p5s234_test.go:868:   view 0:6 phase=local_running QueueWaitS=150.0000
+    p5s234_test.go:868:   view 1:6 phase=gpu_queued QueueWaitS=150.0000
+    p5s234_test.go:868: ok: ColdStartS 150, empty pool: local_running QueueWaitS = 150.0000
+    p5s234_test.go:868: ok: ColdStartS 150, empty pool: gpu_queued QueueWaitS = 150.0000
+    p5s234_test.go:872: --- ColdStartS 0 (Phase 3's rule): the empty pool reports 0
+    p5s234_test.go:873: tick (ColdStartS 0): 0 workers
+    p5s234_test.go:873:   view 0:6 phase=local_running QueueWaitS=0.0000
+    p5s234_test.go:873:   view 1:6 phase=gpu_queued QueueWaitS=0.0000
+    p5s234_test.go:873: ok: ColdStartS 0, empty pool: local_running QueueWaitS = 0.0000
+    p5s234_test.go:873: ok: ColdStartS 0, empty pool: gpu_queued QueueWaitS = 0.0000
+    p5s234_test.go:875: --- a live worker joins: the replay's wait applies instead of the cold start
+    p5s234_test.go:876: worker w-1 heartbeats, mem 17179869184
+    p5s234_test.go:877: tick (ColdStartS 150): 1 workers
+    p5s234_test.go:877:   view 0:6 phase=local_running QueueWaitS=4.6391
+    p5s234_test.go:877:   view 1:6 phase=gpu_queued QueueWaitS=0.0000
+    p5s234_test.go:884: hand: one idle worker; the queued build is at the head (wait 0); a local build preempted now would join behind it (~4.6391 s)
+--- PASS: TestXcP5S3ReconsiderColdStartEmptyPool (0.02s)
+=== RUN   TestXcP5S3SchedulerColdStartEnv
+    p5s234_test.go:1020: spec: `go doc ./scheduler/cmd/scheduler`: 'COLD_START default 0; a duration (e.g. 150s)'; brief: with no live worker POST /builds replies gpu_queue_wait_ms = 150000; unset keeps 0
+    p5s234_test.go:1046: env [COLD_START=150s]: POST /builds -> 201 {"build_id":"0:7","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":150000}; first log lines: [time=2026-10-31T16:54:27.545-07:00 level=INFO msg="connected to postgres" time=2026-10-31T16:54:27.550-07:00 level=INFO msg="migrations checked" applied_now=[] already_applied=8 waited_for_lock=1ms time=2026-10-31T16:54:27.550-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:49397 policy=always_gpu cost_model=default cold_start_s=150 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s]; any line mentions cold_start: true
+    p5s234_test.go:1046: env []: POST /builds -> 201 {"build_id":"0:8","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":0}; first log lines: [time=2026-10-31T16:54:27.671-07:00 level=INFO msg="connected to postgres" time=2026-10-31T16:54:27.674-07:00 level=INFO msg="migrations checked" applied_now=[] already_applied=8 waited_for_lock=1ms time=2026-10-31T16:54:27.675-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:49410 policy=always_gpu cost_model=default cold_start_s=0 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s]; any line mentions cold_start: true
+    p5s234_test.go:1046: env [COLD_START=2m30s]: POST /builds -> 201 {"build_id":"0:9","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":150000}; first log lines: [time=2026-10-31T16:54:27.794-07:00 level=INFO msg="connected to postgres" time=2026-10-31T16:54:27.796-07:00 level=INFO msg="migrations checked" applied_now=[] already_applied=8 waited_for_lock=1ms time=2026-10-31T16:54:27.796-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:49415 policy=always_gpu cost_model=default cold_start_s=150 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s]; any line mentions cold_start: true
+    p5s234_test.go:1046: env [COLD_START=0]: POST /builds -> 201 {"build_id":"0:10","placement":"gpu","priority":0,"reason":"always_gpu","mem_bytes":5120000,"created":true,"cpu_build_ms":825,"gpu_total_ms":2114,"gpu_queue_wait_ms":0}; first log lines: [time=2026-10-31T16:54:27.912-07:00 level=INFO msg="connected to postgres" time=2026-10-31T16:54:27.914-07:00 level=INFO msg="migrations checked" applied_now=[] already_applied=8 waited_for_lock=1ms time=2026-10-31T16:54:27.914-07:00 level=INFO msg="scheduler listening" addr=127.0.0.1:49420 policy=always_gpu cost_model=default cold_start_s=0 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s]; any line mentions cold_start: true
+    p5s234_test.go:1051: malformed COLD_START (spec silent on what is refused; the scheduler's other bad values exit 2, step 1 triage D):
+    p5s234_test.go:1066:   COLD_START="abc" -> exit 2: time=2026-10-31T16:54:28.025-07:00 level=ERROR msg="bad duration" var=COLD_START value=abc err="time: invalid duration \"abc\""
+    p5s234_test.go:1066:   COLD_START="150" -> exit 2: time=2026-10-31T16:54:28.134-07:00 level=ERROR msg="bad duration" var=COLD_START value=150 err="time: missing unit in duration \"150\""
+    p5s234_test.go:1066:   COLD_START="-5s" -> exit 2: time=2026-10-31T16:54:28.236-07:00 level=ERROR msg="COLD_START must not be negative" value=-5s
+    p5s234_test.go:1066:   COLD_START="NaN" -> exit 2: time=2026-10-31T16:54:28.343-07:00 level=ERROR msg="bad duration" var=COLD_START value=NaN err="time: invalid duration \"NaN\""
+--- PASS: TestXcP5S3SchedulerColdStartEnv (3.71s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	76.508s
+
+== Docker events for container kgpu-test-pg-86417
+  16:53:08  create
+  16:53:08  start
+  16:54:28  kill
+  16:54:28  die
+  16:54:28  destroy
+
+== Result: PASS

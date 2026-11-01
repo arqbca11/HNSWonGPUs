@@ -2,7 +2,8 @@
 
     Builder.build(job, progress, cancel) -> Artifact
 
-Fake (this file), hnswlib (Phase 4) and cuVS (Phase 5) are implementations.
+Fake (this file), hnswlib (Phase 4) and cagra — cuVS on the GPU, through the
+same child process (Phase 5) — are implementations.
 Nothing else in the worker changes when one is added.
 """
 
@@ -110,15 +111,23 @@ class HnswlibBuilder:
     (the lease is gone, so nothing it could still write may be completed);
     exit 3 becomes GateRefused with the gate's reason; exit 0's manifest on
     stdout becomes the Artifact. The object store's address and keys reach
-    the child through the environment (S3_*), as does RECALL_MIN."""
+    the child through the environment (S3_*), as does RECALL_MIN.
+
+    With builder="cagra" (Phase 5 decision 10) the same child runs the GPU
+    path (`--builder cagra`: cuVS CAGRA converted to HNSW) and the Artifact's
+    kind is the manifest's "cagra-hnsw"; nothing else differs (invariant 9)."""
 
     name = "hnswlib"
 
-    def __init__(self, model: Model, cmd: list[str], threads: int = 8, env: dict[str, str] | None = None) -> None:
+    def __init__(self, model: Model, cmd: list[str], threads: int = 8, env: dict[str, str] | None = None,
+                 builder: str = "hnswlib") -> None:
         self.model = model
         self.cmd = cmd
         self.threads = threads
         self.env = env
+        self.builder = builder
+        if builder == "cagra":
+            self.name = "cagra-hnsw"
 
     def estimate_s(self, job: Job) -> float:
         # the cost model's estimate until Phase 4's calibration replaces its constants
@@ -132,6 +141,8 @@ class HnswlibBuilder:
         import subprocess
         argv = self.cmd + ["build", "--build-id", job.build_id, "--attempt", str(job.attempt), "--dataset", job.dataset,
                            "--n-shards", str(job.n_shards), "--shard", str(job.shard_id), "--threads", str(self.threads)]
+        if self.builder == "cagra":
+            argv += ["--builder", "cagra"]
         start = time.monotonic()
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                 env={**os.environ, **(self.env or {})}, start_new_session=True)
@@ -180,7 +191,7 @@ class HnswlibBuilder:
             raise RuntimeError(f"builder exited {rc}: {out[:300]}")
         m = json.loads(out)
         progress(1.0)
-        return Artifact(build_id=job.build_id, attempt=job.attempt, kind=self.name,
+        return Artifact(build_id=job.build_id, attempt=job.attempt, kind=str(m.get("kind") or self.name),
                         index_bytes=int(m["index_bytes"]), elapsed_s=time.monotonic() - start)
 
 
@@ -188,8 +199,7 @@ def by_name(name: str, model: Model, time_scale: float, fail_build_ids: frozense
             cmd: list[str] | None = None, threads: int = 8) -> Builder:
     if name in ("", "fake"):
         return FakeBuilder(model, time_scale=time_scale, fail_build_ids=fail_build_ids)
-    if name == "hnswlib":
-        import shlex
+    if name in ("hnswlib", "cagra"):
         import sys
-        return HnswlibBuilder(model, cmd or [sys.executable, "-m", "kgpu_builder"], threads=threads)
+        return HnswlibBuilder(model, cmd or [sys.executable, "-m", "kgpu_builder"], threads=threads, builder=name)
     raise ValueError(f"unknown builder {name!r}")

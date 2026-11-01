@@ -217,9 +217,17 @@ def cmd_build(cfg: Config, args) -> int:
     if "/" in args.build_id or not args.build_id:
         print(f"build: --build-id {args.build_id!r} must be shard:round, without a slash (it names the artifact prefix)", file=sys.stderr)
         return 2
+    if args.builder == "cagra":
+        # before any fetch: a worker without cuVS must fail fast with the reason (decision 10)
+        from .cagra import cuvs_available
+        if not cuvs_available():
+            print(json.dumps({"status": "failed", "reason": "CuvsUnavailable: cuVS is not installed in this environment (no GPU build path): "
+                              "run the worker's GPU image (worker/Dockerfile.gpu) or use --builder hnswlib",
+                              "build_id": args.build_id, "attempt": args.attempt}), flush=True)
+            return 1
     spec = BuildSpec(build_id=args.build_id, attempt=args.attempt, dataset=args.dataset, n_shards=args.n_shards,
                      shard=args.shard, threads=args.threads, m=args.m, ef_construction=args.ef_construction,
-                     recall_k=args.recall_k, ef_search=args.ef_search, recall_min=recall_min)
+                     recall_k=args.recall_k, ef_search=args.ef_search, recall_min=recall_min, builder=args.builder)
 
     def progress(p: float) -> None:
         print(json.dumps({"progress": round(p, 4)}), file=sys.stderr, flush=True)
@@ -382,6 +390,8 @@ def main(argv=None) -> int:
     b.add_argument("--ef-construction", type=int, default=200)
     b.add_argument("--recall-k", type=int, default=10)
     b.add_argument("--ef-search", type=int, default=100)
+    b.add_argument("--builder", choices=["hnswlib", "cagra"], default="hnswlib",
+                   help="hnswlib on the CPU (default) or cagra: cuVS on the GPU converted to HNSW (Phase 5 decision 10; needs the GPU image)")
     for name in ("download", "split", "groundtruth", "upload", "verify", "all"):
         sp_ = sub.add_parser(name)
         sp_.add_argument("dataset")

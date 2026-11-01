@@ -94,7 +94,15 @@ func (p Reactive) Reconsider(in ReconsiderInput) []Action {
 	for _, b := range in.Builds {
 		switch b.Phase {
 		case "local_running":
-			if b.Spec.MemBytes > largestMem || hasCopy[b.Spec.RoundID][b.Spec.ShardID] {
+			// A COLD pool (Phase 5 decision 11) has no live worker yet reports
+			// a finite, positive wait — its provisioning time — and will have
+			// workers when it is done; the memory filter cannot be applied to
+			// workers that do not exist yet, and the cost comparison below
+			// carries the wait. An EMPTY pool reporting 0 (Phase 3's transient
+			// case) still never takes a preemption: progress would be lost for
+			// a queue nobody is coming to serve (bug 11).
+			coldPool := len(in.Workers) == 0 && b.QueueWaitS > 0 && !math.IsInf(b.QueueWaitS, 1)
+			if (!coldPool && b.Spec.MemBytes > largestMem) || hasCopy[b.Spec.RoundID][b.Spec.ShardID] {
 				continue
 			}
 			if a, ok := p.preemptIfWorth(b); ok {

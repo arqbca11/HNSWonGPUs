@@ -73,6 +73,10 @@ func main() {
 	maxAttempts := envInt(log, "MAX_ATTEMPTS", 5)
 	staleAfter := envDuration(log, "WORKER_STALE_AFTER", 30*time.Second)
 	coldStartS := envDuration(log, "COLD_START", 0).Seconds() // Phase 5 decision 11: a pool that autoscales from zero
+	if coldStartS < 0 {
+		log.Error("COLD_START must not be negative", "value", os.Getenv("COLD_START"))
+		os.Exit(2)
+	}
 	addr := env("LISTEN_ADDR", ":8080")
 	shutdownDelay := envDuration(log, "SHUTDOWN_DELAY", 3*time.Second)
 
@@ -110,7 +114,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		log.Info("scheduler listening", "addr", addr, "policy", pol.Name(), "cost_model", costModelName(),
+		log.Info("scheduler listening", "addr", addr, "policy", pol.Name(), "cost_model", costModelName(), "cold_start_s", coldStartS,
 			"reap_interval", reapInterval, "reconsider_interval", reconsiderInterval,
 			"time_scale", timeScale, "max_attempts", maxAttempts, "worker_stale_after", staleAfter)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

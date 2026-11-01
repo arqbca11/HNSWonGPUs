@@ -380,7 +380,7 @@ Add a real GPU build path to the Phase 4 cloud topology, run it on a small GPU n
 - [x] **Cost model v1** (Phase 5 decisions 6–8): the shape the Phase 4 calibration found — A·n^P·ln(n)·(dim + D0), a gate, a save, separate fetch and upload bandwidths, the shard's store round trip as a rig flag — with `Default()` kept as v0 and `Calibrated()` the measured block; the calibration point times the whole worker path; the comparison rerun on the block (speedup.md evidence 9).
 - [x] The GPU node pool's manifests and the bring-up flag (Phase 5 decision 9: `deploy/k8s-gcp-gpu/`, `GPU_POOLS=1 scripts/gcp-up.sh`, the DCGM exporter), rendered and cross-checked now, applied when the quota lands
 - [x] The cold-start term in the GPU finish estimate (Phase 5 decision 11: `COLD_START` on the scheduler, `ColdStartS` / `-cold_start_s` in the simulator and the sweep; by-hand tests on both), measured in the first GPU session
-- [ ] The cuVS builder behind the build interface, its tests skipping without CUDA
+- [x] The cuVS builder behind the build interface (Phase 5 decision 10: `cagra.py`, `build --builder cagra`, `BUILDER=cagra`, `worker/Dockerfile.gpu`), its GPU test skipping without cuVS; the refusal path tested everywhere
 
 ### GPU builder
 

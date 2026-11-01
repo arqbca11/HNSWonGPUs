@@ -77,3 +77,21 @@ spec:
     - port: metrics
       path: /metrics
       interval: 5s
+---
+# Phase 5: NVIDIA's DCGM exporter on the GPU nodes (deploy/k8s-gcp-gpu/
+# dcgm-exporter.yaml) — per-card utilisation, memory and temperature, scraped
+# into the Phase 2 dashboard. Harmless where no such Service exists.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dcgm-exporter
+  namespace: kgpu
+  labels: {app: dcgm-exporter}
+spec:
+  selector:
+    matchLabels: {app: dcgm-exporter}
+  namespaceSelector: {matchNames: [kgpu]}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 5s

@@ -1,0 +1,39 @@
+== Phase 5 step 4 (GPU-free): the cuVS builder scaffold's tests on the laptop (no cuVS here: the GPU build test skips), 2026-10-31T23:27:37Z
+== builder
+============================= test session starts ==============================
+platform darwin -- Python 3.12.15, pytest-8.4.2, pluggy-1.7.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/builder
+configfile: pyproject.toml
+collecting ... collected 3 items
+
+tests/test_cagra.py::test_without_cuvs_the_path_refuses_in_one_line cuvs_available() = False; cuvs_version() = 'unknown'
+build_index_cagra -> CuvsUnavailable: cuVS is not installed in this environment (no GPU build path): run the worker's GPU image (worker/Dockerfile.gpu) or use --builder hnswlib
+PASSED
+tests/test_cagra.py::test_cli_cagra_build_fails_fast_without_cuvs exit 1; stdout {"status": "failed", "reason": "CuvsUnavailable: cuVS is not installed in this environment (no GPU build path): run the worker's GPU image (worker/Dockerfile.gpu) or use --builder hnswlib", "build_id"
+PASSED
+tests/test_cagra.py::test_cagra_build_loads_in_stock_hnswlib_and_passes_the_gate SKIPPED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/test_cagra.py::test_without_cuvs_the_path_refuses_in_one_line
+PASSED tests/test_cagra.py::test_cli_cagra_build_fails_fast_without_cuvs
+SKIPPED [1] tests/test_cagra.py:40: needs cuVS and a GPU (the GPU image on a GPU node)
+========================= 2 passed, 1 skipped in 0.45s =========================
+
+== worker
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-8.4.2, pluggy-1.6.0 -- /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/ruoqibai/Desktop/Career/KubernetesGPU/worker
+configfile: pyproject.toml
+collecting ... collected 8 items / 7 deselected / 1 selected
+
+tests/test_hnswlib_builder.py::test_cagra_builder_is_the_same_child_with_a_flag by_name('cagra') -> HnswlibBuilder name=cagra-hnsw builder=cagra
+artifact kind=cagra-hnsw index_bytes=123
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/test_hnswlib_builder.py::test_cagra_builder_is_the_same_child_with_a_flag
+======================= 1 passed, 7 deselected in 0.08s ========================

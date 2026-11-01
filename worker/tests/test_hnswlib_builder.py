@@ -152,3 +152,27 @@ def test_worker_runs_the_real_builder_and_the_gate(db, dsn, toy_store):
     print(f"  [db] {bid2}: failed, reason={reason!r}; artifacts under {bid2}: {st.list(f'artifacts/{bid2}/')}")
     assert reason.startswith("GateRefused: recall@10") and not st.exists(f"artifacts/{bid2}/1/manifest.json")
     w2.shutdown("test over"); t2.join(5)
+
+
+def test_cagra_builder_is_the_same_child_with_a_flag(tmp_path):
+    """Phase 5 decision 10: BUILDER=cagra runs the same builder CLI with
+    --builder cagra; the Artifact's kind is the manifest's."""
+    import json as _json
+    import os as _os
+    import sys as _sys
+    import threading as _threading
+    from kgpu_worker.builder import Job, by_name
+    from kgpu_worker.costmodel import Model
+    stub = tmp_path / "stub.py"
+    stub.write_text("import json, sys\n"
+                    "args = sys.argv[1:]\n"
+                    "assert args[0] == 'build' and args[-2:] == ['--builder', 'cagra'], args\n"
+                    "print(json.dumps({'status': 'done', 'kind': 'cagra-hnsw', 'index_bytes': 123}))\n")
+    b = by_name("cagra", Model(), 1.0, cmd=[_sys.executable, str(stub)], threads=6)
+    print(f"by_name('cagra') -> {type(b).__name__} name={b.name} builder={b.builder}")
+    assert b.name == "cagra-hnsw" and b.builder == "cagra"
+    art = b.build(Job(build_id="1:1", round_id=1, attempt=1, n_vectors=1000, dim=128, mem_bytes=1 << 20, dataset="sift-128", n_shards=6),
+                  progress=lambda p: None, cancel=_threading.Event())
+    print(f"artifact kind={art.kind} index_bytes={art.index_bytes}")
+    assert art.kind == "cagra-hnsw" and art.index_bytes == 123
+    _os.environ.pop("X", None); _json.dumps({})

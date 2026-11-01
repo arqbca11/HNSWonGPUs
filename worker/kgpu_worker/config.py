@@ -11,8 +11,10 @@
     RENEW_INTERVAL_SECONDS    default 10
     HEARTBEAT_INTERVAL_SECONDS default 5
     POLL_INTERVAL_SECONDS     how long to wait when the queue is empty; default 0.5
-    BUILDER                   fake (default) or hnswlib (Phase 4: the builder CLI as a child
-                              process, decision 18; the round must carry a dataset)
+    BUILDER                   fake (default), hnswlib (Phase 4: the builder CLI as a child
+                              process, decision 18; the round must carry a dataset) or cagra
+                              (Phase 5: the same CLI with --builder cagra — cuVS on the GPU,
+                              converted to HNSW; needs the GPU image, decision 10)
     BUILDER_CMD               the command that runs the builder CLI; default "<this python> -m
                               kgpu_builder" (the builder package is a dependency of the worker)
     BUILD_THREADS             threads the builder may use; default 8 (the roadmap's worker vs a
@@ -82,7 +84,7 @@ class Config:
             (self.fake_time_scale > 0, "FAKE_TIME_SCALE must be positive"),
             (self.shutdown_finish_budget_s >= 0, "SHUTDOWN_FINISH_BUDGET_SECONDS must be non-negative"),
             (self.log_format in ("json", "text"), "LOG_FORMAT must be json or text"),
-            (self.builder in ("fake", "hnswlib"), "BUILDER must be fake or hnswlib"),
+            (self.builder in ("fake", "hnswlib", "cagra"), "BUILDER must be fake, hnswlib or cagra"),
             (self.build_threads >= 1, "BUILD_THREADS must be at least 1"),
             (len(self.builder_cmd) >= 1, "BUILDER_CMD must name a command"),
             (0 <= self.recall_min <= 1, "RECALL_MIN must be a number in [0, 1]"),

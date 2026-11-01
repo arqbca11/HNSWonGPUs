@@ -1,0 +1,27 @@
+# The GPU worker image (Phase 5 decisions 1, 10): the CPU image is unchanged
+# (worker/Dockerfile); this one starts from NVIDIA's RAPIDS base, which ships
+# CUDA 12 and the cuVS library the CAGRA build path imports, and installs the
+# same builder and worker packages on top. The worker runs the builder CLI as
+# a child process exactly as on the CPU image, with BUILDER=cagra selecting
+# the GPU path (deploy/k8s-gcp-gpu/config-gpu.yaml). hnswlib is compiled
+# here too: it is what loads the converted file, the proof of decision 10.
+#
+#   docker buildx build --platform linux/amd64 -f worker/Dockerfile.gpu \
+#     -t us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p5 --push .
+#
+# The image is several GB (CUDA); it is only ever pulled by a GPU node.
+# Context: the repo root (both packages are copied in).
+FROM rapidsai/base:26.10-cuda12-py3.12
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential tini && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY builder /app/builder
+COPY worker /app/worker
+# the RAPIDS image's conda python is the one with cuvs; install into it
+RUN pip install --no-cache-dir /app/builder /app/worker
+
+ENV PYTHONUNBUFFERED=1 BUILDER=cagra BUILD_THREADS=6
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "-m", "kgpu_worker"]

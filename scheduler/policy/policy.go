@@ -58,8 +58,8 @@ type ShardStatus struct {
 // build's memory fits no live worker.
 type PoolState struct {
 	LiveWorkers int
-	LargestMem  int64 // biggest memory capacity among live workers; 0 if none
-	QueueWaitS  float64
+	LargestMem  int64   // biggest memory capacity among live workers; 0 if none (also while a pool is cold)
+	QueueWaitS  float64 // 0 with an empty pool, unless the pool is cold: then its provisioning time still to come (Phase 5 decision 11)
 }
 
 // Input is everything a deployable policy may know at submit time.

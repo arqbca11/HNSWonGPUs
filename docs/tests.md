@@ -986,6 +986,35 @@ Written from the docs and `go doc` alone; found F1 (the duplicate response's `gp
 
 | Test | Scenario, in plain words | What must hold |
 | --- | --- | --- |
-| sim/TestColdStartByHand | One shard, one worker, a 10 s cold start under always-GPU; then the reactive policy at 10 s and at 30 s; then no cold start. | The build is claimed when the pool is provisioned at 10 s and done at 10 + the GPU total (14.639), heard at the 15.0 report, round 16.0; the submit saw a 10 s wait; reactive offloads at 10 s (14.6 < 20.6 local) and keeps local at 30 s (34.6 > 20.6); without a cold start the round is the Phase 3 one (6.0). |
+| sim/TestColdStartByHand | One shard, one worker, a 10 s cold start under always-GPU; then the shipped reactive policy at 10 s and at 60 s; then no cold start. | The build is claimed when the pool is provisioned at 10 s and done at 10 + the GPU total (14.639), heard at the 15.0 report, round 16.0; the submit saw a 10 s wait; reactive preempts into the cold pool at 10 s (round 18.0) and keeps local at 60 s (round 22.63: the backlog arithmetic beats 30); without a cold start the round is the Phase 3 one (6.0). |
 | api/TestSubmitColdStartWait | The server with `ColdStartS` 150 and no worker; then a worker heartbeats. | The submit reply's `gpu_queue_wait_ms` is 150000 while the pool is empty and the replay's wait once a worker is live. |
+
+## Phase 5, step 4, the cuVS builder scaffold (Python `builder/tests/test_cagra.py`, `worker/tests/test_hnswlib_builder.py`). Log: `phase5/step4-cuvs-scaffold.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| builder/test_cagra.py::test_without_cuvs_the_path_refuses_in_one_line | `build_index_cagra` where cuVS is not importable (every laptop and kind run). | `CuvsUnavailable` with a one-line reason naming the GPU image; skipped where cuVS exists. |
+| builder/test_cagra.py::test_cli_cagra_build_fails_fast_without_cuvs | `build --builder cagra` with an unreachable store. | Exit 1 with a failed-status JSON whose reason starts with `CuvsUnavailable`, before any fetch; `--builder` is in `--help`. |
+| builder/test_cagra.py::test_cagra_build_loads_in_stock_hnswlib_and_passes_the_gate | 20k × 64 random vectors built with CAGRA, converted, loaded by stock hnswlib, gated against exact truth (GPU only). | All 20k vectors present and recall@10 ≥ 0.9; skipped without cuVS. |
+| worker/test_hnswlib_builder.py::test_cagra_builder_is_the_same_child_with_a_flag | `by_name("cagra")` with a stub CLI that asserts its argv. | The child gets `--builder cagra`; the builder's name is `cagra-hnsw`; the Artifact's kind is the manifest's. |
+
+## Phase 5, steps 2–4, cross-check (Go `scheduler/crosscheck/p5s234_test.go`; Python `builder/tests/test_xcheck_cagra.py`, `worker/tests/test_xcheck_cagra.py`). Log: `phase5/step234-crosscheck.log`
+
+| Test | Scenario, in plain words | What must hold |
+| --- | --- | --- |
+| crosscheck/TestXcP5S2RenderWorkerDeployment | Render the GPU overlay and read the worker Deployment. | The cuVS image, one `nvidia.com/gpu`, only the L4 accelerator selector, the GKE GPU taint tolerated, 0 replicas between sessions (decisions 9, 11). |
+| crosscheck/TestXcP5S2RenderConfigMaps | Read both ConfigMaps in both cloud overlays. | `BUILDER=cagra`, 6 threads, the card's 22.5 GiB, `COST_MODEL=calibrated` everywhere, no leftover `COST_*` constants. |
+| crosscheck/TestXcP5S2RenderDCGMExporter | Read the DCGM DaemonSet and Service. | GPU nodes only, port 9400, the Service selects its pods, no card requested, absent from the CPU overlay. |
+| crosscheck/TestXcP5S2RenderOnlyDocumentedObjectsDiffer | Compare the GPU and CPU renders object by object. | Only the worker Deployment and the two ConfigMaps change; only the two DCGM objects are added. |
+| crosscheck/TestXcP5S2RenderNoFakeCardAnywhere | Search both renders for the kind cluster's fake card. | `kgpu.io/gpu-card` is gone; only the GPU worker asks for a real card. |
+| crosscheck/TestXcP5S3SimAlwaysGPUColdStartByHand, ::SimZeroChangesNothing | One 100k shard under always-GPU with a 10 s cold start, then none. | Round 16.0 and a 10 s wait at submit; 6.0 and 0 without (the Phase 3 rule); an explicit 0 equals the default. |
+| crosscheck/TestXcP5S3SimReactiveColdStart10vs30 | The shipped reactive at cold starts 0, 10 and 60 s. | Offloaded at 0 and 10 (preempted into the cold pool, round 18.0), kept local at 60 (finding A). |
+| crosscheck/TestXcP5S3SimLocalViewBeforeAnyQueue, ::SimColdClockStartsAtFirstGPUQueue, ::SimColdWaitCountsDown | A local build with nothing queued; a GPU build queued at t=5; two GPU builds and a local one with two workers. | The reported wait is the whole provisioning time until something is queued; the clock starts at the first queueing (alive at 15); the wait counts down (7; 8, 6, 4, 2). |
+| crosscheck/TestXcP5S3SweepReactiveColdDiscontinuity | `uniform` × reactive at cold starts 0, 0.5, 10. | A tiny cold start does not switch every offload off (finding A). |
+| crosscheck/TestXcP5S3SweepColdStartAxis, ::SweepRefusesBadColdStart, ::DemoCSVCarriesColdStartZero | The sweep's axis, its refusals, the committed demo. | `cold_start_s` echoed; at 120 reactive 0/6 against always-GPU 6/0 (seed 1's 30.0 / 56.7 / 140.6); negatives, NaN, Inf and malformed lists refused; the demo carries 0 and reproduces cell for cell. |
+| crosscheck/TestXcP5S3APIColdStartEmptyPool, ::APIColdStartUnsetKeepsZero, ::APIColdStartReachesThePolicy | POST /builds with `ColdStartS` 150: no worker, one live, one stale; unset; a warm idle pool; a duplicate. | 150000 ms when cold, the replay's wait when warm, 150000 again when the only worker goes stale; 0 unset; a duplicate omits the field. |
+| crosscheck/TestXcP5S3ReconsiderColdStartEmptyPool | One reconsider tick with a local and a queued build, no workers then one. | 150 for both views when cold, 0 without a cold start, the replay once a worker is live. |
+| crosscheck/TestXcP5S3SchedulerColdStartEnv | The scheduler binary with `COLD_START` values. | `150s` and `2m30s` give 150000; unset and 0 give 0; malformed and negative values exit 2 (finding B). |
+| builder/test_xcheck_cagra.py (9 checks) | `--help`; the module without cuVS; `--builder cagra` against a store that counts connections and against a closed port; the default and hnswlib still fetching; usage errors; a real store. | `--builder` listed; one-line refusal; exit 1 with the JSON reason in under a second and zero store connections; hnswlib unchanged; usage still exit 2; cagra writes nothing under `artifacts/`. |
+| worker/test_xcheck_cagra.py (8 checks) | The config's spellings; the worker process's exit codes; `by_name("cagra")` with a stub CLI; the kind from the manifest; gate failure and cancel; the real CLI on a laptop; the Dockerfile's text. | Only `cagra` accepted; `--builder cagra` last in the argv with everything else unchanged; kind from the manifest; GateRefused and cancel as for hnswlib; the failure carries `CuvsUnavailable`; the image starts from RAPIDS 26.10 and sets `BUILDER=cagra`. |
 

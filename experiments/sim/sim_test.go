@@ -384,17 +384,29 @@ func TestColdStartByHand(t *testing.T) {
 	near(t, "round", r.RoundS, 16.0, 1e-3)
 	near(t, "queue wait seen at submit (the cold-start term)", r.QueueWaits[0], 10, 1e-9)
 
-	// The same build under the reactive policy: with a 10 s cold start the
-	// GPU path (10 + 4.64) still beats the local 20.63, so it is offloaded;
-	// with 30 s (34.64 > 20.63) the policy keeps it local — the cold start
-	// visibly prefers the CPU while the pool is cold (decision 5).
-	warm := Run(w, policy.Reactive{}, Config{ColdStartS: 10})
-	cold := Run(w, policy.Reactive{}, Config{ColdStartS: 30})
-	t.Logf("reactive: cold start 10 s -> gpu=%d local=%d; 30 s -> gpu=%d local=%d (local build by hand %.3f)",
-		warm.BuildsGPU, warm.BuildsLocal, cold.BuildsGPU, cold.BuildsLocal, local100k)
+	// The same build under the SHIPPED reactive policy (ByName: a 200k
+	// threshold, so 100k starts local and only a preemption can move it; the
+	// cross-check of steps 2-4 caught a first draft that used the zero-value
+	// policy, which offloads at submit). At the first tick (2 s), stay local
+	// = 18.63 s remaining; migrate = the 10 s cold start + 4.64 = 14.64 s,
+	// under the margin -> preempted into the cold pool; provisioning starts
+	// at 2, the workers are alive at 12, the build is done at 16.64, heard at
+	// the 17.0 report, the index query 17 -> 18: round 18.0. Staying local is
+	// judged with the backlog the report shows (stayLocalS): two queries
+	// queued and an estimated 1 query/s arriving over the 18.63 s remaining
+	// adds ~20.6 s, so stay ~= 39.3 s and a 30 s cold start (migrate 34.64)
+	// STILL preempts; at 60 s (64.64 > 39.3) it stays local: round 20.63 +
+	// 2 = 22.63. The cross-check of steps 2-4 caught the first draft's 30.
+	reactive, _ := policy.ByName("reactive")
+	warm := Run(w, reactive, Config{ColdStartS: 10})
+	cold := Run(w, reactive, Config{ColdStartS: 60})
+	t.Logf("shipped reactive: cold start 10 s -> gpu=%d local=%d round %.3f (hand 18.0); 60 s -> gpu=%d local=%d round %.3f (hand %.3f)",
+		warm.BuildsGPU, warm.BuildsLocal, warm.RoundS, cold.BuildsGPU, cold.BuildsLocal, cold.RoundS, local100k+2)
 	if warm.BuildsGPU != 1 || cold.BuildsLocal != 1 {
-		t.Fatalf("placements: 10 s -> gpu=%d, 30 s -> local=%d; want 1 and 1", warm.BuildsGPU, cold.BuildsLocal)
+		t.Fatalf("placements: 10 s -> gpu=%d, 60 s -> local=%d; want 1 and 1", warm.BuildsGPU, cold.BuildsLocal)
 	}
+	near(t, "round, preempted into the cold pool", warm.RoundS, 18.0, 1e-3)
+	near(t, "round, kept local", cold.RoundS, local100k+2, 1e-3)
 	// Without a cold start nothing changes: the default is the Phase 3 rule.
 	plain := Run(w, policy.AlwaysGPU{}, Config{})
 	near(t, "round without a cold start", plain.RoundS, 6.0, 1e-3)

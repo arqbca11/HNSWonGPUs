@@ -13,7 +13,11 @@ metadata:
   name: worker
   namespace: kgpu
 spec:
-  replicas: 2
+  # 0 between sessions (decision 11): with autoscaling pools a pending worker
+  # pod is what provisions a GPU node, so applying this with replicas 2 would
+  # bill two nodes at once; a session scales up (kubectl -n kgpu scale
+  # deploy/worker --replicas 2) and the cold start it then pays is measured.
+  replicas: 0
   template:
     spec:
       nodeSelector:
