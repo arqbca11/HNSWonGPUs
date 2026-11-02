@@ -23,7 +23,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: calibrate
-          image: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p5
+          image: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p6
           envFrom:
             - secretRef:
                 name: objectstore

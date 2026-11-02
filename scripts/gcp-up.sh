@@ -63,6 +63,16 @@ export USE_GKE_GCLOUD_AUTH_PLUGIN=True PATH="/opt/homebrew/share/google-cloud-sd
 #     installs the driver and advertises nvidia.com/gpu. Needs the
 #     GPUS_ALL_REGIONS and NVIDIA_L4_GPUS quotas (Phase 4 decision 27).
 if [ "${GPU_POOLS:-0}" = 1 ]; then
+  # GPU_ONDEMAND=1: the spot L4 pool stocked out in the first session; an
+  # on-demand pool whose nodes may land in any of the region's zones took the
+  # card (decision 12). The zone of a zonal cluster is only where its control
+  # plane and default pool live; a node pool may spread over other zones.
+  if [ "${GPU_ONDEMAND:-0}" = 1 ] && ! $G container node-pools describe gpu-l4x1-od --cluster "$CLUSTER" --zone "$ZONE" >/dev/null 2>&1; then
+    echo "-- creating on-demand GPU pool gpu-l4x1-od: g2-standard-8 (1 x L4) across us-west1-a,b,c, autoscaling 0..1"
+    $G container node-pools create gpu-l4x1-od --cluster "$CLUSTER" --zone "$ZONE" --node-locations us-west1-a,us-west1-b,us-west1-c \
+      --machine-type g2-standard-8 --disk-size 100 --accelerator "type=nvidia-l4,count=1,gpu-driver-version=latest" \
+      --enable-autoscaling --num-nodes 0 --min-nodes 0 --max-nodes 1 >/dev/null
+  fi
   for spec in "gpu-l4x1 g2-standard-8 1 ${GPU_L4X1_MAX:-2}" "gpu-l4x2 g2-standard-24 2 ${GPU_L4X2_MAX:-1}"; do
     set -- $spec; pool=$1; mt=$2; cards=$3; max=$4
     [ "$max" = 0 ] && { echo "-- GPU pool $pool skipped (max 0: the quota holds $cards card(s) short of it)"; continue; }

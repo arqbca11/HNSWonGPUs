@@ -15,7 +15,7 @@ resources:
 images:
   - name: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker
     newName: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu
-    newTag: p5
+    newTag: p6
 patches:
   - path: worker-gpu.yaml
   - path: config-gpu.yaml

@@ -33,9 +33,9 @@ if [ "$step" = calibrate ] || [ "$step" = all ]; then
              && uv run --quiet python -m kgpu_builder fit "$OUT/$HOST-sift-128-6.csv" "$OUT/$HOST-gist-960-300k-6.csv")
 fi
 if [ "$step" = rounds ] || [ "$step" = all ]; then
-  for seed in 1 2; do
-    echo "#### real round sift-128 6 shards seed $seed (policy: the cluster's)"
-    TIMELINE_DIR="$OUT/timelines" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=6 SEED=$seed ROUNDS=1 ROUND_TIMEOUT=30m MIN_WORKERS="${MIN_WORKERS:-2}" LOG_FORMAT=text \
+  for seed in ${SEEDS:-1 2}; do
+    echo "#### real round sift-128 6 shards scenario ${SCENARIO:-skewed} seed $seed (policy: the cluster's; timelines under $OUT/timelines${TIMELINE_SUFFIX:-})"
+    TIMELINE_DIR="$OUT/timelines${TIMELINE_SUFFIX:-}" DATASET=sift-128 TIME_SCALE=1 SCENARIO="${SCENARIO:-skewed}" N_SHARDS=6 SEED=$seed ROUNDS=1 ROUND_TIMEOUT=30m MIN_WORKERS="${MIN_WORKERS:-2}" LOG_FORMAT=text \
       BUILDER_CMD="uv run --project builder python -m kgpu_builder" SHARD_THREADS=2 go run ./shard/cmd/shardsim 2>&1 | grep -vE '^time=' | sed 's/^/   /'
   done
 fi
