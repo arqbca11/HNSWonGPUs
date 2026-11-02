@@ -95,11 +95,13 @@ class Config:
             (self.model.gpu_overhead >= 0, "COST_GPU_OVERHEAD must be non-negative"),
             (self.model.gate >= 0 and self.model.gate_queries >= 0, "COST_GATE and COST_GATE_QUERIES must be non-negative"),
             (self.model.save_bandwidth >= 0 and self.model.bandwidth_out >= 0, "COST_SAVE_BANDWIDTH and COST_BANDWIDTH_OUT must be non-negative"),
+            (min(self.model.worker_fixed, self.model.worker_a, self.model.worker_p, self.model.worker_d0, self.model.worker_gate) >= 0, "COST_WORKER_* must be non-negative"),
             (self.model.bandwidth > 0, "COST_BANDWIDTH must be positive"),
             (self.model.mem_factor > 0, "COST_MEM_FACTOR must be positive"),
             (all(math.isfinite(x) for x in (self.model.a, self.model.p, self.model.d0, self.model.speedup, self.model.gpu_overhead, self.model.gate,
-                                            self.model.gate_queries, self.model.save_bandwidth, self.model.bandwidth, self.model.bandwidth_out, self.model.mem_factor)),
-             "COST_* values must be finite numbers"),
+                                            self.model.gate_queries, self.model.save_bandwidth, self.model.bandwidth, self.model.bandwidth_out, self.model.mem_factor,
+                                            self.model.worker_fixed, self.model.worker_a, self.model.worker_p, self.model.worker_d0, self.model.worker_gate)),
+             "COST_* values must be finite numbers (NaN and inf pass a >= 0 check and silently change the model: the v2 cross-check's C)"),
         ]
         for ok, msg in checks:
             if not ok:

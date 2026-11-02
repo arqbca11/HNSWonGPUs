@@ -323,7 +323,7 @@ def cmd_fit(args) -> int:
     if args.v1:
         # cost model v1 (Phase 5 decision 6): the shape the Phase 4 calibration found
         fits1 = cal.fit_points_v1(rows)
-        wfits1 = cal.fit_points_v1(wrows) if args.worker_csv else fits1
+        wfits1 = cal.fit_points_v1(wrows, fixed=args.fixed, drop_warmup=args.drop_warmup) if args.worker_csv else fits1
         labelled = [(f, "") for f in fits1] if not args.worker_csv else \
             [(f, " (shard side)") for f in fits1] + [(f, " (worker side)") for f in wfits1 if f.threads == args.worker_threads]
         for f, side in labelled:
@@ -332,7 +332,8 @@ def cmd_fit(args) -> int:
             if f.distinct_sizes < 2:
                 _log(f"   note: threads {f.threads}{side} has {f.n_points} point(s) at one size: P and D0 cannot be fitted and are reported as v0's (1, 0)")
             # the line keeps its shape (scripts and the cross-check parse it); the side goes at the end
-            _log(f"v1 threads {f.threads}: {f.n_points} points; build = {f.a:.4g} · n^{f.p:.3f} · ln(n) · (dim + {f.d0:.0f}) "
+            fx = f"{f.fixed_s:.2f} s + " if f.fixed_s > 0 else ""
+            _log(f"v1 threads {f.threads}: {f.n_points} points; build = {fx}{f.a:.4g} · n^{f.p:.3f} · ln(n) · (dim + {f.d0:.0f}) "
                  f"(ratio {f.min_ratio:.2f}..{f.max_ratio:.2f}, sigma {f.sigma:.3f}); gate {f.gate_per_query:.3g} s per query·ln(n)·(dim+D0) "
                  f"on {f.gate_queries or 500} queries; fetch {f.bandwidth_in / 1e6:.0f} MB/s, upload {bo}, save {sb}; min recall {f.recall_min:.3f}{side}")
         _log("\n".join(cal.residual_table_v1(rows, fits1)))
@@ -347,10 +348,19 @@ def cmd_fit(args) -> int:
                 _log(f"  {k}={v}")
         except ValueError as e:
             _log(f"v1 COST_* block not emitted: {e}")
+        if args.worker_csv and args.v2:
+            # cost model v2 (Phase 5 decision 14): the worker's own shape instead of a speedup
+            try:
+                block2 = cal.env_overrides_v2(rows, fits1, args.shard_threads, args.worker_threads, wrows, wfits1, args.gate_queries, args.overhead)
+                _log(f"v2 COST_* (the worker's own shape, fixed term {'fitted' if args.fixed else 'not fitted: pass --fixed'}):")
+                for k, v in block2.items():
+                    _log(f"  {k}={v}")
+            except ValueError as e:
+                _log(f"v2 COST_* block not emitted: {e}")
     try:
         env = cal.env_overrides(fits, args.shard_threads, args.worker_threads, args.overhead)
     except ValueError as e:
-        _log(f"(no environment block: {e})")
+        _log(f"(no v0 environment block — it needs both thread counts in the shard CSVs: {e})")
         return 0
     _log("COST_* for a cluster whose shards build with %d threads and whose workers with %d (overhead %s):"
          % (args.shard_threads, args.worker_threads, "given" if args.overhead is not None else "the workers' median fetch + gate"))
@@ -385,6 +395,9 @@ def main(argv=None) -> int:
     ft.add_argument("--v1", action="store_true", help="also fit cost model v1 (A·n^P·ln(n)·(dim+D0), the gate, the bandwidths) and print its COST_* block")
     ft.add_argument("--worker-csv", nargs="*", default=None, help="v1: the worker side's calibration CSVs when it is another machine (default: the same CSVs at --worker-threads)")
     ft.add_argument("--gate-queries", type=int, default=10000, help="v1: how many held-out queries a real build's gate runs (the split's query file: 10000 for sift-128, 1000 for gist); the block's COST_GATE_QUERIES")
+    ft.add_argument("--v2", action="store_true", help="with --worker-csv: also print cost model v2's block — the worker's own shape (fixed term, A, P, D0, gate) instead of a speedup (Phase 5 decision 14)")
+    ft.add_argument("--fixed", action="store_true", help="v2: fit a per-build fixed term on the worker side (a GPU's floor)")
+    ft.add_argument("--drop-warmup", action="store_true", help="v2: leave out the worker side's first point per thread count (a process's one-off CUDA warm-up)")
     b = sub.add_parser("build")
     b.add_argument("--build-id", required=True)
     b.add_argument("--attempt", type=int, required=True)

@@ -313,7 +313,7 @@ func p4s4Container(t *testing.T, obj map[string]any, name string) map[string]any
 func TestXcP4S4RenderImagesFromArtifactRegistry(t *testing.T) {
 	ov, _ := p4s4Render(t)
 	want := map[string]string{
-		"Deployment/scheduler": p4s4Registry + "kgpu-scheduler:p4",
+		"Deployment/scheduler": p4s4Registry + "kgpu-scheduler:p5", // rebuilt for the first GPU session (cost model v1/v2, COLD_START)
 		"Deployment/worker":    p4s4Registry + "kgpu-worker:p4",
 	}
 	for key, img := range want {

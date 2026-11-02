@@ -51,7 +51,7 @@ func main() {
 		strict       = flag.Bool("strict", false, "exit 1 if any round disagrees")
 		perShard     = flag.Bool("shards", true, "print the per-shard finish table")
 		phases       = flag.Int("phases", 8, "replay this many reconsider-tick phases (decision 29: the k-th at k/phases of the interval) and report the round-time envelope; the main row is the default phase")
-		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0) or calibrated (the measured v1 block); the flags below override single terms")
+		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0), calibrated (the CPU-worker v1 block) or calibrated-l4 (the GPU v2 block); the flags below override single terms")
 		dataset      = flag.String("dataset", "", "the round's DATASET (Phase 4): the shard sizes come from the committed split, as shardsim's did")
 		costA        = flag.Float64("cost_a", 0, "the live COST_A (0 = the cost model's default)")
 		bandwidth    = flag.Float64("bandwidth", 0, "the live COST_BANDWIDTH (0 = default)")
@@ -65,6 +65,11 @@ func main() {
 		bandwidthOut = flag.Float64("bandwidth_out", -1, "the live COST_BANDWIDTH_OUT (-1 = keep)")
 		shardStore   = flag.String("shard_uses_store", "", "the live COST_SHARD_USES_STORE, true/false (empty = keep)")
 		coldStartS   = flag.Float64("cold_start_s", 0, "the live COLD_START in seconds (Phase 5 decision 11)")
+		workerFixed  = flag.Float64("worker_fixed", -1, "the live COST_WORKER_FIXED (-1 = keep)")
+		workerA      = flag.Float64("worker_a", -1, "the live COST_WORKER_A (-1 = keep; 0 = v1's form)")
+		workerP      = flag.Float64("worker_p", -1, "the live COST_WORKER_P (-1 = keep)")
+		workerD0     = flag.Float64("worker_d0", -1, "the live COST_WORKER_D0 (-1 = keep)")
+		workerGate   = flag.Float64("worker_gate", -1, "the live COST_WORKER_GATE (-1 = keep)")
 		trustPolicy  = flag.Bool("trust_policy", false, "skip the check that the timelines' submit reasons carry -policy's own wording (bug 15: a round compared under the wrong policy can still agree)")
 	)
 	flag.Parse()
@@ -148,8 +153,10 @@ func main() {
 		cm := costmodel.Default()
 		if *costModel == "calibrated" {
 			cm = costmodel.Calibrated()
+		} else if *costModel == "calibrated-l4" {
+			cm = costmodel.CalibratedL4()
 		} else if *costModel != "default" {
-			log.Fatalf("-cost must be default or calibrated; got %q", *costModel)
+			log.Fatalf("-cost must be default, calibrated or calibrated-l4; got %q", *costModel)
 		}
 		if *costA > 0 {
 			cm.A = *costA
@@ -187,6 +194,21 @@ func main() {
 				log.Fatalf("-shard_uses_store must be true or false; got %q", *shardStore)
 			}
 			cm.ShardUsesStore = b
+		}
+		if *workerFixed >= 0 {
+			cm.WorkerFixed = *workerFixed
+		}
+		if *workerA >= 0 {
+			cm.WorkerA = *workerA
+		}
+		if *workerP >= 0 {
+			cm.WorkerP = *workerP
+		}
+		if *workerD0 >= 0 {
+			cm.WorkerD0 = *workerD0
+		}
+		if *workerGate >= 0 {
+			cm.WorkerGate = *workerGate
 		}
 		if err := cm.Validate(); err != nil {
 			log.Fatalf("cost model: %v", err)

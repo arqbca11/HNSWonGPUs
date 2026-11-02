@@ -1,0 +1,265 @@
+== Go tests against a throwaway Postgres
+date:      2026-11-02 01:18:14 PST
+commit:    ed56af9 (uncommitted changes)
+go:        go1.27.1
+postgres:  postgres (PostgreSQL) 17.11 (Debian 17.11-1.pgdg13+2) (image postgres:17, container kgpu-test-pg-89483, port 29505)
+go:        go test -p 1 -count=1 -v -run P5V2 ./scheduler/crosscheck/
+objects:   rustfs/rustfs:1.0.4 (container kgpu-test-s3-89483, port 33585)
+python:    skipped
+
+Lines starting with 'store_test.go:N:' are the test narrating what it did.
+Lines tagged [db] are the build row as Postgres had it at that moment.
+
+== go test
+=== RUN   TestXcP5V2CalibratedL4IsTheBlock
+    p5v2_costmodel_test.go:86: CalibratedL4() = {A:2.3e-09 P:1.22 D0:187 Speedup:2.12 GPUOverhead:1.5 GateCost:1.79e-08 GateQueries:10000 SaveBandwidth:2.9e+08 Bandwidth:1.39e+08 BandwidthOut:1.01e+08 ShardUsesStore:true WorkerFixed:1.154 WorkerA:1.295e-08 WorkerP:0.891 WorkerD0:154 WorkerGate:2.07e-08 M:16 MemFactor:2 BytesPerDim:4}
+    p5v2_costmodel_test.go:87: Calibrated()   = {A:2.3e-09 P:1.22 D0:187 Speedup:2.12 GPUOverhead:1.5 GateCost:1.79e-08 GateQueries:10000 SaveBandwidth:6.6e+08 Bandwidth:1.57e+08 BandwidthOut:5e+07 ShardUsesStore:true WorkerFixed:0 WorkerA:0 WorkerP:0 WorkerD0:0 WorkerGate:0 M:16 MemFactor:2 BytesPerDim:4}
+    p5v2_costmodel_test.go:88: spec (decision 14, brief): CalibratedL4 = Calibrated with WorkerFixed 1.154, WorkerA 1.295e-8, WorkerP 0.891, WorkerD0 154, WorkerGate 2.07e-8, Bandwidth 1.39e8, BandwidthOut 1.01e8, SaveBandwidth 2.9e8; everything else as Calibrated (GateQueries 10000, ShardUsesStore true)
+    p5v2_costmodel_test.go:101: => the block equals Calibrated() with the eight named fields replaced: true
+--- PASS: TestXcP5V2CalibratedL4IsTheBlock (0.00s)
+=== RUN   TestXcP5V2L4TotalsOnTheLiveStraggler
+    p5v2_costmodel_test.go:109: 408164 x 128 on CalibratedL4: WorkerBuild 6.618, GPUBuild 9.019, Transfer 4.090, GPUTotal 13.109 | CPUBuild 65.539 Gate 0.728 Save 0.901 LocalTotal 71.258
+    p5v2_costmodel_test.go:112: by hand: worker build 6.618103, GPU total 13.108717, local total 71.258087
+    p5v2_costmodel_test.go:113: spec (brief; decision 14 'the block's worker path is 13.2 s where the card took 15.0'): GPU total 13.109 s, local total 71.258 s
+    p5v2_costmodel_test.go:120: note: the local total uses the card's fetch (1.39e8), upload (1.01e8) and save (2.9e8) rates, because the model has one set of bandwidths for both sides; with Calibrated()'s rates the shard's path would be 73.219 s
+--- PASS: TestXcP5V2L4TotalsOnTheLiveStraggler (0.00s)
+=== RUN   TestXcP5V2EveryTermByHand
+    p5v2_costmodel_test.go:128: custom v2 model (every term non-zero): {A:3.1e-09 P:1.17 D0:55 Speedup:3.3 GPUOverhead:0.7 GateCost:2.2e-08 GateQueries:1234 SaveBandwidth:4.4e+08 Bandwidth:1.1e+08 BandwidthOut:3.3e+07 ShardUsesStore:true WorkerFixed:0.83 WorkerA:2.2e-08 WorkerP:0.95 WorkerD0:77 WorkerGate:3.3e-08 M:16 MemFactor:2.5 BytesPerDim:4}
+    p5v2_costmodel_test.go:130: spec (decision 14, go doc): GPU build = WorkerFixed + WorkerA·n^WorkerP·ln(n)·(dim+WorkerD0) + WorkerGate·GateQueries·ln(n)·(dim+WorkerD0) + GPUOverhead + save; every other term as v1
+    p5v2_costmodel_test.go:131: => 11 sizes x 5 dims x 13 terms: CalibratedL4 0 mismatches, custom 0
+--- PASS: TestXcP5V2EveryTermByHand (0.00s)
+=== RUN   TestXcP5V2WorkerAZeroKeepsV1
+    p5v2_costmodel_test.go:137: a v1 model with WorkerA 0 but the other four worker terms set (fixed 7 s, P 0.9, D0 150, gate 5e-8): {A:3.1e-09 P:1.17 D0:55 Speedup:3.3 GPUOverhead:0.7 GateCost:2.2e-08 GateQueries:1234 SaveBandwidth:4.4e+08 Bandwidth:1.1e+08 BandwidthOut:3.3e+07 ShardUsesStore:true WorkerFixed:7 WorkerA:0 WorkerP:0.9 WorkerD0:150 WorkerGate:5e-08 M:16 MemFactor:2.5 BytesPerDim:4}
+    p5v2_costmodel_test.go:138: spec (decision 14): when WorkerA is 0 the v1 speedup form stands; WorkerBuild is 0 (brief)
+    p5v2_costmodel_test.go:150: GPUBuild(408164,128) = 9.464288 s (v1 form 9.464288; a leaked 7 s floor would make it 16.464288)
+    p5v2_costmodel_test.go:151: => 0 mismatches against v1 with the worker terms ignored
+--- PASS: TestXcP5V2WorkerAZeroKeepsV1 (0.00s)
+=== RUN   TestXcP5V2DefaultAndCalibratedUnchanged
+    p5v2_costmodel_test.go:155: spec (decision 14, brief): Default() and Calibrated() are unchanged to the digit; both have no worker shape
+    p5v2_costmodel_test.go:161: Default(): WorkerFixed 0 WorkerA 0 WorkerP 0 WorkerD0 0 WorkerGate 0
+    p5v2_costmodel_test.go:175: Default(): 0 mismatches against the v1 formulas
+    p5v2_costmodel_test.go:161: Calibrated(): WorkerFixed 0 WorkerA 0 WorkerP 0 WorkerD0 0 WorkerGate 0
+    p5v2_costmodel_test.go:175: Calibrated(): 0 mismatches against the v1 formulas
+    p5v2_costmodel_test.go:181: Default() 100k x 128 still CPUBuild 20631162433 ns, GPUTotal 4639116243 ns (v0's pinned numbers)
+--- PASS: TestXcP5V2DefaultAndCalibratedUnchanged (0.00s)
+=== RUN   TestXcP5V2TinyBuildsPayTheFloor
+    p5v2_costmodel_test.go:186: spec (brief, go doc WorkerBuild): a build of fewer than 2 vectors pays WorkerFixed only (plus overhead and save in GPU build)
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=0 dim=1: WorkerBuild 1.154000000, GPUBuild 2.654000000 (want 2.654000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=0 dim=128: WorkerBuild 1.154000000, GPUBuild 2.654000000 (want 2.654000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=0 dim=960: WorkerBuild 1.154000000, GPUBuild 2.654000000 (want 2.654000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=1 dim=1: WorkerBuild 1.154000000, GPUBuild 2.654000455 (want 2.654000455), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=1 dim=128: WorkerBuild 1.154000000, GPUBuild 2.654002206 (want 2.654002206), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 1.154 n=1 dim=960: WorkerBuild 1.154000000, GPUBuild 2.654013682 (want 2.654013682), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=0 dim=1: WorkerBuild 0.830000000, GPUBuild 1.529999999 (want 1.530000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=0 dim=128: WorkerBuild 0.830000000, GPUBuild 1.529999999 (want 1.530000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=0 dim=960: WorkerBuild 0.830000000, GPUBuild 1.529999999 (want 1.530000000), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=1 dim=1: WorkerBuild 0.830000000, GPUBuild 1.530000299 (want 1.530000300), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=1 dim=128: WorkerBuild 0.830000000, GPUBuild 1.530001453 (want 1.530001454), CPUBuild 0s
+    p5v2_costmodel_test.go:192: WorkerFixed 0.830 n=1 dim=960: WorkerBuild 0.830000000, GPUBuild 1.530009018 (want 1.530009018), CPUBuild 0s
+--- PASS: TestXcP5V2TinyBuildsPayTheFloor (0.00s)
+=== RUN   TestXcP5V2ValidateRefusesBadWorkerTerms
+    p5v2_costmodel_test.go:206: spec (brief): Validate() refuses negative or non-finite COST_WORKER_* values
+    p5v2_costmodel_test.go:228: CalibratedL4 with WorkerFixed = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: CalibratedL4 with WorkerA = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: CalibratedL4 with WorkerP = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: CalibratedL4 with WorkerD0 = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: CalibratedL4 with WorkerGate = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: Calibrated with WorkerA = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: Calibrated with WorkerP = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: Calibrated with WorkerD0 = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: Calibrated with WorkerGate = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:228: Calibrated with WorkerFixed = 0: Validate() = <nil> (zero is not refused by the brief's rule; WorkerA 0 is the v1 fallback)
+    p5v2_costmodel_test.go:233: example refusal: WorkerA -1 -> COST_WORKER_A must be non-negative, got -1
+    p5v2_costmodel_test.go:236: open: WorkerA > 0 with WorkerP 0 (a constant-in-n build) -> Validate() = <nil> (spec silent)
+--- PASS: TestXcP5V2ValidateRefusesBadWorkerTerms (0.00s)
+=== RUN   TestXcP5V2PythonMirrorAgrees
+    p5v2_costmodel_test.go:342: spec (brief, decision 14): the Python Model mirrors all of v2: calibrated_l4(), worker_build_s, from_env with the same names and spellings
+    p5v2_costmodel_test.go:361: CalibratedL4() vs Model.calibrated_l4(): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 11.7904 gpu_total 22.8879 local 198.1776)
+    p5v2_costmodel_test.go:361: Calibrated() vs Model.calibrated(): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 0.0000 gpu_total 103.9145 local 202.0418)
+    p5v2_costmodel_test.go:361: Default() vs Model(): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 0.0000 gpu_total 25.0480 local 185.6805)
+    p5v2_costmodel_test.go:361: custom v2 (kw): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 27.2807 gpu_total 48.1504 local 87.9446)
+    p5v2_costmodel_test.go:361: from_env(calibrated-l4 + COST_WORKER_*): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 12.9441 gpu_total 24.0415 local 198.1776)
+    p5v2_costmodel_test.go:361: from_env(calibrated + COST_WORKER_FIXED/A/P/D0): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 9.7369 gpu_total 24.6986 local 202.0418)
+    p5v2_costmodel_test.go:361: from_env(calibrated-l4 + COST_WORKER_A=0): 55 points x 13 terms, 0 disagreements (n=1000000 dim=96: python worker_build 0.0000 gpu_total 100.0503 local 198.1776)
+--- PASS: TestXcP5V2PythonMirrorAgrees (0.14s)
+=== RUN   TestXcP5V2SweepDefaultStillMatchesDemo
+    p5v2_costmodel_test.go:375: sweep -scenarios uniform,skewed,bimodal,downstream_heavy,staggered,high_dim,production -policies all -rounds 20 -cost default → exit err=<nil>; stderr: sweep: 700 rows
+    p5v2_costmodel_test.go:390: demo 700 rows x 47 cols; new sweep 700 rows x 52 cols; columns added since the demo: [worker_fixed worker_a worker_p worker_d0 worker_gate]
+    p5v2_costmodel_test.go:412: spec (brief, decision 14): -cost default with no flags still reproduces experiments/results/demo/rounds.csv cell for cell: 0 missing rows, 0 differing cells
+--- PASS: TestXcP5V2SweepDefaultStillMatchesDemo (68.78s)
+=== RUN   TestXcP5V2SweepEchoesL4AndOverrides
+    p5v2_costmodel_test.go:428: sweep -scenarios skewed -policies reactive -rounds 2 -cost calibrated-l4 → exit err=<nil>; stderr: sweep: 2 rows
+    p5v2_costmodel_test.go:441: -cost calibrated-l4 row 1: cost_model=calibrated-l4 worker_fixed=1.154 worker_a=1.295e-08 worker_p=0.891 worker_d0=154 worker_gate=2.07e-08 bandwidth=139000000 bandwidth_out=101000000 save_bandwidth=290000000 gate_queries=10000 shard_uses_store=true speedup=2.12 builds_gpu=3 builds_local=3 round_s=29.99764248
+    p5v2_costmodel_test.go:442: spec (decision 14, brief): the sweep takes -cost calibrated-l4 and echoes worker_fixed worker_a worker_p worker_d0 worker_gate
+    p5v2_costmodel_test.go:455: sweep -scenarios skewed -policies reactive -rounds 2 -cost calibrated-l4 -worker_fixed 2.5 -worker_a 3e-8 -worker_p 0.85 -worker_d0 99 -worker_gate 1e-8 → exit err=<nil>; stderr: sweep: 2 rows
+    p5v2_costmodel_test.go:462: with -worker_fixed 2.5 -worker_a 3e-8 -worker_p 0.85 -worker_d0 99 -worker_gate 1e-8: cost_model=calibrated-l4 worker_fixed=2.5 worker_a=3e-08 worker_p=0.85 worker_d0=99 worker_gate=1e-08 bandwidth=139000000 bandwidth_out=101000000 save_bandwidth=290000000 gate_queries=10000 shard_uses_store=true speedup=2.12 builds_gpu=3 builds_local=3 round_s=29.99764248
+    p5v2_costmodel_test.go:470: sweep -scenarios skewed -policies always_gpu -rounds 1 -cost calibrated-l4 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:475: sweep -scenarios skewed -policies always_gpu -rounds 1 -cost calibrated-l4 -worker_fixed 200 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:480: always_gpu skewed seed 1: round_s 29.99764248 on the block, 620.6422716 with -worker_fixed 200
+    p5v2_costmodel_test.go:486: sweep -scenarios skewed -policies always_gpu -rounds 1 -cost calibrated-l4 -worker_a 0 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:491: -worker_a 0 (help: '0 = v1's speedup form'): round_s 31.16681011 worker_a 0 (block: 29.99764248, the slower v1 form expected for always_gpu)
+--- PASS: TestXcP5V2SweepEchoesL4AndOverrides (0.03s)
+=== RUN   TestXcP5V2SweepRefusesBadWorkerValues
+    p5v2_costmodel_test.go:503: spec (brief): -1 = keep; negative other than -1, NaN, Inf are refused; -cost takes calibrated-l4 exactly
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed -2 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got -2
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed -0.5 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got -0.5
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed -1e-9 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got -1e-09
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed NaN → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got NaN
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got +Inf
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed -Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_fixed must be a non-negative finite number (-1 = keep); got -Inf
+    p5v2_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_fixed -1 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a -2 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got -2
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a -0.5 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got -0.5
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a -1e-9 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got -1e-09
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a NaN → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got NaN
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got +Inf
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a -Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_a must be a non-negative finite number (-1 = keep); got -Inf
+    p5v2_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_a -1 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p -2 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got -2
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p -0.5 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got -0.5
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p -1e-9 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got -1e-09
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p NaN → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got NaN
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got +Inf
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p -Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_p must be a non-negative finite number (-1 = keep); got -Inf
+    p5v2_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_p -1 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 -2 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got -2
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 -0.5 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got -0.5
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 -1e-9 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got -1e-09
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 NaN → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got NaN
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got +Inf
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 -Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_d0 must be a non-negative finite number (-1 = keep); got -Inf
+    p5v2_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_d0 -1 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate -2 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got -2
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate -0.5 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got -0.5
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate -1e-9 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got -1e-09
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate NaN → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got NaN
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got +Inf
+    p5v2_costmodel_test.go:506: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate -Inf → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -worker_gate must be a non-negative finite number (-1 = keep); got -Inf
+    p5v2_costmodel_test.go:510: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-l4 -worker_gate -1 → exit err=<nil>; stderr: sweep: 1 rows
+    p5v2_costmodel_test.go:515: sweep -scenarios skewed -policies reactive -rounds 1 -cost Calibrated-L4 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -cost must be default, calibrated or calibrated-l4; got "Calibrated-L4"
+    p5v2_costmodel_test.go:515: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated_l4 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -cost must be default, calibrated or calibrated-l4; got "calibrated_l4"
+    p5v2_costmodel_test.go:515: sweep -scenarios skewed -policies reactive -rounds 1 -cost l4 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -cost must be default, calibrated or calibrated-l4; got "l4"
+    p5v2_costmodel_test.go:515: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibrated-L4 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -cost must be default, calibrated or calibrated-l4; got "calibrated-L4"
+    p5v2_costmodel_test.go:515: sweep -scenarios skewed -policies reactive -rounds 1 -cost calibratedl4 → exit err=exit status 1; stderr: 2026/11/02 01:19:26 sweep: -cost must be default, calibrated or calibrated-l4; got "calibratedl4"
+--- PASS: TestXcP5V2SweepRefusesBadWorkerValues (0.10s)
+=== RUN   TestXcP5V2ComparerOnGPUTimelines
+    p5v2_costmodel_test.go:526: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+        
+        round 1 seed 1, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                                   0      81632      local/0         local           29.98        29.97    +0.01
+                                                   1      408164     gpu  /1         gpu             29.98        29.97    +0.01
+                                                   2      136055     local/0         local           42.32        31.61   +10.71
+                                                   3      204082     local/1         gpu             50.65        29.96   +20.69
+                                                   4      68027      local/0         local           29.98        29.97    +0.01
+                                                   5      102040     local/0         local           34.34        29.96    +4.38
+                                                   mean |delta| 5.97 s by shard, max |delta| 19.04 s with both sides' finishes sorted (order-free); sim: preempts=0 reneges=0 speculations=0
+        
+        round 2 seed 2, per shard (modeled s): shard  n_vectors  live place/att  sim place  live finish   sim finish   delta
+                                                   0      81632      local/0         local           30.06        30.05    +0.01
+                                                   1      408164     gpu  /1         gpu             30.04        30.03    +0.01
+                                                   2      136055     gpu  /1         local           30.08        30.48    -0.40
+                                                   3      204082     local/1         gpu             52.89        32.75   +20.13
+                                                   4      68027      local/0         local           30.03        30.02    +0.01
+                                                   5      102040     local/0         local           35.69        30.01    +5.68
+                                                   mean |delta| 4.37 s by shard, max |delta| 20.13 s with both sides' finishes sorted (order-free); sim: preempts=0 reneges=0 speculations=0
+    p5v2_costmodel_test.go:531: comparer exit 0 (DISAGREE is expected: the live rounds ran another model)
+    p5v2_costmodel_test.go:534: spec (decision 14, brief): sim rounds about 31.6 and 32.8 s, live 50.65 / 52.89; the 408k and 204k builds on the GPU
+    p5v2_costmodel_test.go:542: round 1: live 50.65 sim 31.61
+    p5v2_costmodel_test.go:542: round 2: live 52.89 sim 32.75
+    p5v2_costmodel_test.go:556: shard 1 n=408164: live gpu, sim gpu
+    p5v2_costmodel_test.go:556: shard 3 n=204082: live local, sim gpu
+    p5v2_costmodel_test.go:556: shard 1 n=408164: live gpu, sim gpu
+    p5v2_costmodel_test.go:556: shard 3 n=204082: live local, sim gpu
+--- PASS: TestXcP5V2ComparerOnGPUTimelines (2.01s)
+=== RUN   TestXcP5V2ComparerTakesTheWorkerFlags
+    p5v2_costmodel_test.go:573: spec (decision 14): 'The scheduler, the worker, the sweep (-worker_fixed -worker_a -worker_p -worker_d0 -worker_gate, echoed as columns) and the comparer read the five new terms'; step 1's finding B: a live round run with an override must be replayable
+    p5v2_costmodel_test.go:576: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4 -shards=false -worker_fixed 1.154
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+    p5v2_costmodel_test.go:576: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4 -shards=false -worker_a 1.295e-8
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+    p5v2_costmodel_test.go:576: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4 -shards=false -worker_p 0.891
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+    p5v2_costmodel_test.go:576: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4 -shards=false -worker_d0 154
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+    p5v2_costmodel_test.go:576: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -worker_mem_gb 22 -dataset sift-128 -lease_s 30 -trust_policy -cost calibrated-l4 -shards=false -worker_gate 2.07e-8
+        (exit 0)
+        validate: skewed policy=reactive workers=1 worker_mem=22GiB (0 = the preset's) cadences(wall s): poll=0.5 reconsider=2 lease=30; sharing off, 1 worker per node (irrelevant with sharing off); tolerance max(2.0 s, 5%); envelope over 8 tick phases
+        round  seed  scale    live_s     sim_s  delta_s |  live_lag   sim_lag | live g/l    sim g/l     | worst shard (live-sim) sorted max phase envelope    verdict
+        1      1     1         50.65     31.61   +19.04 |     16.30      1.64 | 1/5         2/4         | shard 3    +20.69 s        19.04 s    31.61..31.61   DISAGREE
+        2      2     1         52.89     32.75   +20.13 |     22.80      2.71 | 2/4         2/4         | shard 3    +20.13 s        20.13 s    32.75..32.75   DISAGREE
+        summary: 0/2 rounds agree; live - sim: mean +19.58 s, max |delta| 20.13 s
+    p5v2_costmodel_test.go:583: => worker-shape flags the comparer does not define: []
+    p5v2_costmodel_test.go:587: $ validate -timelines /Users/ruoqibai/Desktop/Career/KubernetesGPU/experiments/results/gpu-timelines -policy reactive -workers 1 -dataset sift-128 -trust_policy -cost Calibrated-L4 -shards=false
+        (exit 1)
+        2026/11/02 01:19:28 -cost must be default, calibrated or calibrated-l4; got "Calibrated-L4"
+--- PASS: TestXcP5V2ComparerTakesTheWorkerFlags (0.15s)
+=== RUN   TestXcP5V2SchedulerCostModelEnv
+    p5v2_costmodel_test.go:639: database: real=true
+    p5v2_costmodel_test.go:640: spec (brief, go doc ./scheduler/cmd/scheduler): COST_MODEL default|calibrated|calibrated-l4, anything else exits 2; COST_WORKER_FIXED/A/P/D0/GATE read; negative or non-finite refused (Validate)
+    p5v2_costmodel_test.go:642: COST_MODEL=calibrated-l4 -> -1 (-1 = still running, accepted); time=2026-11-02T01:19:30.556-08:00 level=INFO msg="scheduler listening" addr=127.0.0.1:0 policy=always_gpu cost_model=calibrated-l4 worker_shape=true cold_start_s=0 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s
+    p5v2_costmodel_test.go:651: COST_MODEL="Calibrated-L4" -> exit 2; time=2026-11-02T01:19:34.188-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value=Calibrated-L4
+    p5v2_costmodel_test.go:651: COST_MODEL="calibrated_l4" -> exit 2; time=2026-11-02T01:19:34.202-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value=calibrated_l4
+    p5v2_costmodel_test.go:651: COST_MODEL="CALIBRATED-L4" -> exit 2; time=2026-11-02T01:19:34.212-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value=CALIBRATED-L4
+    p5v2_costmodel_test.go:651: COST_MODEL="l4" -> exit 2; time=2026-11-02T01:19:34.221-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value=l4
+    p5v2_costmodel_test.go:651: COST_MODEL="calibrated-l4 " -> exit 2; time=2026-11-02T01:19:34.229-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value="calibrated-l4 "
+    p5v2_costmodel_test.go:651: COST_MODEL="calibratedl4" -> exit 2; time=2026-11-02T01:19:34.236-08:00 level=ERROR msg="COST_MODEL must be default, calibrated or calibrated-l4" value=calibratedl4
+    p5v2_costmodel_test.go:659: COST_WORKER_FIXED=-1 -> exit 2; time=2026-11-02T01:19:34.241-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_FIXED must be non-negative, got -1"
+    p5v2_costmodel_test.go:659: COST_WORKER_FIXED=NaN -> exit 2; time=2026-11-02T01:19:34.247-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_FIXED must be a finite number, got NaN"
+    p5v2_costmodel_test.go:659: COST_WORKER_FIXED=Inf -> exit 2; time=2026-11-02T01:19:34.252-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_FIXED must be a finite number, got +Inf"
+    p5v2_costmodel_test.go:659: COST_WORKER_FIXED=abc -> exit 2; time=2026-11-02T01:19:34.258-08:00 level=ERROR msg="bad float" var=COST_WORKER_FIXED value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5v2_costmodel_test.go:659: COST_WORKER_A=-1 -> exit 2; time=2026-11-02T01:19:34.263-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_A must be non-negative, got -1"
+    p5v2_costmodel_test.go:659: COST_WORKER_A=NaN -> exit 2; time=2026-11-02T01:19:34.269-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_A must be a finite number, got NaN"
+    p5v2_costmodel_test.go:659: COST_WORKER_A=Inf -> exit 2; time=2026-11-02T01:19:34.274-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_A must be a finite number, got +Inf"
+    p5v2_costmodel_test.go:659: COST_WORKER_A=abc -> exit 2; time=2026-11-02T01:19:34.279-08:00 level=ERROR msg="bad float" var=COST_WORKER_A value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5v2_costmodel_test.go:659: COST_WORKER_P=-1 -> exit 2; time=2026-11-02T01:19:34.284-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_P must be non-negative, got -1"
+    p5v2_costmodel_test.go:659: COST_WORKER_P=NaN -> exit 2; time=2026-11-02T01:19:34.288-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_P must be a finite number, got NaN"
+    p5v2_costmodel_test.go:659: COST_WORKER_P=Inf -> exit 2; time=2026-11-02T01:19:34.293-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_P must be a finite number, got +Inf"
+    p5v2_costmodel_test.go:659: COST_WORKER_P=abc -> exit 2; time=2026-11-02T01:19:34.298-08:00 level=ERROR msg="bad float" var=COST_WORKER_P value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5v2_costmodel_test.go:659: COST_WORKER_D0=-1 -> exit 2; time=2026-11-02T01:19:34.303-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_D0 must be non-negative, got -1"
+    p5v2_costmodel_test.go:659: COST_WORKER_D0=NaN -> exit 2; time=2026-11-02T01:19:34.308-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_D0 must be a finite number, got NaN"
+    p5v2_costmodel_test.go:659: COST_WORKER_D0=Inf -> exit 2; time=2026-11-02T01:19:34.313-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_D0 must be a finite number, got +Inf"
+    p5v2_costmodel_test.go:659: COST_WORKER_D0=abc -> exit 2; time=2026-11-02T01:19:34.317-08:00 level=ERROR msg="bad float" var=COST_WORKER_D0 value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5v2_costmodel_test.go:659: COST_WORKER_GATE=-1 -> exit 2; time=2026-11-02T01:19:34.322-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_GATE must be non-negative, got -1"
+    p5v2_costmodel_test.go:659: COST_WORKER_GATE=NaN -> exit 2; time=2026-11-02T01:19:34.327-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_GATE must be a finite number, got NaN"
+    p5v2_costmodel_test.go:659: COST_WORKER_GATE=Inf -> exit 2; time=2026-11-02T01:19:34.332-08:00 level=ERROR msg="bad cost model" err="COST_WORKER_GATE must be a finite number, got +Inf"
+    p5v2_costmodel_test.go:659: COST_WORKER_GATE=abc -> exit 2; time=2026-11-02T01:19:34.337-08:00 level=ERROR msg="bad float" var=COST_WORKER_GATE value=abc err="strconv.ParseFloat: parsing \"abc\": invalid syntax"
+    p5v2_costmodel_test.go:666: COST_MODEL=calibrated + all five COST_WORKER_* (valid) -> -1; time=2026-11-02T01:19:34.353-08:00 level=INFO msg="scheduler listening" addr=127.0.0.1:0 policy=always_gpu cost_model=calibrated worker_shape=true cold_start_s=0 reap_interval=2s reconsider_interval=0s time_scale=1 max_attempts=5 worker_stale_after=30s
+    p5v2_costmodel_test.go:671: observability (logged, not asserted): does the startup line carry the worker terms? worker_a present: false
+--- PASS: TestXcP5V2SchedulerCostModelEnv (9.52s)
+PASS
+ok  	github.com/arqbca11/HNSWonGPUs/scheduler/crosscheck	81.065s
+
+== Docker events for container kgpu-test-pg-89483
+  01:18:13  create
+  01:18:13  start
+  01:19:38  kill
+  01:19:38  die
+  01:19:38  destroy
+
+== Result: PASS

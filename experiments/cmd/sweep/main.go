@@ -42,7 +42,7 @@ var columns = []string{
 	"scenario", "policy", "seed",
 	"n_shards", "dim", "workers", "workers_per_node", "worker_mem_bytes", "share_links",
 	"sigma", "zipf", "load", "needs_index", "speedup", "kill_at",
-	"cost_model", "cost_a", "cost_p", "cost_d0", "gate", "gate_queries", "save_bandwidth", "bandwidth", "bandwidth_out", "shard_uses_store", "gpu_overhead", "cold_start_s",
+	"cost_model", "cost_a", "cost_p", "cost_d0", "gate", "gate_queries", "save_bandwidth", "bandwidth", "bandwidth_out", "shard_uses_store", "gpu_overhead", "worker_fixed", "worker_a", "worker_p", "worker_d0", "worker_gate", "cold_start_s",
 	"reconsider_s", "poll_s", "lease_s", "noise_seed",
 	"completed", "round_s", "straggler_s",
 	"builds_gpu", "builds_local",
@@ -69,7 +69,7 @@ func main() {
 		needsIdx     = flag.String("needs_index", "", "comma list: override the needs_index fraction")
 		dims         = flag.String("dim", "", "comma list: override the vector dimension")
 		speedups     = flag.String("speedup", "", "comma list: override the cost model's GPU speedup")
-		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0, the placeholder) or calibrated (the cloud topology's measured v1 block, Phase 5 decision 6); the flags below override single terms")
+		costModel    = flag.String("cost", "default", "the cost model to start from: default (v0, the placeholder), calibrated (the CPU-worker topology's measured v1 block, Phase 5 decision 6) or calibrated-l4 (the GPU topology's v2 block, the worker's own shape, decision 14); the flags below override single terms")
 		costA        = flag.Float64("cost_a", 0, "override the cost model's A (s per n^P·ln(n)·(dim+D0)): a calibrated constant")
 		costP        = flag.Float64("cost_p", 0, "override the exponent P on n (v0: 1)")
 		costD0       = flag.Float64("cost_d0", -1, "override the dimension offset D0 (v0: 0; -1 = keep)")
@@ -79,6 +79,11 @@ func main() {
 		bandwidthOut = flag.Float64("bandwidth_out", -1, "override the upload bandwidth, bytes/s (-1 = keep; 0 = same as -bandwidth)")
 		shardStore   = flag.String("shard_uses_store", "", "true/false: the shard fetches its vectors from the store and uploads its index (empty = keep)")
 		coldStarts   = flag.String("cold_start_s", "", "comma list: a pool that autoscales from zero — the workers are provisioned this long after the first GPU build is queued, and an empty pool reports this wait (Phase 5 decision 11); default 0")
+		workerFixed  = flag.Float64("worker_fixed", -1, "v2: override the worker's per-build floor, s (-1 = keep)")
+		workerA      = flag.Float64("worker_a", -1, "v2: override the worker's own A (-1 = keep; 0 = v1's speedup form)")
+		workerP      = flag.Float64("worker_p", -1, "v2: override the worker's exponent on n (-1 = keep)")
+		workerD0     = flag.Float64("worker_d0", -1, "v2: override the worker's dimension offset (-1 = keep)")
+		workerGate   = flag.Float64("worker_gate", -1, "v2: override the worker's gate constant (-1 = keep)")
 		bandwidth    = flag.Float64("bandwidth", 0, "override the cost model's transfer bandwidth, bytes/s (calibrated)")
 		gpuOverhead  = flag.Float64("gpu_overhead", -1, "override the cost model's fixed GPU overhead, s (calibrated; -1 = the default)")
 		killAt       = flag.Float64("kill_at", 0, "kill the busiest worker at this modeled second (shrinking pool)")
@@ -122,8 +127,16 @@ func main() {
 			}
 		}
 	}
-	if *costModel != "default" && *costModel != "calibrated" {
-		log.Fatalf("sweep: -cost must be default or calibrated; got %q", *costModel)
+	if *costModel != "default" && *costModel != "calibrated" && *costModel != "calibrated-l4" {
+		log.Fatalf("sweep: -cost must be default, calibrated or calibrated-l4; got %q", *costModel)
+	}
+	for _, x := range []struct {
+		name string
+		v    float64
+	}{{"-worker_fixed", *workerFixed}, {"-worker_a", *workerA}, {"-worker_p", *workerP}, {"-worker_d0", *workerD0}, {"-worker_gate", *workerGate}} {
+		if (x.v < 0 && x.v != -1) || math.IsNaN(x.v) || math.IsInf(x.v, 0) {
+			log.Fatalf("sweep: %s must be a non-negative finite number (-1 = keep); got %g", x.name, x.v)
+		}
 	}
 	if *shardStore != "" {
 		if _, err := strconv.ParseBool(*shardStore); err != nil {
@@ -174,6 +187,7 @@ func main() {
 														costA: *costA, bandwidth: *bandwidth, gpuOverhead: *gpuOverhead,
 														costModel: *costModel, costP: *costP, costD0: *costD0, gateCost: *gateCost, gateQueries: *gateQueries,
 														saveBW: *saveBW, bandwidthOut: *bandwidthOut, shardStore: *shardStore, coldStartS: cold,
+														workerFixed: *workerFixed, workerA: *workerA, workerP: *workerP, workerD0: *workerD0, workerGate: *workerGate,
 														reconsiderS: *reconsider, pollS: *poll, leaseS: *leaseS, noiseSeed: *noiseSeed,
 													})
 													if err != nil {
@@ -200,29 +214,30 @@ func main() {
 }
 
 type cell struct {
-	scenario, policyName string
-	seed                 int64
-	shards, workers      int
-	workerMemGB          float64
-	perNode              int
-	shareLinks           bool
-	sigma, zipf, load    float64
-	needsIdx             float64
-	dim                  int32
-	speedup              float64
-	costA, bandwidth     float64 // 0 = the cost model's defaults
-	gpuOverhead          float64 // -1 = the default
-	costModel            string  // default or calibrated (v1)
-	costP                float64 // 0 = keep
-	costD0, gateCost     float64 // -1 = keep
-	gateQueries, saveBW  float64 // -1 = keep
-	bandwidthOut         float64 // -1 = keep
-	shardStore           string  // "" = keep
-	coldStartS           float64 // the simulator's ColdStartS (decision 11)
-	killAt               float64
-	reconsiderS, pollS   float64
-	leaseS               float64
-	noiseSeed            int64
+	scenario, policyName                                string
+	seed                                                int64
+	shards, workers                                     int
+	workerMemGB                                         float64
+	perNode                                             int
+	shareLinks                                          bool
+	sigma, zipf, load                                   float64
+	needsIdx                                            float64
+	dim                                                 int32
+	speedup                                             float64
+	costA, bandwidth                                    float64 // 0 = the cost model's defaults
+	gpuOverhead                                         float64 // -1 = the default
+	costModel                                           string  // default or calibrated (v1)
+	costP                                               float64 // 0 = keep
+	costD0, gateCost                                    float64 // -1 = keep
+	gateQueries, saveBW                                 float64 // -1 = keep
+	bandwidthOut                                        float64 // -1 = keep
+	shardStore                                          string  // "" = keep
+	coldStartS                                          float64 // the simulator's ColdStartS (decision 11)
+	workerFixed, workerA, workerP, workerD0, workerGate float64 // v2 overrides, -1 = keep
+	killAt                                              float64
+	reconsiderS, pollS                                  float64
+	leaseS                                              float64
+	noiseSeed                                           int64
 }
 
 func runCell(c cell) ([]string, error) {
@@ -249,6 +264,23 @@ func runCell(c cell) ([]string, error) {
 	cm := costmodel.Default()
 	if c.costModel == "calibrated" {
 		cm = costmodel.Calibrated()
+	} else if c.costModel == "calibrated-l4" {
+		cm = costmodel.CalibratedL4()
+	}
+	if c.workerFixed >= 0 {
+		cm.WorkerFixed = c.workerFixed
+	}
+	if c.workerA >= 0 {
+		cm.WorkerA = c.workerA
+	}
+	if c.workerP >= 0 {
+		cm.WorkerP = c.workerP
+	}
+	if c.workerD0 >= 0 {
+		cm.WorkerD0 = c.workerD0
+	}
+	if c.workerGate >= 0 {
+		cm.WorkerGate = c.workerGate
 	}
 	if c.speedup > 0 {
 		cm.Speedup = c.speedup
@@ -320,7 +352,7 @@ func runCell(c cell) ([]string, error) {
 		strconv.Itoa(sc.NShards), strconv.Itoa(int(sc.Dim)), strconv.Itoa(nw), strconv.Itoa(c.perNode),
 		strconv.FormatInt(mem, 10), strconv.FormatBool(c.shareLinks),
 		f(c.sigma), f(sc.Sizes.ZipfExponent), f(c.load), f(sc.Stream.NeedsIndexFraction), f(cm.Speedup), f(c.killAt),
-		modelName(c.costModel), f(cm.A), f(cm.P), f(cm.D0), f(cm.GateCost), f(cm.GateQueries), f(cm.SaveBandwidth), f(cm.Bandwidth), f(cm.BandwidthOut), strconv.FormatBool(cm.ShardUsesStore), f(cm.GPUOverhead), f(c.coldStartS),
+		modelName(c.costModel), f(cm.A), f(cm.P), f(cm.D0), f(cm.GateCost), f(cm.GateQueries), f(cm.SaveBandwidth), f(cm.Bandwidth), f(cm.BandwidthOut), strconv.FormatBool(cm.ShardUsesStore), f(cm.GPUOverhead), f(cm.WorkerFixed), f(cm.WorkerA), f(cm.WorkerP), f(cm.WorkerD0), f(cm.WorkerGate), f(c.coldStartS),
 		f(c.reconsiderS), f(c.pollS), f(c.leaseS), strconv.FormatInt(c.noiseSeed, 10),
 		strconv.FormatBool(res.Completed), f(res.RoundS), f(res.StragglerLagS),
 		strconv.Itoa(res.BuildsGPU), strconv.Itoa(res.BuildsLocal),

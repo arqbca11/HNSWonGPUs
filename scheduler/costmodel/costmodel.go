@@ -15,7 +15,10 @@
 //	save          = index bytes / SaveBandwidth                (write + hash before publishing)
 //	fetch         = vector bytes / Bandwidth                    (the store → the builder)
 //	upload        = index bytes / BandwidthOut                  (the builder → the store)
-//	GPU build     = (CPU build + gate) / Speedup + GPUOverhead + save
+//	GPU build     = (CPU build + gate) / Speedup + GPUOverhead + save          (v1: a CPU worker)
+//	              = WorkerFixed + WorkerA · n^WorkerP · ln(n) · (dim + WorkerD0)  (v2, when WorkerA > 0: the
+//	                + WorkerGate · GateQueries · ln(n) · (dim + WorkerD0)        worker's own shape — a GPU's
+//	                + GPUOverhead + save                                          floor and a different curve)
 //	transfer      = fetch + upload
 //	GPU total     = GPU build + transfer                        (a worker's whole path)
 //	local total   = CPU build + gate + save [+ fetch + upload if ShardUsesStore]
@@ -25,8 +28,11 @@
 //
 // Default() is still v0 (P = 1, D0 = 0, no gate, no save, one bandwidth):
 // every Phase 1–3 test and sweep keeps its numbers. Calibrated() is the
-// cloud topology's measured block (Phase 4 evidence 7, Phase 5 evidence 9),
-// what the cluster runs and what the comparison is rerun on. The Python
+// CPU-worker topology's measured block (Phase 4 evidence 7, Phase 5 evidence
+// 9); CalibratedL4() the GPU topology's (Phase 5 decision 14, evidence 10,
+// 11), where the worker has its own shape instead of a speedup — the first
+// GPU session showed the card's time is a floor plus a nearly linear term,
+// against the shard's n^1.22·ln(n), so no single ratio fits. The Python
 // worker reimplements the same formulas; keep the two in step.
 //
 // The two buckets the estimator and the simulator see: GPUBuild is what the
@@ -53,6 +59,11 @@ type Model struct {
 	Bandwidth      float64 // bytes/s fetching vectors from the store
 	BandwidthOut   float64 // bytes/s uploading the index to the store; 0 = same as Bandwidth (v0)
 	ShardUsesStore bool    // the shard fetches its vectors from the store and uploads its index (this rig; a database would not)
+	WorkerFixed    float64 // v2: the worker's per-build floor, s (a GPU's context, launch and conversion overhead)
+	WorkerA        float64 // v2: the worker's own A; 0 = use the Speedup form (v1)
+	WorkerP        float64 // v2: the worker's own exponent on n
+	WorkerD0       float64 // v2: the worker's own dimension offset
+	WorkerGate     float64 // v2: the worker's gate cost per (query · ln n · (dim + WorkerD0))
 	M              int     // HNSW links per node, for the index size
 	MemFactor      float64 // GPU memory need as a multiple of the vector bytes
 	BytesPerDim    int     // 4 for float32
@@ -101,6 +112,25 @@ func Calibrated() Model {
 		MemFactor:      2,
 		BytesPerDim:    4,
 	}
+}
+
+// CalibratedL4 is the GPU topology's measured block (Phase 5 decision 14;
+// the first GPU session, evidence 10): the shard side as Calibrated(), the
+// worker an NVIDIA L4 building CAGRA and converting to HNSW on 6 CPU threads,
+// fitted with a fixed term (19 points, the process's warm-up point dropped,
+// sigma 0.097); the card's fetch, upload and save bandwidths. Speedup is
+// kept only as a fallback value and is not used while WorkerA > 0.
+func CalibratedL4() Model {
+	m := Calibrated()
+	m.WorkerFixed = 1.154
+	m.WorkerA = 1.295e-8
+	m.WorkerP = 0.891
+	m.WorkerD0 = 154
+	m.WorkerGate = 2.07e-8
+	m.Bandwidth = 1.39e8
+	m.BandwidthOut = 1.01e8
+	m.SaveBandwidth = 2.9e8
+	return m
 }
 
 func (m Model) VectorBytes(n int64, dim int32) int64 {
@@ -164,9 +194,37 @@ func (m Model) Upload(n int64, dim int32) time.Duration {
 	return secs(float64(m.IndexBytes(n, dim)) / bw)
 }
 
-// GPUBuild is the worker's compute: the build and the gate at the worker's
-// speed, the fixed overhead, and the save.
+// WorkerBuild is the worker's own build + gate when it has its own shape
+// (v2, WorkerA > 0); 0 otherwise. A build of fewer than 2 vectors pays the
+// floor and nothing else.
+func (m Model) WorkerBuild(n int64, dim int32) time.Duration {
+	if m.WorkerA <= 0 {
+		return 0
+	}
+	if n < 2 {
+		return secs(m.WorkerFixed)
+	}
+	p := m.WorkerP
+	if p == 0 {
+		p = 1
+	}
+	ln := math.Log(float64(n))
+	w := float64(dim) + m.WorkerD0
+	build := m.WorkerA * math.Pow(float64(n), p) * ln * w
+	gate := 0.0
+	if m.WorkerGate > 0 && m.GateQueries > 0 {
+		gate = m.WorkerGate * m.GateQueries * ln * w
+	}
+	return secs(m.WorkerFixed + build + gate)
+}
+
+// GPUBuild is the worker's compute: with its own shape (v2) the floor, its
+// build and its gate; otherwise (v1) the shard's build and gate at the
+// worker's speed; plus the fixed overhead and the save either way.
 func (m Model) GPUBuild(n int64, dim int32) time.Duration {
+	if m.WorkerA > 0 {
+		return secs(m.WorkerBuild(n, dim).Seconds() + m.GPUOverhead + m.Save(n, dim).Seconds())
+	}
 	return secs((m.CPUBuild(n, dim).Seconds()+m.Gate(n, dim).Seconds())/m.Speedup + m.GPUOverhead + m.Save(n, dim).Seconds())
 }
 
@@ -197,6 +255,8 @@ func (m Model) Validate() error {
 		{"COST_GATE", m.GateCost, 0, false}, {"COST_GATE_QUERIES", m.GateQueries, 0, false},
 		{"COST_SAVE_BANDWIDTH", m.SaveBandwidth, 0, false}, {"COST_BANDWIDTH", m.Bandwidth, 0, true},
 		{"COST_BANDWIDTH_OUT", m.BandwidthOut, 0, false}, {"COST_MEM_FACTOR", m.MemFactor, 0, true},
+		{"COST_WORKER_FIXED", m.WorkerFixed, 0, false}, {"COST_WORKER_A", m.WorkerA, 0, false}, {"COST_WORKER_P", m.WorkerP, 0, false},
+		{"COST_WORKER_D0", m.WorkerD0, 0, false}, {"COST_WORKER_GATE", m.WorkerGate, 0, false},
 	}
 	for _, c := range checks {
 		if math.IsNaN(c.v) || math.IsInf(c.v, 0) {

@@ -15,8 +15,8 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median on the calibrated CPU-worker constants** (evidence 8, 9); **the first GPU rounds were slower than the CPU-worker ones (50.6 vs 41.5 s) because the scheduler's model did not know the card's shape** (evidence 10) — the honest GPU round number waits for cost model v2. Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
-| Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
+| Per-round speedup, current presets | **~0 at the median in the query-bound presets, on any model** (evidence 8, 9, 11: the round is the drain of the queries); **9.5× on `hour_build` with the L4 block** (2708 → 284 s, evidence 11), none on `production` (its largest build fits no worker). The first live GPU rounds were slower than the CPU-worker ones because the scheduler's model did not know the card's shape (evidence 10); the second session validates v2's 32 s prediction. Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
+| Per-round speedup once the largest build fits a worker | **~9.5× on the measured model** (`hour_build` on the L4 block, evidence 11); earlier **~7.0×** on the placeholder (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **On an L4, a curve, not a number: 0.5× at 10k vectors, 4.5× at 100k, 9.5× at 400k over the shard VM's 2 threads** (the card has a 1.15 s floor and then grows linearly with n; evidence 10). For a CPU worker with 8 threads over the shard's 2: 2.1–2.2× (evidence 7, 9) | Measured (cloud; decision 7 says the number that counts comes from the cloud topology) |
 | The cost model's CPU constant and its error, measured | **Cost model v1 (Phase 5 decision 6): build = 2.30e-9 · n^1.22 · ln(n) · (dim + 187) on the shard VM at 2 threads, sigma 0.08 over both datasets** (evidence 9); v0's one constant per dataset had sigma 0.49 together because its "time ∝ dim" is wrong on x86 (evidence 7, decision 35: a 960-dim build costs 2.8–3.6× a 128-dim one, not 7.5×, and 8.0× on the laptop — the dimension term is the machine's) | Measured (cloud), refitted |
@@ -244,4 +244,24 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **What it says.** (1) **The per-build speedup is not a number but a curve**: the card has a 1.15 s floor and then grows linearly with the vectors, so it loses to the shard below ~20k vectors and wins 9.5× at 400k, with no sign of flattening — the roadmap's "10× per build" is the large-build end of a curve that starts below 1×. (2) **A model with the wrong shape loses the round even with the right hardware**: the first-ever GPU rounds were slower than the CPU-worker ones because of the estimate, not the card. Decision 13's cost model v2 gives the worker its own shape; the second session validates it. (3) The gate passes on GPU-built graphs with recall above hnswlib's own at every size, so the conversion is sound.
 
-*(Next expected entries: cost model v2 fitted on both sides, the comparison rerun on it, and the second GPU session's rounds under it — the first honest round-level GPU number.)*
+### Evidence 11 — cost model v2 on the L4, and the comparison rerun on it (Phase 5)
+
+**Setup.** Cost model v2 (Phase 5 decision 14): the worker's own shape, fitted on the session's L4 points against the shard VM's (`fit --v1 --v2 --fixed --drop-warmup`): floor 1.15 s + 1.05e-8 · n^0.91 · ln(n) · (dim + 154), sigma 0.097, the card's bandwidths. The session's two rounds replayed on it; then the roadmap's eight scenarios × every policy × 20 seeds with sigma 0.10, with the presets' pool (two workers at 6 shards, three at 50) and with one worker as in the session (`experiments/results/calibrated-l4/`).
+
+**Result, the replay.** The two live rounds, which ran under v1's CPU-worker block and took 50.6 and 52.9 s, come out at **31.6 and 32.8 s** under the L4 block, with the 408k and 204k builds both on the card and done by 30 s: the second session's prediction.
+
+**Result, the comparison** (median round seconds; the CPU-worker block's numbers from evidence 9 for comparison):
+
+| Scenario | CPU-worker block (v1), any policy | L4 block, presets' pool, reactive | L4 block, one worker: always_gpu / static / reactive / clairvoyant |
+| --- | --- | --- | --- |
+| uniform, skewed, shrinking_pool | 30 | 30 | 37–38 / 30 / 30–39 / 30 |
+| downstream_heavy | 30–31 | 30 | 38 / 31 / 40 / 30 |
+| staggered | 40 | 40 | 43 / 40 / 40 / 40 |
+| bimodal | 78 | 76 | 76 / 76 / 76 / 76 |
+| high_dim | 193 | 184 | 184 |
+| **hour_build** | **2708** | **284** | 308 / 284 / 284 / 284 |
+| production | 24139 | 23678 | 23678 |
+
+**What it says.** (1) **The first round-level GPU number: 9.5× on the hour-long build** (2708 → 284 s), because the straggler that holds the round is a build the card finishes in minutes; `production` does not move because its largest build fits no 24 GiB worker and stays local, as evidence 2 predicted. (2) **The small presets stay at their query horizon** (30 s): the round is the drain of the queries, not the builds, and no card changes that — evidence 1's finding survives the hardware. (3) **With one card the policies finally differ**: always-offload queues everything behind one worker (37–43 s), the size threshold and the clairvoyant stay at 30, and reactive loses on `uniform` and `downstream_heavy` (39–40 s) by preempting into a single-card queue — the first preset where a dynamic policy is beaten by a static one, and the sweep that the second session should reproduce live. (4) The model's error is now 0.10 on both sides; the two numbers above that used to be guesses, the per-build speedup and the round-level gain, are measured and derived respectively.
+
+*(Next expected entries: the second GPU session's rounds under the L4 block against the 32 s prediction; the two-card measurements once the quota allows them.)*

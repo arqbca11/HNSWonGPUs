@@ -54,3 +54,21 @@ def test_v1_env_block():
     assert m.upload_s(1000, 128) == m.index_bytes(1000, 128) / m.bandwidth   # out = in when 0
     assert m.local_total_s(1000, 128) == m.cpu_build_s(1000, 128) + m.gate_s(1000, 128) + m.save_s(1000, 128)
     assert Model.from_env({}).p == 1.0 and Model.from_env({}).shard_uses_store is False
+
+
+def test_v2_l4_block_matches_go():
+    """Phase 5 decision 14: the L4 block gives the worker its own shape; the
+    numbers are the Go test's (TestCalibratedL4TermsByHand)."""
+    m = Model.calibrated_l4()
+    n, dim = 408_164, 128
+    for k, got, want in [("worker build + gate", m.worker_build_s(n, dim), 6.618), ("gpu build", m.gpu_build_s(n, dim), 9.019),
+                         ("transfer", m.transfer_s(n, dim), 4.090), ("gpu total", m.gpu_total_s(n, dim), 13.109),
+                         ("local total", m.local_total_s(n, dim), 71.258)]:
+        print(f"L4 408164 x 128: {k:20s} = {got:8.3f} s (Go: {want})")
+        assert abs(got - want) < 2e-3, k
+    assert m.worker_build_s(10_000, 128) > m.cpu_build_s(10_000, 128)   # the card's floor: slower than the shard at 10k
+    assert m.worker_build_s(1, 128) == 1.154
+    v1 = Model.calibrated()
+    assert v1.worker_build_s(n, dim) == 0.0 and v1.worker_a == 0
+    e = Model.from_env({"COST_MODEL": "calibrated-l4", "COST_WORKER_FIXED": "2"})
+    assert e.worker_fixed == 2 and e.worker_a == 1.295e-8

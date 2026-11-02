@@ -331,15 +331,28 @@ class FitV1:
     bandwidth_out: float | None   # median upload bytes/s; None when no point uploaded
     save_bandwidth: float | None  # median index bytes / save seconds; None for v0 CSVs
     recall_min: float
+    fixed_s: float = 0.0  # v2 (Phase 5 decision 14): a per-build fixed cost fitted with the shape (0 unless asked)
 
     def build_s(self, n: float, dim: float) -> float:
-        return self.a * n ** self.p * math.log(n) * (dim + self.d0)
+        return self.fixed_s + self.a * n ** self.p * math.log(n) * (dim + self.d0)
 
 
-def fit_points_v1(points: list[dict]) -> list[FitV1]:
+def fit_points_v1(points: list[dict], fixed: bool = False, drop_warmup: bool = False) -> list[FitV1]:
+    """fixed=True (v2, the GPU side): the shape is fitted with a per-build
+    fixed term g0 — build = g0 + A·n^P·ln(n)·(dim + D0) — searched on a grid
+    like D0 (the residuals are of the remaining time). drop_warmup=True leaves
+    out each thread count's first point in CSV order: a process's first CUDA
+    build pays a one-off warm-up (5–6 s on the L4) that a long-running worker
+    pays once, not per build."""
     fits = []
     for th in sorted({int(p["threads"]) for p in points}):
         ps = [p for p in points if int(p["threads"]) == th]
+        if drop_warmup and len(ps) > 1:
+            # the process's first build is the earliest MEASURED point, not the
+            # first row read: several CSVs arrive in argument (glob) order
+            # (the v2 cross-check's A). `at` is the point's UTC timestamp.
+            first = min(range(len(ps)), key=lambda i: (str(ps[i].get("at") or ""), i))
+            ps = ps[:first] + ps[first + 1:]
         n = np.array([float(p["size"]) for p in ps])
         d = np.array([float(p["dim"]) for p in ps])
         t = np.array([float(p["build_s"]) for p in ps])
@@ -347,25 +360,28 @@ def fit_points_v1(points: list[dict]) -> list[FitV1]:
             raise ValueError(f"threads {th}: every point needs size >= 2 and build_s > 0")
         distinct = len(set(n.tolist()))
         best = None
-        for d0 in np.concatenate([[0.0], np.geomspace(1.0, 5000.0, 400)]):
-            y = np.log(t) - np.log(np.log(n)) - np.log(d + d0)
-            if distinct >= 2:
-                X = np.vstack([np.ones_like(n), np.log(n)]).T
-                coef, *_ = np.linalg.lstsq(X, y, rcond=None)
-            else:
-                coef = np.array([float(np.mean(y - 1.0 * np.log(n))), 1.0])   # one size: P is 1 by convention
-            res = y - (coef[0] + coef[1] * np.log(n))
-            s = float(np.std(res))
-            if best is None or s < best[0] - 1e-12:
-                best = (s, float(d0), float(math.exp(coef[0])), float(coef[1]))
-        sigma, d0, a, pexp = best
+        g0_grid = np.linspace(0.0, float(t.min()) * 0.98, 120) if fixed and distinct >= 2 else [0.0]   # the floor's resolution: <1 % of the smallest time
+        for g0 in g0_grid:
+            tt = t - g0
+            for d0 in np.concatenate([[0.0], np.geomspace(1.0, 5000.0, 400)]):
+                y = np.log(tt) - np.log(np.log(n)) - np.log(d + d0)
+                if distinct >= 2:
+                    X = np.vstack([np.ones_like(n), np.log(n)]).T
+                    coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+                else:
+                    coef = np.array([float(np.mean(y - 1.0 * np.log(n))), 1.0])   # one size: P is 1 by convention
+                pred = g0 + math.exp(coef[0]) * n ** coef[1] * np.log(n) * (d + d0)
+                s = float(np.std(np.log(t / pred)))   # the residual of the WHOLE time, fixed term included
+                if best is None or s < best[0] - 1e-12:
+                    best = (s, float(d0), float(math.exp(coef[0])), float(coef[1]), float(g0))
+        sigma, d0, a, pexp, g0 = best
         if distinct < 2:
             # one size cannot tell P from A, nor one dim D0 from A: the fit
             # reports v0's shape (P 1, D0 0) and the caller labels it (G6)
             d0, pexp = 0.0, 1.0
             a = float(math.exp(np.mean(np.log(t) - np.log(np.log(n)) - np.log(d))))
             sigma = float(np.std(np.log(t) - np.log(a * n * np.log(n) * d)))
-        fitted = a * n ** pexp * np.log(n) * (d + d0)
+        fitted = g0 + a * n ** pexp * np.log(n) * (d + d0)
         ratio = t / fitted
         gq = [int(float(p.get("gate_queries") or 0)) for p in ps]
         gqs = sorted(set(gq))
@@ -377,7 +393,7 @@ def fit_points_v1(points: list[dict]) -> list[FitV1]:
         fits.append(FitV1(th, len(ps), distinct, a, pexp, d0, sigma, float(ratio.min()), float(ratio.max()),
                           float(np.median(gate)) if gate else 0.0, q if gqs and gqs[-1] > 0 else 0,
                           bw_in, float(np.median(ups)) if ups else None, float(np.median(saves)) if saves else None,
-                          min(float(p["recall"]) for p in ps)))
+                          min(float(p["recall"]) for p in ps), g0))
     return fits
 
 
@@ -421,6 +437,42 @@ def env_overrides_v1(points: list[dict], fits: list[FitV1], shard_threads: int, 
     if wk.save_bandwidth is not None:
         out["COST_SAVE_BANDWIDTH"] = f"{wk.save_bandwidth:.4g}"
     out["KGPU_ESTIMATE_SIGMA"] = f"{max(sh.sigma, wk.sigma, spread):.3f}"
+    return out
+
+
+def env_overrides_v2(points: list[dict], fits: list[FitV1], shard_threads: int, worker_threads: int,
+                     worker_points: list[dict], worker_fits: list[FitV1], gate_queries: int = 10000,
+                     overhead_s: float | None = None) -> dict[str, str]:
+    """The COST_* block of cost model v2 (Phase 5 decision 14): the shard's
+    shape as in v1, and the worker's OWN shape — fixed term, A, P, D0 and gate
+    — instead of a speedup. Bandwidths from the worker's points. The sigma is
+    the larger of the two sides' fit errors: each side's estimate now has its
+    own, and no ratio spread is involved."""
+    by = {f.threads: f for f in fits}
+    wby = {f.threads: f for f in worker_fits}
+    if shard_threads not in by or worker_threads not in wby:
+        raise ValueError(f"need a shard fit at {shard_threads} threads (have {sorted(by)}) and a worker fit at {worker_threads} (have {sorted(wby)})")
+    sh, wk = by[shard_threads], wby[worker_threads]
+    out = {
+        "COST_MODEL": "calibrated",
+        "COST_A": f"{sh.a:.4g}",
+        "COST_P": f"{sh.p:.3f}",
+        "COST_D0": f"{sh.d0:.0f}",
+        "COST_GATE": f"{sh.gate_per_query:.4g}",
+        "COST_GATE_QUERIES": f"{gate_queries}",
+        "COST_WORKER_FIXED": f"{wk.fixed_s:.3f}",
+        "COST_WORKER_A": f"{wk.a:.4g}",
+        "COST_WORKER_P": f"{wk.p:.3f}",
+        "COST_WORKER_D0": f"{wk.d0:.0f}",
+        "COST_WORKER_GATE": f"{wk.gate_per_query:.4g}",
+        "COST_GPU_OVERHEAD": f"{1.5 if overhead_s is None else overhead_s:.2f}",
+        "COST_BANDWIDTH": f"{wk.bandwidth_in:.4g}",
+    }
+    if wk.bandwidth_out is not None:
+        out["COST_BANDWIDTH_OUT"] = f"{wk.bandwidth_out:.4g}"
+    if wk.save_bandwidth is not None:
+        out["COST_SAVE_BANDWIDTH"] = f"{wk.save_bandwidth:.4g}"
+    out["KGPU_ESTIMATE_SIGMA"] = f"{max(sh.sigma, wk.sigma):.3f}"
     return out
 
 

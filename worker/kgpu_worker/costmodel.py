@@ -9,15 +9,18 @@ package; test_costmodel.py pins the Go test's numbers.
     save        = index bytes / SaveBandwidth            (0 when SaveBandwidth is 0)
     fetch       = vector bytes / Bandwidth
     upload      = index bytes / BandwidthOut             (Bandwidth when BandwidthOut is 0)
-    GPU build   = (CPU build + gate) / Speedup + GPUOverhead + save
+    GPU build   = (CPU build + gate) / Speedup + GPUOverhead + save        (v1: a CPU worker)
+                = WorkerFixed + WorkerA·n^WorkerP·ln(n)·(dim+WorkerD0)     (v2, WorkerA > 0: the worker's
+                  + WorkerGate·GateQueries·ln(n)·(dim+WorkerD0)            own shape) + GPUOverhead + save
     transfer    = fetch + upload
     GPU total   = GPU build + transfer
     local total = CPU build + gate + save [+ transfer if shard_uses_store]
     vector bytes = n · dim · 4;  index bytes = n · (dim·4 + 2·M·4);  GPU memory = MemFactor · vector bytes
 
 Model() is v0 (P 1, D0 0, no gate, no save, one bandwidth): the placeholder
-the Phase 1-3 tests were written against. Model.calibrated() is the cloud
-topology's measured block.
+the Phase 1-3 tests were written against. Model.calibrated() is the CPU-worker
+topology's measured block; Model.calibrated_l4() the GPU topology's (Phase 5
+decision 14), with the worker's own shape.
 """
 
 from __future__ import annotations
@@ -49,6 +52,11 @@ class Model:
     bandwidth: float = 200e6
     bandwidth_out: float = 0.0
     shard_uses_store: bool = False
+    worker_fixed: float = 0.0
+    worker_a: float = 0.0
+    worker_p: float = 0.0
+    worker_d0: float = 0.0
+    worker_gate: float = 0.0
     m: int = 16
     mem_factor: float = 2.0
     bytes_per_dim: int = 4
@@ -60,16 +68,22 @@ class Model:
                    save_bandwidth=6.6e8, bandwidth=1.57e8, bandwidth_out=5.0e7, shard_uses_store=True)
 
     @classmethod
+    def calibrated_l4(cls) -> "Model":
+        """The GPU topology's measured block; see costmodel.CalibratedL4() in Go."""
+        return replace(cls.calibrated(), worker_fixed=1.154, worker_a=1.295e-8, worker_p=0.891, worker_d0=154, worker_gate=2.07e-8,
+                       bandwidth=1.39e8, bandwidth_out=1.01e8, save_bandwidth=2.9e8)
+
+    @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Model":
         """Same COST_* variables the scheduler reads, so one env block serves both.
         COST_MODEL=calibrated starts from the measured block instead of v0."""
         env = os.environ if env is None else env
         name = env.get("COST_MODEL", "")
-        if name not in ("", "default", "calibrated"):
-            # exactly the scheduler's two spellings: one env block serves both
+        if name not in ("", "default", "calibrated", "calibrated-l4"):
+            # exactly the scheduler's spellings: one env block serves both
             # processes and must mean the same on each (step 1 cross-check E)
-            raise ValueError(f"COST_MODEL must be default or calibrated, got {name!r}")
-        d = cls.calibrated() if name == "calibrated" else cls()
+            raise ValueError(f"COST_MODEL must be default, calibrated or calibrated-l4, got {name!r}")
+        d = {"calibrated": cls.calibrated, "calibrated-l4": cls.calibrated_l4}.get(name, cls)()
         f = lambda key, default: float(env[key]) if env.get(key) else default  # noqa: E731
         return replace(
             d,
@@ -84,6 +98,11 @@ class Model:
             bandwidth=f("COST_BANDWIDTH", d.bandwidth),
             bandwidth_out=f("COST_BANDWIDTH_OUT", d.bandwidth_out),
             shard_uses_store=_parse_bool(env["COST_SHARD_USES_STORE"]) if env.get("COST_SHARD_USES_STORE") else d.shard_uses_store,
+            worker_fixed=f("COST_WORKER_FIXED", d.worker_fixed),
+            worker_a=f("COST_WORKER_A", d.worker_a),
+            worker_p=f("COST_WORKER_P", d.worker_p),
+            worker_d0=f("COST_WORKER_D0", d.worker_d0),
+            worker_gate=f("COST_WORKER_GATE", d.worker_gate),
             mem_factor=f("COST_MEM_FACTOR", d.mem_factor),
         )
 
@@ -118,7 +137,21 @@ class Model:
     def upload_s(self, n: int, dim: int) -> float:
         return self.index_bytes(n, dim) / (self.bandwidth_out if self.bandwidth_out > 0 else self.bandwidth)
 
+    def worker_build_s(self, n: int, dim: int) -> float:
+        """v2: the worker's own build + gate (0 when it has no shape of its own)."""
+        if self.worker_a <= 0:
+            return 0.0
+        if n < 2:
+            return self.worker_fixed
+        ln = math.log(n)
+        w = dim + self.worker_d0
+        build = self.worker_a * n ** (self.worker_p or 1.0) * ln * w
+        gate = self.worker_gate * self.gate_queries * ln * w if self.worker_gate > 0 and self.gate_queries > 0 else 0.0
+        return self.worker_fixed + build + gate
+
     def gpu_build_s(self, n: int, dim: int) -> float:
+        if self.worker_a > 0:
+            return self.worker_build_s(n, dim) + self.gpu_overhead + self.save_s(n, dim)
         return (self.cpu_build_s(n, dim) + self.gate_s(n, dim)) / self.speedup + self.gpu_overhead + self.save_s(n, dim)
 
     def transfer_s(self, n: int, dim: int) -> float:

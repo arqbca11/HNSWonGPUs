@@ -156,6 +156,12 @@ One entry per action the system takes, pointing at the code that decides it, the
 - Modeled where: `experiments/sim/sim.go` — `Config.ColdStartS`; the workers start not alive; the provisioning clock starts at the event that queues the first GPU build (after the step's submits and reports, before its claims) and `provisionAt` wakes them once; `coldWait()` is the host's estimate while none is alive. The sweep's `-cold_start_s` axis and column, the comparer's `-cold_start_s`.
 - Tests: `experiments/sim/sim_test.go` `TestColdStartByHand`, `scheduler/api/api_test.go` `TestSubmitColdStartWait`; log `test-logs/phase5/step3-cold-start.log`.
 
+### Cost model v2 and the first GPU session (decisions 12–14)
+
+- The worker's own shape: `scheduler/costmodel/costmodel.go` `WorkerBuild` (the floor, the worker's A/P/D0, its gate) and `GPUBuild`'s branch on `WorkerA > 0`; `CalibratedL4()` the L4 block; the five `COST_WORKER_*` names in `scheduler/cmd/scheduler/main.go` and `worker/kgpu_worker/costmodel.py` (`Model.calibrated_l4()`, `worker_build_s`); the sweep's and the comparer's `-cost calibrated-l4` and worker-term flags.
+- The fit: `builder/kgpu_builder/calibrate.py` `fit_points_v1(fixed=, drop_warmup=)` (the floor's grid search; the warm-up point dropped) and `env_overrides_v2` (the v2 block); `cli.py` `fit --v2 --fixed --drop-warmup`.
+- The session's evidence: `test-logs/phase5/gpu-calibration.log`, `gpu-rounds.log` (the rounds under v1, their replay on v1 and on the L4 block), `experiments/results/calibration/gpu-l4-*.csv`, `experiments/results/gpu-timelines/`, `experiments/results/calibrated-l4/` (the comparison on the L4 block); the GPU-side calibration Job `deploy/k8s-gcp-gpu/calibrate-job.yaml`; the driver path in `deploy/k8s-gcp-gpu/config-gpu.yaml` (decision 12).
+
 ### Step 4: the cuVS builder scaffold (decision 10)
 
 - The GPU path: `builder/kgpu_builder/cagra.py` — `build_index_cagra` (CAGRA → `from_cagra(hierarchy="cpu")` → `hnsw.save` → stock hnswlib `load_index`, the proof), `cuvs_available`, `CuvsUnavailable`.

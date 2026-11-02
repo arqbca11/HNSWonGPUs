@@ -56,7 +56,7 @@ const (
 	p5AccelKey  = "cloud.google.com/gke-accelerator"
 	p5AccelVal  = "nvidia-l4"
 	p5GPURes    = "nvidia.com/gpu"
-	p5WorkerMem = "24159191040" // 22.5 GiB, an L4's usable memory (decision 9 as amended after this test's G2)
+	p5WorkerMem = "23658364928" // 22563 MiB, what the L4 reported free in the first GPU session (decision 12)
 )
 
 var (

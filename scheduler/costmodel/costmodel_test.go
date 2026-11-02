@@ -116,3 +116,53 @@ func TestCalibratedTermsByHand(t *testing.T) {
 		t.Fatal("ShardUsesStore=false must drop fetch and upload from the local path")
 	}
 }
+
+// Cost model v2 (Phase 5 decision 14): the L4 block, term by term by hand, on
+// the live rounds' 408164 x 128 build. The worker's path should land near
+// what the card did in the session (15.0 s claim-to-done on the second
+// build; 20.4 with the process's warm-up) where v1's CPU-worker block said
+// 39.7; and the local side is Calibrated()'s, unchanged.
+func TestCalibratedL4TermsByHand(t *testing.T) {
+	m := CalibratedL4()
+	n, dim := int64(408164), int32(128)
+	ln := math.Log(float64(n))
+	w := 128.0 + 154
+	wantBuild := 1.154 + 1.295e-8*math.Pow(float64(n), 0.891)*ln*w
+	wantGate := 2.07e-8 * 10000 * ln * w
+	idx := float64(n * (128*4 + 2*16*4))
+	vec := float64(n * 128 * 4)
+	wantSave, wantFetch, wantUpload := idx/2.9e8, vec/1.39e8, idx/1.01e8
+	gpuBuild := wantBuild + wantGate + 1.5 + wantSave
+	checks := []struct {
+		name      string
+		got, want float64
+	}{
+		{"worker build + gate (its own shape)", m.WorkerBuild(n, dim).Seconds(), wantBuild + wantGate},
+		{"gpu build (floor, build, gate, overhead, save)", m.GPUBuild(n, dim).Seconds(), gpuBuild},
+		{"transfer", m.Transfer(n, dim).Seconds(), wantFetch + wantUpload},
+		{"gpu total", m.GPUTotal(n, dim).Seconds(), gpuBuild + wantFetch + wantUpload},
+		{"local total (the shard side, as Calibrated)", m.LocalTotal(n, dim).Seconds(), Calibrated().CPUBuild(n, dim).Seconds() + Calibrated().Gate(n, dim).Seconds() + m.Save(n, dim).Seconds() + m.Transfer(n, dim).Seconds()},
+	}
+	for _, c := range checks {
+		t.Logf("L4 block, 408164 x 128: %-46s = %8.3f s (by hand %8.3f)", c.name, c.got, c.want)
+		if math.Abs(c.got-c.want) > 1e-6*math.Max(1, c.want) {
+			t.Fatalf("%s: got %.6f want %.6f", c.name, c.got, c.want)
+		}
+	}
+	if g := m.GPUTotal(n, dim).Seconds(); g < 12 || g > 22 {
+		t.Fatalf("the L4 block's worker path for the 408k build = %.1f s; the session measured 15.0 s (20.4 with the warm-up); v1 said 39.7", g)
+	}
+	// the small build: the card's floor makes it slower than the shard (evidence 10: 0.5x at 10k)
+	small := m.WorkerBuild(10_000, 128).Seconds()
+	t.Logf("L4 block, 10k x 128: worker build %.2f s against the shard's %.2f s (the floor dominates)", small, m.CPUBuild(10_000, 128).Seconds())
+	if small < m.CPUBuild(10_000, 128).Seconds() {
+		t.Fatal("at 10k the card should not beat the shard (evidence 10)")
+	}
+	// WorkerA 0 falls back to v1's speedup form (with this block's own save bandwidth)
+	v1 := m
+	v1.WorkerA = 0
+	wantV1 := (v1.CPUBuild(n, dim).Seconds()+v1.Gate(n, dim).Seconds())/v1.Speedup + v1.GPUOverhead + v1.Save(n, dim).Seconds()
+	if math.Abs(v1.GPUBuild(n, dim).Seconds()-wantV1) > 1e-6 || m.WorkerBuild(1, dim).Seconds() != 1.154 {
+		t.Fatalf("WorkerA 0 must be v1's form (%.3f vs %.3f); a 1-vector build pays only the floor (%.3f)", v1.GPUBuild(n, dim).Seconds(), wantV1, m.WorkerBuild(1, dim).Seconds())
+	}
+}
