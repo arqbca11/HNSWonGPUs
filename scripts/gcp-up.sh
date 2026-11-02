@@ -13,6 +13,7 @@
 #   scripts/gcp-up.sh                 # cluster, workers, manifests, VM
 #   WORKER_NODES=2 scripts/gcp-up.sh
 #   GPU_POOLS=1 scripts/gcp-up.sh     # Phase 5: also the L4 pools (autoscaling from zero) and the GPU overlay
+#   GPU_POOLS=1 GPU_L4X2_MAX=0 WORKER_NODES=0 scripts/gcp-up.sh   # one card of quota: no two-card pool, no CPU worker pool
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$PATH:/opt/homebrew/bin"
@@ -52,7 +53,7 @@ fi
 # public IP endpoint answers nobody; the DNS endpoint authenticates by the
 # gcloud account instead of by the laptop's IP (decision 30)
 $G container clusters update "$CLUSTER" --zone "$ZONE" --enable-dns-access >/dev/null 2>&1 || true
-if ! $G container node-pools describe workers --cluster "$CLUSTER" --zone "$ZONE" >/dev/null 2>&1; then
+if [ "$WORKER_NODES" != 0 ] && ! $G container node-pools describe workers --cluster "$CLUSTER" --zone "$ZONE" >/dev/null 2>&1; then
   echo "-- creating node pool workers: $WORKER_NODES x $WORKER_MACHINE (spot: decision 27, the quota was granted the first day)"
   $G container node-pools create workers --cluster "$CLUSTER" --zone "$ZONE" --num-nodes "$WORKER_NODES" --machine-type "$WORKER_MACHINE" --disk-size 50 --spot >/dev/null
 fi
@@ -64,6 +65,7 @@ export USE_GKE_GCLOUD_AUTH_PLUGIN=True PATH="/opt/homebrew/share/google-cloud-sd
 if [ "${GPU_POOLS:-0}" = 1 ]; then
   for spec in "gpu-l4x1 g2-standard-8 1 ${GPU_L4X1_MAX:-2}" "gpu-l4x2 g2-standard-24 2 ${GPU_L4X2_MAX:-1}"; do
     set -- $spec; pool=$1; mt=$2; cards=$3; max=$4
+    [ "$max" = 0 ] && { echo "-- GPU pool $pool skipped (max 0: the quota holds $cards card(s) short of it)"; continue; }
     if ! $G container node-pools describe "$pool" --cluster "$CLUSTER" --zone "$ZONE" >/dev/null 2>&1; then
       echo "-- creating GPU pool $pool: $mt ($cards x L4), spot, autoscaling 0..$max"
       $G container node-pools create "$pool" --cluster "$CLUSTER" --zone "$ZONE" --machine-type "$mt" --disk-size 100 --spot \
@@ -85,7 +87,11 @@ kubectl -n kgpu rollout status deployment/scheduler --timeout=300s >/dev/null
 # for longer than its progress deadline (here, until the pool existed) keeps a
 # failed Progressing condition that rollout status reports as an error even
 # once every pod is ready
-kubectl -n kgpu wait --for=condition=available deployment/worker --timeout=600s >/dev/null
+if [ "${GPU_POOLS:-0}" = 1 ]; then
+  echo "-- GPU overlay: the worker Deployment sits at 0 replicas (decision 11); a session scales it: kubectl -n kgpu scale deploy/worker --replicas N"
+else
+  kubectl -n kgpu wait --for=condition=available deployment/worker --timeout=600s >/dev/null
+fi
 for svc in scheduler objectstore; do
   for _ in $(seq 1 120); do ip=$(kubectl -n kgpu get svc $svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null); [ -n "$ip" ] && break; sleep 5; done
   echo "   $svc internal IP: ${ip:-NOT YET}"

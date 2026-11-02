@@ -54,7 +54,7 @@ with open(SIFT_CSV) as _f:
 # Phase 5 step 1 (cost model v1): a point also times the save and the upload
 # and records the gate's query count; the grid writes this schema, and `fit`
 # reads both.
-HEADER = HEADER_V0 + ["gate_queries", "save_s", "upload_s", "upload_bytes"]
+HEADER = HEADER_V0 + ["gate_queries", "save_s", "upload_s", "upload_bytes", "builder"]  # Phase 5: which builder made the point
 
 
 # ------------------------------------------------------------------ helpers

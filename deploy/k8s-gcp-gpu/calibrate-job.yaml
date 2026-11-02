@@ -1,0 +1,49 @@
+# The GPU-side calibration (Phase 5): the same grid as the CPU worker's, on
+# a GPU node with the GPU image and --builder cagra, the CSVs uploaded to the
+# store under calibration/. One card per Job; sizes up to the 408k shard.
+#   kubectl apply -f deploy/k8s-gcp-gpu/calibrate-job.yaml
+#   kubectl -n kgpu logs job/calibrate-gpu -f
+#   kubectl -n kgpu delete job calibrate-gpu     # before a rerun
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: calibrate-gpu
+  namespace: kgpu
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: present
+          effect: NoSchedule
+      containers:
+        - name: calibrate
+          image: us-west1-docker.pkg.dev/project-3456ed25-5d5d-4b0d-aa5/kgpu/kgpu-worker-gpu:p5
+          envFrom:
+            - secretRef:
+                name: objectstore
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              H=$(hostname)
+              nvidia-smi --query-gpu=name,memory.total --format=csv || true
+              python -c "from kgpu_builder import cagra; print('cuvs_available', cagra.cuvs_available(), cagra.cuvs_version())"
+              python -m kgpu_builder calibrate sift-128 6 --builder cagra --sizes 10000,20000,50000,100000,200000,400000 --threads 6 --repeats 2 --out /tmp/$H-gpu-sift-128-6.csv
+              python -m kgpu_builder calibrate gist-960-300k 6 --builder cagra --sizes 10000,30000,60000,120000 --threads 6 --repeats 2 --out /tmp/$H-gpu-gist-960-300k-6.csv
+              python - <<'PY'
+              import glob, os
+              from kgpu_builder.config import Config
+              from kgpu_builder.store import Store
+              st = Store(Config.from_env())
+              for p in glob.glob("/tmp/*.csv"):
+                  st.put_bytes("calibration/" + os.path.basename(p), open(p, "rb").read(), "text/csv"); print("uploaded calibration/" + os.path.basename(p))
+              PY
+          resources:
+            requests: {cpu: "4", memory: "8Gi"}
+            limits: {memory: "20Gi", nvidia.com/gpu: 1}

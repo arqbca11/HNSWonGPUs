@@ -71,7 +71,11 @@ POINT_FIELDS_V0 = ["dataset", "n_shards", "shard", "size", "dim", "threads", "m"
 # the save (write + sha256) and the upload to the store — and records how
 # many queries the gate ran, so the gate cost is per query. A CSV with the
 # v0 header still reads; its v1 columns are absent.
-POINT_FIELDS = POINT_FIELDS_V0 + ["gate_queries", "save_s", "upload_s", "upload_bytes"]
+POINT_FIELDS_V1 = POINT_FIELDS_V0 + ["gate_queries", "save_s", "upload_s", "upload_bytes"]
+# Phase 5 (the GPU session): which builder made the point — hnswlib on the
+# CPU or cagra on the GPU — so one file can hold both sides of the speedup.
+POINT_FIELDS = POINT_FIELDS_V1 + ["builder"]
+ACCEPTED_HEADERS = (POINT_FIELDS, POINT_FIELDS_V1, POINT_FIELDS_V0)
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,7 @@ class Point:
     save_s: float = 0.0     # write the index to disk and sha256 it (v1)
     upload_s: float = 0.0   # put it in the store under a scratch key, then delete it (v1; 0 when not asked)
     upload_bytes: int = 0
+    builder: str = "hnswlib"   # or cagra (Phase 5)
 
 
 def largest_shard(store: Store, dataset: str, n_shards: int) -> int:
@@ -107,7 +112,7 @@ def largest_shard(store: Store, dataset: str, n_shards: int) -> int:
 
 def run_point(store: Store, dataset: str, n_shards: int, shard: int, size: int, threads: int,
               m: int = 16, ef_construction: int = 200, repeat: int = 0, n_queries: int = 500,
-              upload_prefix: str | None = None) -> Point:
+              upload_prefix: str | None = None, builder: str = "hnswlib") -> Point:
     """One calibration build, in THIS process (the CLI runs it in a child).
     upload_prefix, when given, is a store prefix the saved index is uploaded
     under (`<prefix>/<host>-<size>-<threads>-<repeat>.bin`) and deleted from
@@ -128,7 +133,11 @@ def run_point(store: Store, dataset: str, n_shards: int, shard: int, size: int, 
     # so peak RSS reflects the prefix and its index, plus at most that
     truth = exact_topk(queries, x, k=10, chunk=32)
     t1 = time.time()
-    idx = build_index(x, m, ef_construction, threads)
+    if builder == "cagra":
+        from .cagra import build_index_cagra
+        idx = build_index_cagra(x, m, ef_construction, threads)
+    else:
+        idx = build_index(x, m, ef_construction, threads)
     build_s = time.time() - t1
     t2 = time.time()
     recall = gate(idx, queries, truth, 10, 100, threads)
@@ -159,11 +168,12 @@ def run_point(store: Store, dataset: str, n_shards: int, shard: int, size: int, 
     return Point(dataset, n_shards, shard, size, int(x.shape[1]), threads, m, ef_construction, repeat,
                  fetch_s, fetch_bytes, build_s, gate_s, recall, index_bytes, int(rss), os.uname().nodename,
                  time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                 int(queries.shape[0]), save_s, upload_s, int(upload_bytes))
+                 int(queries.shape[0]), save_s, upload_s, int(upload_bytes), builder)
 
 
 def run_grid(cmd: list[str], env: dict[str, str], dataset: str, n_shards: int, shard: int, sizes: list[int],
-             threads: list[int], repeats: int, out_csv: str, log=print, upload_prefix: str | None = None) -> list[Point]:
+             threads: list[int], repeats: int, out_csv: str, log=print, upload_prefix: str | None = None,
+             builder: str = "hnswlib") -> list[Point]:
     """Every (size, threads, repeat) as a child process; rows appended to out_csv
     as they come, so an interrupted grid keeps what it measured."""
     if any(s < 2 for s in sizes):
@@ -176,7 +186,7 @@ def run_grid(cmd: list[str], env: dict[str, str], dataset: str, n_shards: int, s
         with open(out_csv, newline="") as f:
             rd = csv.DictReader(f)
             if rd.fieldnames != POINT_FIELDS:
-                raise ValueError(f"{out_csv} exists with a different header ({rd.fieldnames[:3]}...; a v0 calibration CSV cannot take v1 rows); choose another --out")
+                raise ValueError(f"{out_csv} exists with a different header ({rd.fieldnames[:3]}...; an older calibration CSV cannot take new rows); choose another --out")
             for row in rd:
                 key = (int(row["size"]), int(row["threads"]))
                 existing[key] = max(existing.get(key, -1), int(row["repeat"]))
@@ -191,7 +201,7 @@ def run_grid(cmd: list[str], env: dict[str, str], dataset: str, n_shards: int, s
                 for r in range(repeats):
                     rep = existing.get((size, th), -1) + 1 + r
                     argv = cmd + ["calibrate-point", dataset, str(n_shards), "--shard", str(shard), "--size", str(size),
-                                  "--threads", str(th), "--repeat", str(rep)] + (["--upload-prefix", upload_prefix] if upload_prefix else [])
+                                  "--threads", str(th), "--repeat", str(rep), "--builder", builder] + (["--upload-prefix", upload_prefix] if upload_prefix else [])
                     p = subprocess.run(argv, capture_output=True, text=True, env=env)
                     if p.returncode != 0:
                         raise RuntimeError(f"calibrate-point failed ({p.returncode}): {p.stderr.strip().splitlines()[-1] if p.stderr.strip() else p.stdout.strip()[-200:]}")

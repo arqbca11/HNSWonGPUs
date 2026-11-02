@@ -251,6 +251,10 @@ def cmd_build(cfg: Config, args) -> int:
 
 
 def cmd_calibrate(cfg: Config, args) -> int:
+    if args.builder == "cagra":
+        from .cagra import cuvs_available
+        if not cuvs_available():
+            raise SystemExit("calibrate: --builder cagra needs cuVS (the GPU image on a GPU node)")
     st = Store(cfg)
     shard = args.shard if args.shard is not None else cal.largest_shard(st, args.dataset, args.n_shards)
     sizes = [int(x) for x in args.sizes.split(",")]
@@ -264,7 +268,7 @@ def cmd_calibrate(cfg: Config, args) -> int:
         raise SystemExit(f"calibrate: sizes {bad} are outside 2..{shard_rows} (shard {shard} has {shard_rows} vectors)")
     try:
         cal.run_grid([sys.executable, "-m", "kgpu_builder"], dict(os.environ), args.dataset, args.n_shards, shard, sizes, threads, args.repeats, out, log=_log,
-                     upload_prefix=None if args.no_upload else f"calibration/scratch/{os.uname().nodename}")
+                     upload_prefix=None if args.no_upload else f"calibration/scratch/{os.uname().nodename}", builder=args.builder)
     except (ValueError, RuntimeError) as e:
         raise SystemExit(f"calibrate: {e}") from None
     _log(f"wrote {out}")
@@ -274,7 +278,7 @@ def cmd_calibrate(cfg: Config, args) -> int:
 def cmd_calibrate_point(cfg: Config, args) -> int:
     try:
         pt = cal.run_point(Store(cfg), args.dataset, args.n_shards, args.shard, args.size, args.threads, args.m, args.ef_construction, args.repeat,
-                           upload_prefix=args.upload_prefix)
+                           upload_prefix=args.upload_prefix, builder=args.builder)
     except (ValueError, NotFound) as e:
         raise SystemExit(f"calibrate-point: {e}") from None
     print(json.dumps(pt.__dict__), flush=True)
@@ -287,7 +291,7 @@ def _read_points(paths: list[str]) -> list[dict]:
     for path in paths:
         with open(path, newline="") as f:
             rd = _csv.DictReader(f)
-            if rd.fieldnames not in (cal.POINT_FIELDS, cal.POINT_FIELDS_V0):
+            if rd.fieldnames not in cal.ACCEPTED_HEADERS:
                 raise SystemExit(f"fit: {path} is not a calibration CSV (header {rd.fieldnames[:3] if rd.fieldnames else None}...)")
             rows += list(rd)
     if not rows:
@@ -366,12 +370,14 @@ def main(argv=None) -> int:
     c.add_argument("--repeats", type=int, default=1)
     c.add_argument("--out", default=None)
     c.add_argument("--no-upload", action="store_true", help="skip timing the index upload to the store (v1 measures it under calibration/scratch/<host>/ and deletes it)")
+    c.add_argument("--builder", choices=["hnswlib", "cagra"], default="hnswlib", help="the builder every point runs: hnswlib on the CPU or cagra on the GPU (Phase 5)")
     cp = sub.add_parser("calibrate-point")
     cp.add_argument("dataset"); cp.add_argument("n_shards", type=int)
     cp.add_argument("--shard", type=int, required=True); cp.add_argument("--size", type=int, required=True)
     cp.add_argument("--threads", type=int, required=True); cp.add_argument("--repeat", type=int, default=0)
     cp.add_argument("--m", type=int, default=16); cp.add_argument("--ef-construction", type=int, default=200)
     cp.add_argument("--upload-prefix", default=None, help="store prefix to upload the saved index under (timed, then deleted)")
+    cp.add_argument("--builder", choices=["hnswlib", "cagra"], default="hnswlib")
     ft = sub.add_parser("fit")
     ft.add_argument("csv", nargs="+")
     ft.add_argument("--shard-threads", type=int, default=2); ft.add_argument("--worker-threads", type=int, default=8)
