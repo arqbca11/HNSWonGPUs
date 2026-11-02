@@ -27,6 +27,9 @@ spec:
           envFrom:
             - secretRef:
                 name: objectstore
+          env:
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/nvidia/lib64:/usr/local/cuda/lib64   # the node's driver, mounted by GKE (see config-gpu.yaml)
           command: ["sh", "-c"]
           args:
             - |

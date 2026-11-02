@@ -1,0 +1,29 @@
+== Phase 5, the first GPU session: the GPU-side calibration, a Job on the L4 node (g2-standard-8, us-west1-c, driver 580, cuVS 26.10, deploy/k8s-gcp-gpu/calibrate-job.yaml), 2026-11-02T08:34:58Z
+sh: 3: nvidia-smi: not found
+cuvs_available True cuvs 26.10.0
+calibrate sift-128 split 6, shard 1: sizes [10000, 20000, 50000, 100000, 200000, 400000] x threads [6] x 2 repeat(s) -> /tmp/calibrate-gpu-tz4zk-gpu-sift-128-6.csv
+  sift-128 shard 1 size   10000 x 128 threads 6 repeat 0: build    6.78 s, recall@10 0.999, index    6.6 MB, peak rss   1186 MB, fetch   141 MB/s, save  0.02 s, upload   43 MB/s
+  sift-128 shard 1 size   10000 x 128 threads 6 repeat 1: build    1.22 s, recall@10 0.999, index    6.6 MB, peak rss   1131 MB, fetch   146 MB/s, save  0.02 s, upload   40 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 6 repeat 0: build    1.33 s, recall@10 0.999, index   13.2 MB, peak rss   1152 MB, fetch   145 MB/s, save  0.05 s, upload   50 MB/s
+  sift-128 shard 1 size   20000 x 128 threads 6 repeat 1: build    1.35 s, recall@10 0.999, index   13.2 MB, peak rss   1168 MB, fetch   146 MB/s, save  0.05 s, upload   60 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 6 repeat 0: build    1.64 s, recall@10 0.999, index   33.0 MB, peak rss   1207 MB, fetch   145 MB/s, save  0.11 s, upload   87 MB/s
+  sift-128 shard 1 size   50000 x 128 threads 6 repeat 1: build    1.65 s, recall@10 0.999, index   33.0 MB, peak rss   1209 MB, fetch   146 MB/s, save  0.11 s, upload   93 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 6 repeat 0: build    2.27 s, recall@10 0.998, index   66.0 MB, peak rss   1319 MB, fetch   146 MB/s, save  0.23 s, upload   89 MB/s
+  sift-128 shard 1 size  100000 x 128 threads 6 repeat 1: build    2.26 s, recall@10 0.998, index   66.0 MB, peak rss   1325 MB, fetch   141 MB/s, save  0.24 s, upload   91 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 6 repeat 0: build    3.58 s, recall@10 0.989, index  132.1 MB, peak rss   1519 MB, fetch   134 MB/s, save  0.45 s, upload  101 MB/s
+  sift-128 shard 1 size  200000 x 128 threads 6 repeat 1: build    3.62 s, recall@10 0.990, index  132.1 MB, peak rss   1515 MB, fetch   115 MB/s, save  0.46 s, upload  105 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 6 repeat 0: build    6.73 s, recall@10 0.989, index  264.2 MB, peak rss   1926 MB, fetch   137 MB/s, save  0.91 s, upload  101 MB/s
+  sift-128 shard 1 size  400000 x 128 threads 6 repeat 1: build    6.66 s, recall@10 0.988, index  264.2 MB, peak rss   1922 MB, fetch   146 MB/s, save  0.93 s, upload  104 MB/s
+wrote /tmp/calibrate-gpu-tz4zk-gpu-sift-128-6.csv
+calibrate gist-960-300k split 6, shard 1: sizes [10000, 30000, 60000, 120000] x threads [6] x 2 repeat(s) -> /tmp/calibrate-gpu-tz4zk-gpu-gist-960-300k-6.csv
+  gist-960-300k shard 1 size   10000 x 960 threads 6 repeat 0: build    2.09 s, recall@10 0.998, index   39.9 MB, peak rss   1517 MB, fetch   136 MB/s, save  0.14 s, upload  107 MB/s
+  gist-960-300k shard 1 size   10000 x 960 threads 6 repeat 1: build    2.09 s, recall@10 0.998, index   39.9 MB, peak rss   1522 MB, fetch   134 MB/s, save  0.14 s, upload   97 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 6 repeat 0: build    2.77 s, recall@10 0.992, index  119.7 MB, peak rss   1753 MB, fetch   120 MB/s, save  0.41 s, upload   94 MB/s
+  gist-960-300k shard 1 size   30000 x 960 threads 6 repeat 1: build    2.77 s, recall@10 0.994, index  119.7 MB, peak rss   1753 MB, fetch   139 MB/s, save  0.40 s, upload  112 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 6 repeat 0: build    3.92 s, recall@10 0.981, index  239.3 MB, peak rss   2128 MB, fetch   139 MB/s, save  0.81 s, upload  105 MB/s
+  gist-960-300k shard 1 size   60000 x 960 threads 6 repeat 1: build    3.95 s, recall@10 0.983, index  239.3 MB, peak rss   2132 MB, fetch   139 MB/s, save  0.82 s, upload  116 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 6 repeat 0: build    6.71 s, recall@10 0.961, index  478.6 MB, peak rss   2894 MB, fetch   139 MB/s, save  1.62 s, upload  119 MB/s
+  gist-960-300k shard 1 size  120000 x 960 threads 6 repeat 1: build    6.61 s, recall@10 0.964, index  478.6 MB, peak rss   2895 MB, fetch   139 MB/s, save  1.61 s, upload  142 MB/s
+wrote /tmp/calibrate-gpu-tz4zk-gpu-gist-960-300k-6.csv
+uploaded calibration/calibrate-gpu-tz4zk-gpu-gist-960-300k-6.csv
+uploaded calibration/calibrate-gpu-tz4zk-gpu-sift-128-6.csv

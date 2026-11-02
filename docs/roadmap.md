@@ -384,22 +384,22 @@ Add a real GPU build path to the Phase 4 cloud topology, run it on a small GPU n
 
 ### GPU builder
 
-- [ ] A separate builder image based on a RAPIDS or cuVS container. Keep the CPU image as it is.
-- [ ] Build path: build a CAGRA graph with cuVS, convert it to HNSW, save. Check the cuVS docs for the current API, and confirm the saved file loads in the query path (hnswlib) before trusting the pipeline.
+- [x] A separate builder image based on a RAPIDS or cuVS container. Keep the CPU image as it is. *(`worker/Dockerfile.gpu` on `rapidsai/base:26.10-cuda12-py3.12`; the driver path, decision 12.)*
+- [x] Build path: build a CAGRA graph with cuVS, convert it to HNSW, save. Check the cuVS docs for the current API, and confirm the saved file loads in the query path (hnswlib) before trusting the pipeline. *(Decision 10: `hierarchy="cpu"`, the load by stock hnswlib on every build; recall 0.961–0.999 at the gate.)*
 - [ ] Alternative path if the direct API causes trouble: Faiss with its cuVS-backed CAGRA index, which is what OpenSearch's GPU workers use
-- [ ] Measure on the GPU: build time across the size grid, conversion time, and peak GPU memory
+- [x] Measure on the GPU: build time across the size grid *(evidence 10: 1.15 s + linear in n; 0.5× to 9.5× over the shard)*; conversion time and peak GPU memory are the next session's (the point times build + conversion together today).
 - [ ] Add a memory constraint to placement: a build whose peak memory exceeds a worker's GPU can't be placed there. The modeled capacity is 24 GiB today (Phase 3 decision 26, an L4/A10G class card); the published CAGRA residency rule is ~1.8× the float32 vectors, but build-time peak is several times higher — measure peak, and decide whether the filter models peak or residency.
 
 ### Cluster: the GPU node pool added to Phase 4's topology
 
-- [ ] A GPU node pool on spot, autoscaling from zero, in the Phase 4 cluster. Both one-card and two-card machines of the same card type (e.g. L4), for the workers-per-node measurement below
-- [ ] Drivers and device plugin per the provider's docs; outside a managed provider, the NVIDIA GPU Operator
-- [ ] Workers request `nvidia.com/gpu: 1`, with the same taint and `nodeSelector` rehearsed in Phase 2; the only change from the kind manifests is the resource name (`kgpu.io/gpu-card` → `nvidia.com/gpu`)
-- [ ] NVIDIA's DCGM exporter for GPU utilization and memory, on the same Grafana dashboard
+- [x] A GPU node pool on spot, autoscaling from zero, in the Phase 4 cluster *(spot stocked out in the session; an on-demand pool across three zones took the card)*. Both one-card and two-card machines of the same card type (e.g. L4), for the workers-per-node measurement below *(the two-card pool waits for a 3-card quota)*
+- [x] Drivers and device plugin per the provider's docs *(GKE installs both; the container must look where the driver is mounted, decision 12)*
+- [x] Workers request `nvidia.com/gpu: 1`, with the same taint and `nodeSelector` rehearsed in Phase 2; the only change from the kind manifests is the resource name (`kgpu.io/gpu-card` → `nvidia.com/gpu`) *(decision 9)*
+- [x] NVIDIA's DCGM exporter for GPU utilization and memory *(serving the L4's metrics in the session)*; the Grafana panels wait for the monitoring stack on the cloud cluster
 
 ### What to measure
 
-- [ ] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. Expect CPU fallback to win more often while the pool is cold.
+- [x] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. *(Decision 11; measured 353 s, `COLD_START=350s`.)*
 - [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it.
 - [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model.
 - [ ] **Builds per card:** one build per card against two with memory-aware admission in the worker, at 128 and 1536 dimensions, reporting throughput and the largest build's finish time. Expected to win for small builds (transfer overlaps compute, a small build does not fill the card) and lose for two large ones (Phase 5 design doc).

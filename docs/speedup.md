@@ -15,10 +15,10 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Question | Current answer | How we know |
 | --- | --- | --- |
 | Per-build speedup | **~5–9× effective**, from an *assumed* 10× compute speedup minus a 2 s GPU overhead and a 200 MB/s transfer; small builds lose most of it to overhead | Assumed (cost model); simulator and fake worker both run on it |
-| Per-round speedup, current presets | **~0 at the median, now also on the calibrated CPU-worker constants** (evidence 8: every policy within a second of every other in all nine presets). Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
+| Per-round speedup, current presets | **~0 at the median on the calibrated CPU-worker constants** (evidence 8, 9); **the first GPU rounds were slower than the CPU-worker ones (50.6 vs 41.5 s) because the scheduler's model did not know the card's shape** (evidence 10) — the honest GPU round number waits for cost model v2. Every policy — including all-local — produces the same round time, because the presets are bound by physics placement can't touch (see evidence 1); the full comparison (evidence 5) confirms it at 50 seeds across all nine scenarios | Simulated |
 | Per-round speedup once the largest build fits a worker | **~7.0×** (`production` preset with 160 GB workers: ~9.7 h all-local → ~1.4 h reactive), and the dynamic policy beats naive always-offload by a further **~20%** (see evidence 2) | Simulated |
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
-| Per-build speedup, measured | **Unknown for a GPU** (Phase 5). Measured for a CPU worker with 8 threads over a shard with 2 on the cloud topology, sift-128: **2.24×** (the worker node's Intel cores at 8 threads over the shard VM's AMD cores at 2; the same-machine 8-over-2 ratios are 3.1× on the VM and 2.4× on the worker node, so the family mix costs ~0.3 of it; evidence 7). The laptop rehearsal said 2.0× (evidence 6) | Measured (cloud; decision 7 says the number that counts comes from the cloud topology) |
+| Per-build speedup, measured | **On an L4, a curve, not a number: 0.5× at 10k vectors, 4.5× at 100k, 9.5× at 400k over the shard VM's 2 threads** (the card has a 1.15 s floor and then grows linearly with n; evidence 10). For a CPU worker with 8 threads over the shard's 2: 2.1–2.2× (evidence 7, 9) | Measured (cloud; decision 7 says the number that counts comes from the cloud topology) |
 | The cost model's CPU constant and its error, measured | **Cost model v1 (Phase 5 decision 6): build = 2.30e-9 · n^1.22 · ln(n) · (dim + 187) on the shard VM at 2 threads, sigma 0.08 over both datasets** (evidence 9); v0's one constant per dataset had sigma 0.49 together because its "time ∝ dim" is wrong on x86 (evidence 7, decision 35: a 960-dim build costs 2.8–3.6× a 128-dim one, not 7.5×, and 8.0× on the laptop — the dimension term is the machine's) | Measured (cloud), refitted |
 | Does the simulator's number survive contact with the live stack? | **With modeled builds, yes; with real builds, within 4.4 s of a 41.5 s round on cost model v1** (evidence 9: local shards within 2 s, the straggler 4 s over on a placeholder upload rate). On v0 with calibrated constants it was 10 s under, because v0 charged the index's upload at the fetch's rate and had no gate or save (evidence 8, decision 37). With modeled builds: within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds, 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
@@ -223,4 +223,25 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **What it says.** (1) **The model is now right to ±20 % on both sides and both datasets**, from a factor of 1.6; the sweeps' sigma axis takes 0.11. (2) The remaining 4 s on the straggler is the upload term's placeholder (the store's 50 MB/s from the data step, not a worker's measurement) — the extended calibration point will replace it on the next cloud session; the model's error is now in a constant, not its shape. (3) **The comparison's verdict does not change**: with CPU workers, no policy moves a round at the median in any preset, and the rig's store round trip on the local side makes every path longer; what decides the project is still Phase 5's GPU measurement, which now lands in a model that can hold it.
 
-*(Next expected entries: Phase 5's GPU measurement — the per-build speedup and overhead replacing the CPU-worker stand-in, the dimension and shape terms refitted on the GPU side — after which this comparison is rerun.)*
+### Evidence 10 — the first GPU session: the card measured, and a round run under the wrong model (Phase 5)
+
+**Setup.** One NVIDIA L4 (g2-standard-8, on-demand after the spot pool stocked out; us-west1-c) in the Phase 4 cluster, the GPU worker image on RAPIDS 26.10 with cuVS 26.10, builds as CAGRA on the card converted to an hnswlib file on 6 CPU threads (Phase 5 decision 10). The calibration grid as a Job on the node (`test-logs/phase5/gpu-calibration.log`, `experiments/results/calibration/gpu-l4-*.csv`); then two live sift-128 rounds with the six shards on the VM and that one worker, the scheduler still on v1's CPU-worker block (`test-logs/phase5/gpu-rounds.log`).
+
+**Result, the card.**
+
+| Build | Shard VM, 2 threads | L4, build + conversion + load | L4 over shard |
+| --- | --- | --- | --- |
+| 10k × 128 | 0.61 s | 1.22 s | **0.5×** |
+| 100k × 128 | 10.2 s | 2.26 s | 4.5× |
+| 400k × 128 | 63.3 s | 6.66 s | **9.5×** |
+| 120k × 960 | 51.7 s | 6.61 s | 7.8× |
+| The card's shape (19 points, the warm-up excluded) | — | 1.15 s + 5.5e-8 · n^0.98 · (dim + 150), sigma 0.095 | — |
+| Cold start (pool at zero → registered worker) | — | 353 s (node ~2.5 min, image pull 2.3 min) | — |
+| Recall@10 at the gate (sift 10k → 400k) | 0.998 → 0.984 (hnswlib) | 0.999 → 0.988 | — |
+| The card's fetch / upload / save | — | 139 / 99 / 290 MB/s | — |
+
+**Result, the rounds.** 50.6 and 52.9 s against Phase 4's 41.5 s with two CPU workers: with the scheduler believing the GPU to be a 2.1× CPU, the reactive policy kept the 204k build local, preempted it, reneged it, and the restarted build was the straggler. The worker's own estimates were 2–2.6× its elapsed.
+
+**What it says.** (1) **The per-build speedup is not a number but a curve**: the card has a 1.15 s floor and then grows linearly with the vectors, so it loses to the shard below ~20k vectors and wins 9.5× at 400k, with no sign of flattening — the roadmap's "10× per build" is the large-build end of a curve that starts below 1×. (2) **A model with the wrong shape loses the round even with the right hardware**: the first-ever GPU rounds were slower than the CPU-worker ones because of the estimate, not the card. Decision 13's cost model v2 gives the worker its own shape; the second session validates it. (3) The gate passes on GPU-built graphs with recall above hnswlib's own at every size, so the conversion is sound.
+
+*(Next expected entries: cost model v2 fitted on both sides, the comparison rerun on it, and the second GPU session's rounds under it — the first honest round-level GPU number.)*

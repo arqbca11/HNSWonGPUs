@@ -24,6 +24,7 @@ COPY worker /app/worker
 # pip refuses; the flag is the sanctioned way to install into it in an image
 RUN pip install --no-cache-dir --break-system-packages /app/builder /app/worker
 
-ENV PYTHONUNBUFFERED=1 BUILDER=cagra BUILD_THREADS=6
+# GKE mounts the node's driver at /usr/local/nvidia; the runtime must find libcuda there
+ENV PYTHONUNBUFFERED=1 BUILDER=cagra BUILD_THREADS=6 LD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/cuda/lib64
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python", "-m", "kgpu_worker"]
