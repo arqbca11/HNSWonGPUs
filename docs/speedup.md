@@ -20,7 +20,7 @@ This doc is updated whenever a sweep, a live validation or a real measurement pr
 | Per-shard recovery, `production` preset | The five offloadable shards recover **~2.1 h sooner** per round; the round clock doesn't move because the sixth shard's build fits no GPU | Simulated |
 | Per-build speedup, measured | **On an L4, a curve, not a number: 0.5× at 10k vectors, 4.5× at 100k, 9.5× at 400k over the shard VM's 2 threads** (the card has a 1.15 s floor and then grows linearly with n; evidence 10). For a CPU worker with 8 threads over the shard's 2: 2.1–2.2× (evidence 7, 9) | Measured (cloud; decision 7 says the number that counts comes from the cloud topology) |
 | The cost model's CPU constant and its error, measured | **Cost model v1 (Phase 5 decision 6): build = 2.30e-9 · n^1.22 · ln(n) · (dim + 187) on the shard VM at 2 threads, sigma 0.08 over both datasets** (evidence 9); v0's one constant per dataset had sigma 0.49 together because its "time ∝ dim" is wrong on x86 (evidence 7, decision 35: a 960-dim build costs 2.8–3.6× a 128-dim one, not 7.5×, and 8.0× on the laptop — the dimension term is the machine's) | Measured (cloud), refitted |
-| Does the simulator's number survive contact with the live stack? | **With modeled builds, yes; with real builds, within 4.4 s of a 41.5 s round on cost model v1** (evidence 9: local shards within 2 s, the straggler 4 s over on a placeholder upload rate). On v0 with calibrated constants it was 10 s under, because v0 charged the index's upload at the fetch's rate and had no gate or save (evidence 8, decision 37). With modeled builds: within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds, 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
+| Does the simulator's number survive contact with the live stack? | **Yes. With a GPU, on cost model v2: placement identical in 8 of 8 live rounds, the offloaded and query-bound shards within 0.01 s, one local build 4–6 s slow on the shared VM** (evidence 12, decision 15). With real CPU builds on v1: within 4.4 s of a 41.5 s round (evidence 9). On v0 with calibrated constants it was 10 s under, because v0 charged the index's upload at the fetch's rate and had no gate or save (evidence 8, decision 37). With modeled builds: within ~2 s at 50 shards and within 1 s over 7- and 9-minute rounds, 18 of 18 live rounds on the kind cluster agree with the simulator's replay at the same seed and cadences (evidence 4). The simulator cannot know the live reconsider ticker's phase; at 1536 dims that moves a round by up to ~15 s, and the comparer reports the envelope | Measured (fake builds: the live stack sleeps for the same modeled times the simulator uses, so this validates the *mechanics*, not the cost model) |
 
 ## The assumption underneath everything
 
@@ -264,4 +264,19 @@ M is sub-linear in N because the transfer and the query-drain tail don't shrink 
 
 **What it says.** (1) **The first round-level GPU number: 9.5× on the hour-long build** (2708 → 284 s), because the straggler that holds the round is a build the card finishes in minutes; `production` does not move because its largest build fits no 24 GiB worker and stays local, as evidence 2 predicted. (2) **The small presets stay at their query horizon** (30 s): the round is the drain of the queries, not the builds, and no card changes that — evidence 1's finding survives the hardware. (3) **With one card the policies finally differ**: always-offload queues everything behind one worker (37–43 s), the size threshold and the clairvoyant stay at 30, and reactive loses on `uniform` and `downstream_heavy` (39–40 s) by preempting into a single-card queue — the first preset where a dynamic policy is beaten by a static one, and the sweep that the second session should reproduce live. (4) The model's error is now 0.10 on both sides; the two numbers above that used to be guesses, the per-build speedup and the round-level gain, are measured and derived respectively.
 
-*(Next expected entries: the second GPU session's rounds under the L4 block against the 32 s prediction; the two-card measurements once the quota allows them.)*
+### Evidence 12 — the second GPU session: v2 validated live (Phase 5)
+
+**Setup.** The first session's topology again, the scheduler on the L4 block; eight live rounds (skewed and uniform, two seeds, reactive and the static threshold) against one L4; `test-logs/phase5/gpu-rounds-v2.log`.
+
+**Result.**
+
+| Rounds | Live | Simulator | Agreement |
+| --- | --- | --- | --- |
+| skewed, reactive | 37.5 / 37.0 s | 31.6 / 32.8 s | placement identical; the offloaded shards within 0.01–0.6 s; one local build 4–6 s slow (decision 15) |
+| uniform, reactive | 30.0 / 30.0 s | 30.0 / 30.0 s | within 0.01 s |
+| skewed, static | 38.2 / 36.2 s | 31.6 / 32.8 s | as reactive |
+| uniform, static | 30.0 / 30.0 s | 30.0 / 30.0 s | within 0.01 s |
+
+**What it says.** (1) **The model's shape was the whole difference**: the same card, the same shards, the same policy, 51 s under the CPU-worker block and 37 s under the L4 block, with the placement the simulator predicted. (2) **The offloaded side is now exact to the second**; what remains is the rig's shared VM on the local side (decision 15), not the model. (3) The query-bound presets are at their horizon on hardware and simulator alike, as every entry since evidence 1 has said.
+
+*(Next expected entries: the two-card measurements, workers per node and builds per card, once the quota allows a second card; a spot preemption observed once a spot L4 is available.)*

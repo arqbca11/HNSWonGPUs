@@ -400,10 +400,10 @@ Add a real GPU build path to the Phase 4 cloud topology, run it on a small GPU n
 ### What to measure
 
 - [x] **Cold start:** with the pool at zero, the first job waits for a node to be provisioned. Add that delay to the GPU finish estimate. *(Decision 11; measured 353 s, `COLD_START=350s`.)*
-- [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it.
+- [ ] **Preemption:** when a spot node is reclaimed mid-build, recovery should go through the lease-expiry path. Record how much work is lost, and whether shorter renew intervals are worth it. *(Not yet observed: the spot L4 pool stocked out in both sessions and the card was on-demand.)*
 - [ ] **Workers per node:** on a two-card machine, one worker then two, at 128 and 1536 dimensions; the throughput ratio is the per-node transfer term for the Phase 3 cost model.
 - [ ] **Builds per card:** one build per card against two with memory-aware admission in the worker, at 128 and 1536 dimensions, reporting throughput and the largest build's finish time. Expected to win for small builds (transfer overlaps compute, a small build does not fill the card) and lose for two large ones (Phase 5 design doc).
-- [ ] Rerun the Phase 3 sweeps in the simulator with the measured GPU model, then validate a few rounds live
+- [x] Rerun the Phase 3 sweeps in the simulator with the measured GPU model *(evidence 11: 9.5× on `hour_build`)*, then validate a few rounds live *(evidence 12: eight rounds, placement identical, the offloaded side within 0.01 s)*
 
 ### Cost control
 
