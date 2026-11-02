@@ -20,3 +20,8 @@ metadata:
   namespace: kgpu
 data:
   COST_MODEL: calibrated
+  # The cold start, measured on 2026-11-02 (decision 11): 353 s from scaling
+  # the worker Deployment up to a registered worker on a pool at zero — about
+  # 2.5 min for GKE to provision the g2-standard-8 node with its driver (after
+  # a failed spot attempt) and 2.3 min to pull the 6 GB GPU image.
+  COLD_START: "350s"

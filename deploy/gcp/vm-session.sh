@@ -35,13 +35,13 @@ fi
 if [ "$step" = rounds ] || [ "$step" = all ]; then
   for seed in 1 2; do
     echo "#### real round sift-128 6 shards seed $seed (policy: the cluster's)"
-    TIMELINE_DIR="$OUT/timelines" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=6 SEED=$seed ROUNDS=1 ROUND_TIMEOUT=30m MIN_WORKERS=2 LOG_FORMAT=text \
+    TIMELINE_DIR="$OUT/timelines" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=6 SEED=$seed ROUNDS=1 ROUND_TIMEOUT=30m MIN_WORKERS="${MIN_WORKERS:-2}" LOG_FORMAT=text \
       BUILDER_CMD="uv run --project builder python -m kgpu_builder" SHARD_THREADS=2 go run ./shard/cmd/shardsim 2>&1 | grep -vE '^time=' | sed 's/^/   /'
   done
 fi
 if [ "$step" = stress50 ]; then
   echo "#### stress: real round sift-128 50 shards seed 1 on one VM ($(nproc) cores for 50 shards: the round time is contention, the mechanics are real)"
-  TIMELINE_DIR="$OUT/timelines-stress50" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=50 SEED=1 ROUNDS=1 ROUND_TIMEOUT=60m MIN_WORKERS=2 LOG_FORMAT=text \
+  TIMELINE_DIR="$OUT/timelines-stress50" DATASET=sift-128 TIME_SCALE=1 SCENARIO=skewed N_SHARDS=50 SEED=1 ROUNDS=1 ROUND_TIMEOUT=60m MIN_WORKERS="${MIN_WORKERS:-2}" LOG_FORMAT=text \
     BUILDER_CMD="uv run --project builder python -m kgpu_builder" SHARD_THREADS=2 go run ./shard/cmd/shardsim 2>&1 | grep -vE '^time=' | sed 's/^/   /'
 fi
 echo "== vm-session $step done, $(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -20,7 +20,9 @@ WORKDIR /app
 COPY builder /app/builder
 COPY worker /app/worker
 # the RAPIDS image's conda python is the one with cuvs; install into it
-RUN pip install --no-cache-dir /app/builder /app/worker
+# the RAPIDS image marks its conda Python "externally managed" (PEP 668): a plain
+# pip refuses; the flag is the sanctioned way to install into it in an image
+RUN pip install --no-cache-dir --break-system-packages /app/builder /app/worker
 
 ENV PYTHONUNBUFFERED=1 BUILDER=cagra BUILD_THREADS=6
 ENTRYPOINT ["/usr/bin/tini", "--"]
